@@ -1,0 +1,6 @@
+{
+  "id": "integration-consolidation",
+  "title": "Integration & Consolidation",
+  "status": "in-progress",
+  "description": "Consolidate redundant pipelines, unify AI extraction services, and modularize the API and frontend shared schemas."
+}

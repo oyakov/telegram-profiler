@@ -1,0 +1,6 @@
+{
+  "id": "refactor-data-efficiency",
+  "title": "Refactor: Data Efficiency",
+  "status": "completed",
+  "description": "Fix N+1 query patterns and move fuzzy deduplication logic to PostgreSQL."
+}

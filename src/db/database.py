@@ -1,0 +1,106 @@
+"""Database engine and session management."""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine, AsyncEngine
+from sqlalchemy.pool import NullPool
+import asyncpg
+
+from src.core.config import get_settings
+
+settings = get_settings()
+_engines: dict[str, AsyncEngine] = {}
+
+def get_engine(db_name: str | None = None, use_pooling: bool = True) -> AsyncEngine:
+    db_name = db_name or settings.postgres_db
+    cache_key = f"{db_name}_{'pooled' if use_pooling else 'direct'}"
+    
+    if cache_key not in _engines:
+        url = (
+            f"postgresql+asyncpg://"
+            f"{settings.postgres_user}:{settings.postgres_password}"
+            f"@{settings.postgres_host}:{settings.postgres_port}"
+            f"/{db_name}"
+        )
+        
+        engine_kwargs = {
+            "echo": settings.log_level.upper() == "DEBUG",
+        }
+        
+        if not use_pooling:
+            engine_kwargs["poolclass"] = NullPool
+        else:
+            # Standard pooling for web app
+            engine_kwargs["pool_size"] = 20
+            engine_kwargs["max_overflow"] = 10
+            
+        _engines[cache_key] = create_async_engine(url, **engine_kwargs)
+        
+    return _engines[cache_key]
+
+@asynccontextmanager
+async def get_session(db_name: str | None = None, use_pooling: bool = False) -> AsyncGenerator[AsyncSession, None]:
+    """Standalone async context manager for use outside FastAPI with optional DB routing.
+    Defaults to use_pooling=False for safe usage in Celery workers.
+    """
+    engine = get_engine(db_name, use_pooling=use_pooling)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+from fastapi import Request
+
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency that yields an async DB session based on X-Database header."""
+    db_name = request.headers.get("X-Database")
+    async with get_session(db_name, use_pooling=True) as session:
+        yield session
+
+async def ensure_database_exists(db_name: str):
+    """Ensure a database exists, creating it if necessary."""
+    user = settings.postgres_user
+    password = settings.postgres_password
+    host = settings.postgres_host
+    port = settings.postgres_port
+    
+    # Connect to system 'postgres' DB to perform creation
+    conn = await asyncpg.connect(
+        user=user, 
+        password=password, 
+        host=host, 
+        port=port, 
+        database="postgres"
+    )
+    try:
+        # Check if exists
+        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
+        if not exists:
+            # CREATE DATABASE cannot be executed in a transaction block
+            await conn.execute(f'CREATE DATABASE "{db_name}"')
+            print(f"Created database: {db_name}")
+    finally:
+        await conn.close()
+
+async def init_database_schema(db_name: str):
+    """Initialize database schema by creating all tables."""
+    from src.db.models import Base
+    engine = get_engine(db_name, use_pooling=False)
+    async with engine.begin() as conn:
+        # Enable pgvector extension
+        await conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Create all tables
+        await conn.run_sync(Base.metadata.create_all)
+    await engine.dispose()
+    print(f"Initialized schema for database: {db_name}")

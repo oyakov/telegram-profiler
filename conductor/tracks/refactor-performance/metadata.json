@@ -1,0 +1,6 @@
+{
+  "id": "refactor-performance",
+  "title": "Refactor: Performance Optimization",
+  "status": "completed",
+  "description": "Parallelize AI extraction chunks and analysis types to reduce pipeline latency."
+}

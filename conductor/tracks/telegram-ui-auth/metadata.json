@@ -1,0 +1,10 @@
+{
+  "id": "telegram-ui-auth",
+  "title": "Telegram UI Authentication & Containerization",
+  "description": "Containerize the application and replace the CLI-based Telegram login script with an interactive, user-friendly UI flow within the Streamlit dashboard.",
+  "status": "todo",
+  "created_at": "2026-04-15T02:45:00Z",
+  "updated_at": "2026-04-15T02:45:00Z",
+  "priority": "high",
+  "dependencies": []
+}

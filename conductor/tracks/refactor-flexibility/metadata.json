@@ -1,0 +1,6 @@
+{
+  "id": "refactor-flexibility",
+  "title": "Refactor: System Flexibility",
+  "status": "completed",
+  "description": "Move hardcoded logic to settings and finalize Dashboard integration."
+}
