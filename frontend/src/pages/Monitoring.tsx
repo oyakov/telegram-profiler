@@ -5,13 +5,14 @@ import {
   Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
-import { Shield, Coins, Zap, Clock } from 'lucide-react';
+import { Shield, Coins, Zap, Clock, Database } from 'lucide-react';
 import './Monitoring.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const Monitoring: React.FC = () => {
   const { data: stats, error } = useSWR('/api/stats/ai-monitoring', fetcher);
+  const { data: embedStats } = useSWR('/api/stats/embeddings', fetcher, { refreshInterval: 5000 });
 
   if (error) return <div className="error">Failed to load monitoring data</div>;
   if (!stats) return <div className="loading">Gathering AI metrics...</div>;
@@ -59,6 +60,20 @@ const Monitoring: React.FC = () => {
             <span className="value">{stats.total_runs || 0}</span>
           </div>
         </div>
+        <div className="monitor-card serpent-card">
+          <Database className="icon cyan" size={32} />
+          <div className="info">
+            <span className="label">Embeddings</span>
+            <span className="value">{embedStats?.total_embeddings?.toLocaleString() || 0}</span>
+          </div>
+        </div>
+        <div className="monitor-card serpent-card">
+          <Zap className="icon orange" size={32} />
+          <div className="info">
+            <span className="label">Progress</span>
+            <span className="value">{embedStats?.progress_percent || 0}%</span>
+          </div>
+        </div>
       </div>
 
       <div className="monitoring-charts">
@@ -97,6 +112,46 @@ const Monitoring: React.FC = () => {
         </div>
 
         <div className="chart-container glass">
+          <h3>📊 Статус Embeddings</h3>
+          <div className="status-placeholder">
+            <div className="status-row">
+              <span>Total Messages</span>
+              <span className="status-tag blue">{embedStats?.total_messages?.toLocaleString() || 0}</span>
+            </div>
+            <div className="status-row">
+              <span>With Embeddings</span>
+              <span className="status-tag green">{embedStats?.messages_with_embeddings?.toLocaleString() || 0}</span>
+            </div>
+            <div className="status-row">
+              <span>Remaining</span>
+              <span className="status-tag yellow">{embedStats?.messages_needing_embeddings?.toLocaleString() || 0}</span>
+            </div>
+            <div className="status-row">
+              <span>Progress</span>
+              <div style={{ width: '100%', backgroundColor: '#334155', borderRadius: '4px', height: '24px', marginTop: '8px', overflow: 'hidden' }}>
+                <div style={{
+                  width: `${embedStats?.progress_percent || 0}%`,
+                  height: '100%',
+                  backgroundColor: '#10b981',
+                  transition: 'width 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  {embedStats?.progress_percent?.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: '12px', fontSize: '12px', color: '#94a3b8' }}>
+              🔄 Auto-refreshing every 5s
+            </div>
+          </div>
+        </div>
+
+        <div className="chart-container glass">
           <h3>🕒 Статус системы</h3>
           <div className="status-placeholder">
             <div className="status-row">
@@ -113,7 +168,7 @@ const Monitoring: React.FC = () => {
             </div>
             <div className="status-row">
               <span>Embedding Service</span>
-              <span className="status-tag warning">Queued (12)</span>
+              <span className="status-tag ok">Processing</span>
             </div>
           </div>
         </div>

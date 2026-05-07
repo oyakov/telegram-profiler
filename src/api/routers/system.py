@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.database import get_db
-from src.db.models import Contact, Message, VoiceNote
+from src.db.models import Contact, Message, VoiceNote, MessageEmbedding
 from src.core.config import get_settings
 from datetime import datetime
 import redis
@@ -111,6 +111,25 @@ async def get_ai_monitoring_stats(db: AsyncSession = Depends(get_db)):
         "total_completion_tokens": completion_tokens,
         "avg_processing_time_ms": int(avg_time),
         "estimated_cost_usd": round(estimated_cost_usd, 4)
+    }
+
+@router.get("/embeddings")
+async def get_embeddings_stats(db: AsyncSession = Depends(get_db)):
+    """Get embedding generation statistics."""
+    total_messages = (await db.execute(select(func.count(Message.id)))).scalar() or 0
+    messages_with_embeddings = (await db.execute(
+        select(func.count(func.distinct(MessageEmbedding.message_id)))
+    )).scalar() or 0
+    total_embeddings = (await db.execute(select(func.count(MessageEmbedding.id)))).scalar() or 0
+
+    messages_needing_embeddings = total_messages - messages_with_embeddings
+
+    return {
+        "total_messages": total_messages,
+        "messages_with_embeddings": messages_with_embeddings,
+        "messages_needing_embeddings": messages_needing_embeddings,
+        "total_embeddings": total_embeddings,
+        "progress_percent": round((messages_with_embeddings / total_messages * 100) if total_messages > 0 else 0, 1)
     }
 
 @router.get("/workers")

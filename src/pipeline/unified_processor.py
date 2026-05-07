@@ -287,9 +287,13 @@ async def _maintenance_reindex_dirty_impl(session: AsyncSession, batch_size: int
 
 async def maintenance_index_messages(batch_size: int = 100, session: Optional[AsyncSession] = None, db_name: str | None = None) -> dict:
     """Find messages without embeddings and generate them."""
+    logger.info("maintenance_index_messages_called", batch_size=batch_size, db_name=db_name, has_session=session is not None)
     if session is None:
+        logger.info("creating_new_session", db_name=db_name)
         async with get_session(db_name=db_name) as new_session:
-            return await _maintenance_index_messages_impl(new_session, batch_size)
+            result = await _maintenance_index_messages_impl(new_session, batch_size)
+            logger.info("maintenance_index_messages_result", result=result, db_name=db_name)
+            return result
     return await _maintenance_index_messages_impl(session, batch_size)
 
 
