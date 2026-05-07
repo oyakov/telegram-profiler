@@ -105,10 +105,10 @@ def import_excel(file_path: str | None = None, db_name: str | None = None):
 @celery_app.task(name="src.pipeline.tasks.sync_crm")
 def sync_crm(db_name: str | None = None):
     """Sync contacts from external CRM."""
-    from src.connectors.crm_connector import CRMConnector
+    from src.connectors.external import ExternalConnector
     from dataclasses import asdict
     async def _do():
-        connector = CRMConnector(db_name=db_name)
+        connector = ExternalConnector(connector_type="crm", db_name=db_name)
         result = await connector.sync()
         return asdict(result)
     return _run_async(_do())
