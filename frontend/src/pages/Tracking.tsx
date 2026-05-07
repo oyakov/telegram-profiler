@@ -298,10 +298,13 @@ const Tracking: React.FC = () => {
         marginBottom: '24px',
         maxWidth: '450px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
           <RefreshCcw size={24} style={{ color: '#3b82f6' }} />
           <h3 style={{ color: '#f8fafc', margin: 0, fontSize: '18px' }}>Статус Синхронизации</h3>
         </div>
+        <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 16px 0' }}>
+          📊 Отслеживание загрузки данных из Telegram каналов в базу данных
+        </p>
 
         {syncData?.connectors ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -323,7 +326,7 @@ const Tracking: React.FC = () => {
                   <div>
                     <p style={{ color: '#f8fafc', margin: '0', fontWeight: '600', textTransform: 'capitalize' }}>{connector.connector}</p>
                     <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: '12px' }}>
-                      {isRunning ? '⏳ Синхронизация...' : hasError ? '❌ Ошибка' : '✓ Готово'}
+                      {isRunning ? '⏳ Синхронизация... (данные загружаются)' : hasError ? '❌ Ошибка при загрузке' : '✓ Готово (готов к синхронизации)'}
                     </p>
                   </div>
                   <div style={{ textAlign: 'right' }}>

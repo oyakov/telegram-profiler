@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.database import get_db
 from src.db.models import Contact, Message, VoiceNote
 from src.core.config import get_settings
+from datetime import datetime
+import redis
 
 router = APIRouter(prefix="/stats", tags=["System"])
 
@@ -110,3 +112,36 @@ async def get_ai_monitoring_stats(db: AsyncSession = Depends(get_db)):
         "avg_processing_time_ms": int(avg_time),
         "estimated_cost_usd": round(estimated_cost_usd, 4)
     }
+
+@router.get("/workers")
+async def get_workers_status():
+    """Get Celery workers status."""
+    try:
+        from celery_app import app as celery_app
+
+        workers_info = celery_app.control.inspect().active()
+        workers_stats = celery_app.control.inspect().stats()
+        workers_registered = celery_app.control.inspect().registered()
+
+        if not workers_info:
+            return {"workers": [], "status": "no_workers"}
+
+        workers = []
+        for worker_name, active_tasks in (workers_info or {}).items():
+            stats = workers_stats.get(worker_name, {}) if workers_stats else {}
+            registered_tasks = workers_registered.get(worker_name, []) if workers_registered else []
+
+            workers.append({
+                "name": worker_name,
+                "status": "online",
+                "active_tasks": len(active_tasks),
+                "tasks": active_tasks[:5],
+                "pool": stats.get("pool", {}).get("implementation", "unknown"),
+                "max_concurrency": stats.get("pool", {}).get("max-concurrency", 0),
+                "processes": stats.get("pool", {}).get("processes", []),
+                "registered_tasks_count": len(registered_tasks)
+            })
+
+        return {"workers": workers, "status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    except Exception as e:
+        return {"workers": [], "status": "error", "error": str(e)}
