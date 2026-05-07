@@ -9,6 +9,8 @@ const fetcher = (url: string) => api.get(url).then(res => res.data);
 const Tracking: React.FC = () => {
   const { data, mutate } = useSWR('/api/tracking/channels', fetcher);
   const { data: syncData, mutate: mutateSyncStatus } = useSWR('/api/connectors/status', fetcher, { refreshInterval: 2000 });
+  const channelsCount = data?.channels?.length || 0;
+  const totalMessages = data?.channels?.reduce((sum: number, ch: any) => sum + (ch.messages_count || 0), 0) || 0;
   const [searchTerm, setSearchTerm] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [telegramPhone, setTelegramPhone] = useState('');
@@ -307,7 +309,27 @@ const Tracking: React.FC = () => {
         </p>
 
         {syncData?.connectors ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Overall Statistics */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '12px',
+              padding: '12px',
+              background: 'rgba(148, 163, 184, 0.05)',
+              borderRadius: '8px'
+            }}>
+              <div>
+                <p style={{ color: '#64748b', margin: 0, fontSize: '11px' }}>Всего каналов</p>
+                <p style={{ color: '#3b82f6', margin: '4px 0 0', fontSize: '18px', fontWeight: '600' }}>{channelsCount}</p>
+              </div>
+              <div>
+                <p style={{ color: '#64748b', margin: 0, fontSize: '11px' }}>Всего сообщений</p>
+                <p style={{ color: '#10b981', margin: '4px 0 0', fontSize: '18px', fontWeight: '600' }}>{totalMessages.toLocaleString()}</p>
+              </div>
+            </div>
+
+            {/* Connector Status */}
             {syncData.connectors.map((connector: any) => {
               const isRunning = connector.status === 'running';
               const hasError = connector.status === 'error';
