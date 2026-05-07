@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { ChevronDown, Check, LayoutGrid } from 'lucide-react';
+import useSWR from 'swr';
+import { ChevronDown, Check, LayoutGrid, MessageCircle } from 'lucide-react';
 import { getDatabase, setDatabase } from '../services/api';
+import api from '../services/api';
 import './TopBar.css';
+
+const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const TopBar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentDb, setCurrentDb] = useState(getDatabase());
+  const { data: telegramStatus } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 5000 });
 
   const projects = [
     { id: 'crm', label: '🇷🇸 Belgrade Intel', description: 'General intelligence' },
@@ -52,6 +57,13 @@ const TopBar: React.FC = () => {
       </div>
 
       <div className="header-right">
+        {telegramStatus?.authorized && (
+          <div className="telegram-status" title="Telegram connected">
+            <MessageCircle size={16} style={{ color: '#10b981' }} />
+            <span className="status-text" style={{ color: '#10b981' }}>Telegram</span>
+            <span className="pulse-dot" style={{ backgroundColor: '#10b981' }}></span>
+          </div>
+        )}
         <div className="search-status">
           <span className="pulse-dot"></span>
           <span className="status-text">System Online</span>

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import useSWR, { mutate } from 'swr';
 import api from '../services/api';
-import { Settings2, Cpu, Database, Mic, Monitor, RotateCcw, Save, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Settings2, Cpu, Database, Mic, Monitor, RotateCcw, Save, CheckCircle, AlertCircle, RefreshCw, Phone, User, FolderPlus, Folder } from 'lucide-react';
 import './Settings.css';
 
 interface EffectiveSetting {
@@ -164,6 +164,380 @@ interface EmbeddingsStats {
   progress_percent: number;
 }
 
+function TelegramAuthManager() {
+  const [telegramPhone, setTelegramPhone] = useState('');
+  const [telegramCode, setTelegramCode] = useState('');
+  const [telegramPassword, setTelegramPassword] = useState('');
+  const [telegramStep, setTelegramStep] = useState<'phone' | 'code' | 'password'>('phone');
+  const [telegramPhoneHash, setTelegramPhoneHash] = useState('');
+  const [telegramLoading, setTelegramLoading] = useState(false);
+  const [telegramAuthorized, setTelegramAuthorized] = useState<boolean | null>(null);
+  const [tgFolders, setTgFolders] = useState<any[]>([]);
+  const { data: telegramUser } = useSWR(telegramAuthorized ? '/api/telegram/user' : null, fetcher);
+
+  const checkTelegramAuth = async () => {
+    try {
+      const res = await api.get('/api/telegram/auth/status');
+      setTelegramAuthorized(res.data.authorized);
+    } catch (err) {
+      setTelegramAuthorized(false);
+    }
+  };
+
+  React.useEffect(() => {
+    checkTelegramAuth();
+  }, []);
+
+  React.useEffect(() => {
+    if (telegramAuthorized === true && tgFolders.length === 0) {
+      const loadFolders = async () => {
+        try {
+          const res = await api.get('/api/telegram/folders');
+          setTgFolders(res.data.folders || []);
+        } catch (err) {
+          console.error('Failed to load Telegram folders:', err);
+        }
+      };
+      loadFolders();
+    }
+  }, [telegramAuthorized]);
+
+  const handleSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTelegramLoading(true);
+    try {
+      const res = await api.post('/api/telegram/auth/send_code', { phone: telegramPhone });
+      setTelegramPhoneHash(res.data.phone_code_hash);
+      setTelegramStep('code');
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Failed to send code'));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTelegramLoading(true);
+    try {
+      const res = await api.post('/api/telegram/auth/verify', {
+        phone: telegramPhone,
+        code: telegramCode,
+        phone_code_hash: telegramPhoneHash,
+      });
+      if (res.data.status === 'requires_2fa') {
+        setTelegramStep('password');
+      } else {
+        setTelegramAuthorized(true);
+        setTelegramPhone('');
+        setTelegramCode('');
+      }
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Verification failed'));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTelegramLoading(true);
+    try {
+      await api.post('/api/telegram/auth/2fa', { password: telegramPassword });
+      setTelegramAuthorized(true);
+      setTelegramPhone('');
+      setTelegramCode('');
+      setTelegramPassword('');
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || '2FA failed'));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Disconnect Telegram? You can login again anytime.')) return;
+    setTelegramLoading(true);
+    try {
+      await api.post('/api/telegram/auth/logout');
+      setTelegramAuthorized(false);
+      setTelegramStep('phone');
+      setTelegramPhone('');
+      setTelegramCode('');
+      setTelegramPassword('');
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Logout failed'));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(6, 78, 59, 0.1))',
+      border: '1px solid rgba(16, 185, 129, 0.2)',
+      borderRadius: '12px',
+      padding: '20px',
+      marginBottom: '24px'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+        <Phone size={20} style={{ color: '#10b981' }} />
+        <h3 style={{ color: '#f8fafc', margin: 0, fontSize: '16px' }}>Авторизация Telegram</h3>
+      </div>
+
+      {telegramAuthorized === true ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            borderRadius: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>✅</span>
+              <div>
+                <p style={{ color: '#10b981', margin: '0', fontWeight: 'bold', fontSize: '14px' }}>Подключено</p>
+                <p style={{ color: '#64748b', margin: '2px 0 0', fontSize: '11px' }}>Сеанс активен</p>
+              </div>
+            </div>
+            <button
+              onClick={handleDisconnect}
+              disabled={telegramLoading}
+              style={{
+                padding: '6px 12px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                color: '#fca5a5',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '4px',
+                cursor: telegramLoading ? 'not-allowed' : 'pointer',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}
+            >
+              {telegramLoading ? 'Обработка...' : 'Отключить'}
+            </button>
+          </div>
+
+          {telegramUser ? (
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.05)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '8px',
+              padding: '16px',
+              display: 'flex',
+              gap: '16px',
+              alignItems: 'flex-start'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: telegramUser.photo_url
+                  ? `url(${telegramUser.photo_url})`
+                  : 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                flexShrink: 0
+              }}>
+                {!telegramUser.photo_url && (
+                  <User size={28} style={{ color: '#fff' }} />
+                )}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <p style={{ color: '#94a3b8', margin: '0', fontSize: '11px', textTransform: 'uppercase', fontWeight: '600' }}>Номер телефона</p>
+                  <p style={{ color: '#f8fafc', margin: '6px 0 0', fontSize: '14px', fontWeight: '600', fontFamily: 'monospace' }}>
+                    {telegramUser.phone || '—'}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ color: '#94a3b8', margin: '0', fontSize: '11px', textTransform: 'uppercase', fontWeight: '600' }}>Аккаунт</p>
+                  <p style={{ color: '#cbd5e1', margin: '6px 0 0', fontSize: '13px' }}>
+                    {telegramUser.first_name || ''} {telegramUser.last_name || ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.05)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '8px',
+              padding: '16px',
+              color: '#64748b',
+              textAlign: 'center',
+              fontSize: '13px'
+            }}>
+              Загрузка информации профиля...
+            </div>
+          )}
+
+          {tgFolders.length > 0 && (
+            <div style={{
+              background: 'rgba(168, 85, 247, 0.05)',
+              border: '1px solid rgba(168, 85, 247, 0.2)',
+              borderRadius: '8px',
+              padding: '16px'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '12px'
+              }}>
+                <FolderPlus size={16} style={{ color: '#a855f7' }} />
+                <p style={{ color: '#f8fafc', margin: 0, fontSize: '14px', fontWeight: '600' }}>Папки Telegram</p>
+              </div>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '8px'
+              }}>
+                {tgFolders.map((folder: any) => (
+                  <div
+                    key={folder.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      background: 'rgba(168, 85, 247, 0.1)',
+                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                      borderRadius: '6px',
+                      color: '#c084fc',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <Folder size={13} />
+                    <span>{folder.name}</span>
+                    <span style={{
+                      padding: '0 4px',
+                      background: 'rgba(168, 85, 247, 0.2)',
+                      borderRadius: '4px',
+                      fontSize: '11px'
+                    }}>
+                      {folder.channel_count || 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : telegramAuthorized === null ? (
+        <div style={{ color: '#cbd5e1', textAlign: 'center', padding: '16px', fontSize: '14px' }}>
+          Проверка...
+        </div>
+      ) : (
+        <form onSubmit={
+          telegramStep === 'phone' ? handleSendCode :
+          telegramStep === 'code' ? handleVerifyCode :
+          handleVerify2FA
+        } style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            {telegramStep === 'phone' && (
+              <>
+                <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Номер телефона</label>
+                <input
+                  type="tel"
+                  placeholder="+38123456789"
+                  value={telegramPhone}
+                  onChange={(e) => setTelegramPhone(e.target.value)}
+                  disabled={telegramLoading}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    marginTop: '6px',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                    color: '#f8fafc',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </>
+            )}
+            {telegramStep === 'code' && (
+              <>
+                <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Код</label>
+                <input
+                  type="text"
+                  placeholder="123456"
+                  value={telegramCode}
+                  onChange={(e) => setTelegramCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  disabled={telegramLoading}
+                  autoFocus
+                  maxLength={6}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    marginTop: '6px',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                    color: '#f8fafc',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    boxSizing: 'border-box',
+                    letterSpacing: '4px'
+                  }}
+                />
+              </>
+            )}
+            {telegramStep === 'password' && (
+              <>
+                <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Пароль 2FA</label>
+                <input
+                  type="password"
+                  placeholder="Ваш пароль"
+                  value={telegramPassword}
+                  onChange={(e) => setTelegramPassword(e.target.value)}
+                  disabled={telegramLoading}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    marginTop: '6px',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                    color: '#f8fafc',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={telegramLoading}
+            style={{
+              padding: '10px 16px',
+              background: telegramLoading ? 'rgba(16, 185, 129, 0.5)' : 'linear-gradient(135deg, #10b981, #059669)',
+              color: '#f8fafc',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: telegramLoading ? 'not-allowed' : 'pointer',
+              fontSize: '13px'
+            }}
+          >
+            {telegramLoading ? '⏳ Обработка...' : `Продолжить →`}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function EmbeddingsManager() {
   const { data: stats, mutate: mutateStats } = useSWR<EmbeddingsStats>('/api/stats/embeddings', fetcher);
   const [reindexing, setReindexing] = useState(false);
@@ -263,6 +637,8 @@ const Settings: React.FC = () => {
           {dbCount > 0 && <span className="db-overrides-badge">{dbCount} DB overrides</span>}
         </p>
       </div>
+
+      <TelegramAuthManager />
 
       <EmbeddingsManager />
 
