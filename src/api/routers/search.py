@@ -49,26 +49,58 @@ async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)
 
     query_embedding = await generate_embedding(req.query)
 
-    # 1. Search contacts with evidence
-    contact_results = await db.execute(
-        select(Contact, Contact.embedding.cosine_distance(query_embedding).label("distance"))
-        .where(Contact.embedding.isnot(None))
+    # 1. Search messages for best matches (more reliable than contact embeddings)
+    msg_results = await db.execute(
+        select(
+            MessageEmbedding,
+            Message,
+            MessageEmbedding.embedding.cosine_distance(query_embedding).label("distance"),
+        )
+        .join(Message, Message.id == MessageEmbedding.message_id)
+        .options(sa.orm.joinedload(Message.contact))
         .order_by("distance")
-        .limit(req.limit)
+        .limit(req.limit * 3)  # Get more to group by contact
     )
 
+    # Group messages by contact and get top per contact
+    contact_msgs = defaultdict(list)
+    for me, msg, distance in msg_results:
+        if msg.contact and not (msg.contact.id in contact_msgs and len(contact_msgs[msg.contact.id]) >= 3):
+            contact_msgs[msg.contact.id].append((msg.contact, me, distance))
+
+    # 2. Build contact results from best message matches
     contacts = []
-    for contact, distance in contact_results:
+    for contact_id, msg_list in list(contact_msgs.items())[:req.limit]:
+        contact, best_me, best_distance = msg_list[0]  # Best match for this contact
+
         # Extract evidence quotes for this contact
         evidence = await _extract_evidence_for_contact(db, contact.id, query_embedding)
 
         contacts.append({
             **_contact_to_response(contact),
-            "similarity": round(1 - distance, 4),
+            "similarity": round(1 - best_distance, 4),
             "evidence": evidence,
         })
 
-    # 2. Search messages
+    # 3. Also try searching by contact embeddings as fallback
+    if len(contacts) < req.limit:
+        contact_results = await db.execute(
+            select(Contact, Contact.embedding.cosine_distance(query_embedding).label("distance"))
+            .where(Contact.embedding.isnot(None))
+            .where(~Contact.id.in_([c["id"] for c in contacts]))
+            .order_by("distance")
+            .limit(req.limit - len(contacts))
+        )
+
+        for contact, distance in contact_results:
+            evidence = await _extract_evidence_for_contact(db, contact.id, query_embedding)
+            contacts.append({
+                **_contact_to_response(contact),
+                "similarity": round(1 - distance, 4),
+                "evidence": evidence,
+            })
+
+    # 4. Search individual messages
     msg_results = await db.execute(
         select(
             MessageEmbedding,
