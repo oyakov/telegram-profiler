@@ -8,10 +8,8 @@ import Search from './pages/Search';
 import Monitoring from './pages/Monitoring';
 import Leads from './pages/Leads';
 import Contacts from './pages/Contacts';
+import Settings from './pages/Settings';
 import './App.css';
-
-// Placeholder components for pages
-const Settings = () => <div className="page-content"><h1>Настройки</h1><p>Контент в разработке...</p></div>;
 
 const App: React.FC = () => {
   return (
