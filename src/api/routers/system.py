@@ -29,9 +29,9 @@ async def health(db: AsyncSession = Depends(get_db)):
         checks["redis"] = f"error: {str(e)}"
 
     try:
-        from src.connectors.whisper_client import WhisperClient
-        whisper = WhisperClient()
-        if await whisper.health_check(): checks["whisper"] = "ok"
+        from src.connectors.audio import AudioProcessor
+        processor = AudioProcessor()
+        if await processor.health_check(): checks["whisper"] = "ok"
         else: checks["whisper"] = "unavailable"
     except Exception: checks["whisper"] = "unavailable"
 

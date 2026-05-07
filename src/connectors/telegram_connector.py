@@ -452,7 +452,7 @@ class TelegramConnector(BaseConnector):
 
     async def reorganize_all_tracked(self, folder_name=None) -> dict:
         folder_name = folder_name or os.getenv("TARGET_FOLDER", "BG Intel")
-        from src.core.settings_service import SettingsService
+        from src.core.config import SettingsService
         from telethon.tl.functions.messages import GetDialogFiltersRequest, UpdateDialogFilterRequest
         from telethon.tl.types import DialogFilter
         stats = {"muted": 0, "moved": 0, "errors": 0}

@@ -1,4 +1,4 @@
-from . import contacts, messages, telegram, leads, search, system, settings, connectors, upload
+from . import contacts, messages, telegram, leads, search, system, settings, pipeline, tracking
 
 __all__ = [
     "contacts",
@@ -8,6 +8,6 @@ __all__ = [
     "search",
     "system",
     "settings",
-    "connectors",
-    "upload",
+    "pipeline",
+    "tracking",
 ]

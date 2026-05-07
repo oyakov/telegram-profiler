@@ -15,7 +15,7 @@ A sophisticated personal CRM and market intelligence tool powered by Telegram, A
 - **Backend**: FastAPI (Python 3.12)
 - **Database**: PostgreSQL with `pgvector`
 - **Background Tasks**: Celery + Redis
-- **Dashboard**: Streamlit
+- **Frontend**: React + TypeScript (Vite)
 - **AI**: Google Gemini (Direct or OpenAI-compat) / LM Studio
 - **ASR**: Whisper (for voice notes)
 
@@ -35,17 +35,18 @@ A sophisticated personal CRM and market intelligence tool powered by Telegram, A
    ```bash
    docker-compose up --build
    ```
-4. Access the dashboard at `http://localhost:8501`.
+4. Access the frontend at `http://localhost:3001`.
 5. Access the API documentation at `http://localhost:8000/docs`.
 
 ## Project Structure
 
-- `src/api`: FastAPI routers and schemas.
-- `src/connectors`: Data ingestion from Telegram, Excel, and Social sources.
-- `src/ai`: LLM clients, extraction logic, and embeddings.
-- `src/db`: SQLAlchemy models and database management.
-- `src/pipeline`: Celery tasks and unified processing logic.
-- `dashboard`: Streamlit UI.
+- `src/api`: FastAPI routers (consolidated pipeline endpoint)
+- `src/connectors`: Data sources (Telegram, Excel, external APIs, audio)
+- `src/ai`: LLM clients, extraction, embeddings, and analysis
+- `src/db`: SQLAlchemy models and database management
+- `src/pipeline`: Celery tasks and unified processing logic
+- `src/core`: Configuration and logging
+- `frontend`: React + TypeScript dashboard
 
 ## Documentation
 

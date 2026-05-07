@@ -10,10 +10,10 @@ from typing import Any, Optional, Union
 from sqlalchemy import select, update, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.services import ExtractionService, ContactExtraction, LeadExtraction
-from src.ai.deduplication import find_duplicate, merge_contact_fields
-from src.ai.embeddings import generate_embedding
-from src.core.settings_service import SettingsService
+from src.ai.services import ExtractionService
+from src.ai.schemas import ContactExtraction, LeadExtraction
+from src.ai.analysis import find_duplicate, merge_contact_fields, generate_embedding
+from src.core.config import SettingsService
 from src.db.database import get_session
 from src.db.models import Contact, ExtractionLog, Message, MessageEmbedding, MessageContact
 
