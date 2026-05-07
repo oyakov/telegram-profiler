@@ -94,6 +94,13 @@ const Search: React.FC = () => {
                         <div className="bar-fill" style={{ width: `${c.similarity * 100}%` }}></div>
                       </div>
 
+                      {/* Search type badge */}
+                      {c.search_type && (
+                        <div className="search-type-badge">
+                          {c.search_type === 'semantic' ? '🤖 Семантический' : '🔤 Ключевые слова'}
+                        </div>
+                      )}
+
                       {/* Evidence quotes */}
                       {c.evidence && c.evidence.length > 0 && (
                         <div className="evidence-section">

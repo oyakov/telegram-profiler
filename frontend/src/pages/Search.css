@@ -448,3 +448,18 @@
   margin-top: 4px;
   padding-left: 12px;
 }
+
+/* Search Type Badge */
+.search-type-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(16, 185, 129, 0.7);
+  background: rgba(16, 185, 129, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 6px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}

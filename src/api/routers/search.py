@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import defaultdict
 
@@ -9,6 +9,11 @@ from src.api.schemas import SearchRequest
 from src.api.routers.contacts import _contact_to_response
 
 router = APIRouter(prefix="/search", tags=["Search"])
+
+
+def _normalize_text(text: str) -> str:
+    """Normalize text for keyword search."""
+    return text.lower().strip()
 
 
 async def _extract_evidence_for_contact(
@@ -41,15 +46,47 @@ async def _extract_evidence_for_contact(
     return quotes
 
 
+async def _keyword_search(db: AsyncSession, query: str, limit: int) -> list[tuple]:
+    """Keyword search in contacts and messages."""
+    query_normalized = _normalize_text(query)
+    keywords = query_normalized.split()
+
+    # Build dynamic LIKE conditions for all keywords
+    like_conditions = [
+        or_(
+            Contact.first_name.ilike(f"%{kw}%"),
+            Contact.last_name.ilike(f"%{kw}%"),
+            Contact.company.ilike(f"%{kw}%"),
+            Contact.position.ilike(f"%{kw}%"),
+            Contact.interests.any(f"%{kw}%"),
+            Contact.skills.any(f"%{kw}%"),
+        ) for kw in keywords
+    ]
+
+    results = await db.execute(
+        select(
+            Contact,
+            func.count(Message.id).label("msg_count")
+        )
+        .outerjoin(Message, Message.contact_id == Contact.id)
+        .where(and_(*like_conditions) if like_conditions else True)
+        .group_by(Contact.id)
+        .order_by(text("msg_count DESC"))
+        .limit(limit)
+    )
+
+    return results.fetchall()
+
+
 @router.post("")
 async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)):
-    """Semantic search across contacts and messages using embeddings."""
+    """Hybrid search: semantic + keyword."""
     from src.ai.analysis import generate_embedding
     import sqlalchemy as sa
 
     query_embedding = await generate_embedding(req.query)
 
-    # 1. Search messages for best matches (more reliable than contact embeddings)
+    # 1. Semantic search in messages
     msg_results = await db.execute(
         select(
             MessageEmbedding,
@@ -59,48 +96,49 @@ async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)
         .join(Message, Message.id == MessageEmbedding.message_id)
         .options(sa.orm.joinedload(Message.contact))
         .order_by("distance")
-        .limit(req.limit * 3)  # Get more to group by contact
+        .limit(req.limit * 3)
     )
 
-    # Group messages by contact and get top per contact
-    contact_msgs = defaultdict(list)
+    semantic_contacts = defaultdict(list)
     for me, msg, distance in msg_results:
-        if msg.contact and not (msg.contact.id in contact_msgs and len(contact_msgs[msg.contact.id]) >= 3):
-            contact_msgs[msg.contact.id].append((msg.contact, me, distance))
+        if msg.contact and distance < 0.3:  # Only high relevance (< 0.3 distance)
+            if not (msg.contact.id in semantic_contacts and len(semantic_contacts[msg.contact.id]) >= 3):
+                semantic_contacts[msg.contact.id].append((msg.contact, me, distance))
 
-    # 2. Build contact results from best message matches
+    # 2. Keyword search as fallback
+    keyword_contacts = {}
+    if len(semantic_contacts) < req.limit:
+        kw_results = await _keyword_search(db, req.query, req.limit * 2)
+        for contact, msg_count in kw_results:
+            if contact.id not in semantic_contacts:
+                keyword_contacts[contact.id] = (contact, None, 0.5)  # Lower confidence for keyword
+
+    # 3. Combine results - semantic + keyword
+    all_contacts = {}
+
+    # Add semantic results (higher priority)
+    for contact_id, msg_list in semantic_contacts.items():
+        contact, best_me, best_distance = msg_list[0]
+        all_contacts[contact_id] = (contact, best_distance, "semantic")
+
+    # Add keyword results (lower priority)
+    for contact_id, (contact, _, _) in keyword_contacts.items():
+        if contact_id not in all_contacts:
+            all_contacts[contact_id] = (contact, 0.5, "keyword")
+
+    # 4. Build final contact list
     contacts = []
-    for contact_id, msg_list in list(contact_msgs.items())[:req.limit]:
-        contact, best_me, best_distance = msg_list[0]  # Best match for this contact
-
-        # Extract evidence quotes for this contact
+    for contact, distance, search_type in list(all_contacts.values())[:req.limit]:
         evidence = await _extract_evidence_for_contact(db, contact.id, query_embedding)
 
         contacts.append({
             **_contact_to_response(contact),
-            "similarity": round(1 - best_distance, 4),
+            "similarity": round(1 - distance, 4) if search_type == "semantic" else 0.5,
             "evidence": evidence,
+            "search_type": search_type,  # Show which search found this
         })
 
-    # 3. Also try searching by contact embeddings as fallback
-    if len(contacts) < req.limit:
-        contact_results = await db.execute(
-            select(Contact, Contact.embedding.cosine_distance(query_embedding).label("distance"))
-            .where(Contact.embedding.isnot(None))
-            .where(~Contact.id.in_([c["id"] for c in contacts]))
-            .order_by("distance")
-            .limit(req.limit - len(contacts))
-        )
-
-        for contact, distance in contact_results:
-            evidence = await _extract_evidence_for_contact(db, contact.id, query_embedding)
-            contacts.append({
-                **_contact_to_response(contact),
-                "similarity": round(1 - distance, 4),
-                "evidence": evidence,
-            })
-
-    # 4. Search individual messages
+    # 5. Search individual messages
     msg_results = await db.execute(
         select(
             MessageEmbedding,
