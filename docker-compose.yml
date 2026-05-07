@@ -148,22 +148,6 @@ services:
     networks:
       - crm-net
 
-  dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: crm-dashboard
-    env_file: .env
-    environment:
-      API_BASE_URL: http://app:8000
-    command: ["streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
-    ports:
-      - "${DASHBOARD_PORT:-8501}:8501"
-    depends_on:
-      - app
-    networks:
-      - crm-net
-
   frontend:
     build:
       context: ./frontend

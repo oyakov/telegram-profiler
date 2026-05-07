@@ -53,7 +53,6 @@ class AppSettings(BaseSettings):
 
     # --- Application ---
     app_port: int = Field(8000)
-    dashboard_port: int = Field(8501)
     log_level: str = Field("INFO")
     secret_key: str = Field("change-me-to-a-random-string")
 
