@@ -12,7 +12,7 @@ import uuid
 
 from src.api.routers import (
     contacts, messages, telegram, leads,
-    search, system, settings, pipeline, tracking
+    search, system, settings, pipeline, tracking, projects
 )
 import structlog
 from src.core.logging import setup_logging
@@ -74,6 +74,7 @@ app.include_router(system.router, prefix=API_PREFIX)
 app.include_router(settings.router, prefix=API_PREFIX)
 app.include_router(pipeline.router, prefix=API_PREFIX)
 app.include_router(tracking.router, prefix=API_PREFIX)
+app.include_router(projects.router, prefix=API_PREFIX)
 
 @app.get("/")
 async def root():

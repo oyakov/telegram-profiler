@@ -15,6 +15,7 @@ import './Sidebar.css';
 const Sidebar: React.FC = () => {
   const navItems = [
     { name: 'Дашборд', path: '/', icon: <LayoutDashboard size={20} /> },
+    { name: 'Проекты', path: '/projects', icon: <Database size={20} /> },
     { name: 'Трекинг', path: '/tracking', icon: <Target size={20} /> },
     { name: 'AI Мониторинг', path: '/monitoring', icon: <Activity size={20} /> },
     { name: 'Поиск и AI', path: '/search', icon: <Search size={20} /> },

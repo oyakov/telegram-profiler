@@ -11,13 +11,18 @@ const TopBar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentDb, setCurrentDb] = useState(getDatabase());
   const { data: telegramStatus } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 5000 });
+  const { data: projectsData } = useSWR('/api/projects', fetcher);
 
-  const projects = [
-    { id: 'crm', label: '🇷🇸 Belgrade Intel', description: 'General intelligence' },
-    { id: 'crm_crypto', label: '💰 Crypto Universe', description: 'Crypto & Web3 leads' },
-    { id: 'crm_bg_rent', label: '🏠 Rent & Housing', description: 'Real estate tracking' },
-    { id: 'crm_bg_work', label: '💼 Jobs & Business', description: 'Networking & HR' },
-  ];
+  const projects = (projectsData || []).map((p: { name: string, db_name: string, description?: string }) => ({
+    id: p.db_name,
+    label: p.name,
+    description: p.description
+  }));
+
+  // Ensure 'crm' is always available as a fallback if no projects are loaded
+  if (projects.length === 0) {
+    projects.push({ id: 'crm', label: '🇷🇸 Belgrade Intel', description: 'General intelligence' });
+  }
 
   const handleSelect = (id: string) => {
     setDatabase(id);
@@ -32,14 +37,14 @@ const TopBar: React.FC = () => {
         <button className="switcher-btn" onClick={() => setIsOpen(!isOpen)}>
           <LayoutGrid size={18} className="text-secondary" />
           <span className="current-project-label">
-            {projects.find(p => p.id === currentDb)?.label || currentDb}
+            {projects.find((p: { id: string, label: string }) => p.id === currentDb)?.label || currentDb}
           </span>
           <ChevronDown size={16} className={`chevron ${isOpen ? 'open' : ''}`} />
         </button>
 
         {isOpen && (
           <div className="project-menu serpent-card">
-            {projects.map((project) => (
+            {projects.map((project: { id: string, label: string, description?: string }) => (
               <div 
                 key={project.id} 
                 className={`project-item ${currentDb === project.id ? 'active' : ''}`}

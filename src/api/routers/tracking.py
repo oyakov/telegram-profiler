@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from __future__ import annotations
+from typing import List, Optional
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +13,15 @@ router = APIRouter(prefix="/tracking", tags=["Tracking"])
 
 class CreateFolderRequest(BaseModel):
     name: str
-    description: str = ""
+    description: Optional[str] = ""
+    tags: List[str] = Field(default_factory=list)
+
+
+class UpdateFolderRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_active: Optional[bool] = None
 
 
 @router.get("/folders")
@@ -19,7 +29,13 @@ async def list_folders(db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(TrackedFolder).order_by(TrackedFolder.created_at))
     folders = res.scalars().all()
     return {"folders": [
-        {"id": str(f.id), "name": f.name, "description": f.description, "is_active": f.is_active}
+        {
+            "id": str(f.id), 
+            "name": f.name, 
+            "description": f.description, 
+            "tags": f.tags or [],
+            "is_active": f.is_active
+        }
         for f in folders
     ]}
 
@@ -29,11 +45,47 @@ async def create_folder(req: CreateFolderRequest, db: AsyncSession = Depends(get
     existing = await db.execute(select(TrackedFolder).where(TrackedFolder.name == req.name))
     if existing.scalar_one_or_none():
         raise HTTPException(400, f"Folder '{req.name}' already exists")
-    folder = TrackedFolder(name=req.name, description=req.description or None)
+    folder = TrackedFolder(
+        name=req.name, 
+        description=req.description or None,
+        tags=req.tags
+    )
     db.add(folder)
     await db.commit()
     await db.refresh(folder)
-    return {"id": str(folder.id), "name": folder.name}
+    return {
+        "id": str(folder.id), 
+        "name": folder.name, 
+        "description": folder.description, 
+        "tags": folder.tags
+    }
+
+
+@router.patch("/folders/{folder_id}")
+async def update_folder(folder_id: str, req: UpdateFolderRequest, db: AsyncSession = Depends(get_db)):
+    from uuid import UUID
+    try:
+        f_id = UUID(folder_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid folder ID format")
+
+    res = await db.execute(select(TrackedFolder).where(TrackedFolder.id == f_id))
+    folder = res.scalar_one_or_none()
+    if not folder:
+        raise HTTPException(404, "Folder not found")
+    
+    update_data = req.model_dump(exclude_none=True)
+    for key, value in update_data.items():
+        setattr(folder, key, value)
+    
+    await db.commit()
+    await db.refresh(folder)
+    return {
+        "id": str(folder.id), 
+        "name": folder.name, 
+        "description": folder.description, 
+        "tags": folder.tags
+    }
 
 
 @router.delete("/folders/{folder_id}")

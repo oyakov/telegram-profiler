@@ -114,6 +114,41 @@ def sync_crm(db_name: str | None = None):
     return _run_async(_do())
 
 
+# ========== Maintenance Tasks ==========
+
+@celery_app.task(name="src.pipeline.tasks.cleanup_extraction_logs")
+def cleanup_extraction_logs(days: int = 30, db_name: str | None = None):
+    """Delete old extraction logs to save space."""
+    from src.db.models import ExtractionLog
+    from sqlalchemy import delete
+    from datetime import datetime, timezone, timedelta
+
+    async def _do():
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        async with get_session(db_name=db_name) as session:
+            result = await session.execute(
+                delete(ExtractionLog).where(ExtractionLog.created_at < cutoff)
+            )
+            await session.commit()
+            return {"status": "success", "deleted": result.rowcount}
+    
+    return _run_async(_do())
+
+
+@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_cleanup")
+def orchestrate_multi_db_cleanup(days: int = 30):
+    """Run cleanup across all CRM databases."""
+    async def _do():
+        # Using the utility from migrate_all to find all DBs
+        from scripts.migrate_all import get_all_crm_databases
+        databases = await get_all_crm_databases()
+        for db in databases:
+            cleanup_extraction_logs.delay(days=days, db_name=db)
+        return {"status": "dispatched", "databases": databases}
+    
+    return _run_async(_do())
+
+
 # ========== Unified Processing Tasks ==========
 
 @celery_app.task(name="src.pipeline.tasks.process_unified_messages")
@@ -125,128 +160,46 @@ def process_unified_messages(limit: int = 50, db_name: str | None = None):
     return _run_async(_do())
 
 
+@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_message_processing")
+def orchestrate_multi_db_message_processing(limit: int = 50):
+    """Run unified processing across all CRM databases."""
+    async def _do():
+        from scripts.migrate_all import get_all_crm_databases
+        databases = await get_all_crm_databases()
+        for db in databases:
+            process_unified_messages.delay(limit=limit, db_name=db)
+            process_message_embeddings.delay(limit=limit * 2, db_name=db)
+        return {"status": "dispatched", "databases": databases}
+    
+    return _run_async(_do())
+
+
 @celery_app.task(name="src.pipeline.tasks.process_message_embeddings")
 def process_message_embeddings(limit: int = 100, db_name: str | None = None):
     """Generate embeddings for messages that don't have them."""
     from src.pipeline.unified_processor import maintenance_index_messages
-    logger.info("process_embeddings_task_started", limit=limit, db_name=db_name)
     async def _do():
-        result = await maintenance_index_messages(batch_size=limit, db_name=db_name)
-        logger.info("process_embeddings_task_result", result=result, db_name=db_name)
-        return result
+        return await maintenance_index_messages(batch_size=limit, db_name=db_name)
     return _run_async(_do())
 
 
-@celery_app.task(name="src.pipeline.tasks.process_contact_batch")
-def process_contact_batch(batch_size: int = 50, db_name: str | None = None):
-    """Process contacts with dirty embeddings."""
+@celery_app.task(name="src.pipeline.tasks.reindex_dirty_contacts")
+def reindex_dirty_contacts(limit: int = 50, db_name: str | None = None):
+    """Update embeddings for contacts marked as dirty."""
     from src.pipeline.unified_processor import maintenance_reindex_dirty
     async def _do():
-        return await maintenance_reindex_dirty(batch_size=batch_size, db_name=db_name)
+        return await maintenance_reindex_dirty(batch_size=limit, db_name=db_name)
     return _run_async(_do())
 
-
-@celery_app.task(name="src.pipeline.tasks.update_lead_scores_task")
-def update_lead_scores_task(db_name: str | None = None):
-    """Recalculate lead scores for all leads."""
-    from src.pipeline.unified_processor import update_all_lead_scores
-    async def _do():
-        return await update_all_lead_scores(db_name=db_name)
-    return _run_async(_do())
-
-
-@celery_app.task(name="src.pipeline.tasks.full_pipeline_run")
-def full_pipeline_run(db_name: str | None = None):
-    """Run all processing tasks in order for a specific database."""
-    chain = (
-        process_unified_messages.s(db_name=db_name) | 
-        update_lead_scores_task.s(db_name=db_name) | 
-        process_contact_batch.s(db_name=db_name)
-    )
-    return chain.delay()
 
 @celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_sync")
 def orchestrate_multi_db_sync():
-    """Master task to trigger sync for all configured folders/databases."""
-    import asyncio
-    from src.db.database import get_engine
-    import sqlalchemy as sa
-
-    async def _get_dbs():
-        engine = get_engine("postgres", use_pooling=False)
-        async with engine.connect() as conn:
-            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm%' ORDER BY datname"))
-            return [row[0] for row in res.fetchall()]
-
-    dbs = _run_async(_get_dbs())
-    if not dbs:
-        dbs = ["crm"]
-
-    for db in dbs:
-        sync_telegram.delay(auto=True, db_name=db)
-
-    return {"status": "dispatched", "databases": dbs}
-
-@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_maintenance")
-def orchestrate_multi_db_maintenance():
-    """Master task to trigger maintenance for all configured databases."""
-    import asyncio
-    from src.db.database import get_engine
-    import sqlalchemy as sa
-
-    async def _get_dbs():
-        engine = get_engine("postgres", use_pooling=False)
-        async with engine.connect() as conn:
-            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm%' ORDER BY datname"))
-            return [row[0] for row in res.fetchall()]
-
-    dbs = _run_async(_get_dbs())
-    if not dbs:
-        dbs = ["crm"]
-
-    for db in dbs:
-        process_contact_batch.delay(db_name=db)
-
-    return {"status": "dispatched", "databases": dbs}
-
-@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_message_processing")
-def orchestrate_multi_db_message_processing():
-    """Master task to trigger message processing for all configured databases."""
-    import asyncio
-    from src.db.database import get_engine
-    import sqlalchemy as sa
-
-    async def _get_dbs():
-        engine = get_engine("postgres", use_pooling=False)
-        async with engine.connect() as conn:
-            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm%' ORDER BY datname"))
-            return [row[0] for row in res.fetchall()]
-
-    dbs = _run_async(_get_dbs())
-    if not dbs:
-        dbs = ["crm"]
-
-    for db in dbs:
-        logger.info("dispatching_message_processing", db=db)
-        process_unified_messages.delay(limit=200, db_name=db)
-        process_message_embeddings.delay(limit=5000, db_name=db)
-
-    return {"status": "dispatched", "databases": dbs}
-
-
-
-# ========== Legacy/Compatibility Tasks ==========
-
-@celery_app.task(name="src.pipeline.tasks.detect_leads_task")
-def detect_leads_task(limit: int = 50):
-    """Scan channel messages for leads (Legacy wrapper)."""
-    return process_unified_messages(limit=limit)
-
-
-@celery_app.task(name="src.pipeline.tasks.reindex_embeddings")
-def reindex_embeddings():
-    """Re-generate all embeddings."""
-    from src.pipeline.unified_processor import full_reindex
+    """Trigger Telegram sync for all CRM databases."""
     async def _do():
-        return await full_reindex()
+        from scripts.migrate_all import get_all_crm_databases
+        databases = await get_all_crm_databases()
+        for db in databases:
+            sync_telegram.delay(auto=True, db_name=db)
+        return {"status": "dispatched", "databases": databases}
+    
     return _run_async(_do())

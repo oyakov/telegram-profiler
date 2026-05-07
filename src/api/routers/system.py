@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.database import get_db
-from src.db.models import Contact, Message, VoiceNote, MessageEmbedding
+from src.db.models import Contact, Message, VoiceNote, MessageEmbedding, ExtractionLog, SyncState
 from src.core.config import get_settings
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import redis
 
 router = APIRouter(prefix="/stats", tags=["System"])
@@ -54,6 +54,76 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         "total_messages": total_messages,
         "total_voice_notes": total_voice,
         "contacts_by_source": {row[0]: row[1] for row in by_source},
+    }
+
+@router.get("/timeline")
+async def get_timeline_stats(days: int = 14, db: AsyncSession = Depends(get_db)):
+    """Get message and lead ingestion timeline."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    
+    # 1. Messages per day
+    msg_query = (
+        select(
+            func.date_trunc('day', Message.timestamp).label('day'),
+            func.count(Message.id).label('count')
+        )
+        .where(Message.timestamp >= cutoff)
+        .group_by('day')
+        .order_by('day')
+    )
+    msg_rows = (await db.execute(msg_query)).all()
+    
+    # 2. Leads per day
+    lead_query = (
+        select(
+            func.date_trunc('day', Contact.created_at).label('day'),
+            func.count(Contact.id).label('count')
+        )
+        .where(Contact.is_lead == True)
+        .where(Contact.created_at >= cutoff)
+        .group_by('day')
+        .order_by('day')
+    )
+    lead_rows = (await db.execute(lead_query)).all()
+    
+    # Format data for Recharts
+    data_map = {}
+    for r in msg_rows:
+        day_str = r.day.date().isoformat()
+        data_map[day_str] = {"day": day_str, "messages": r.count, "leads": 0}
+        
+    for r in lead_rows:
+        day_str = r.day.date().isoformat()
+        if day_str not in data_map:
+            data_map[day_str] = {"day": day_str, "messages": 0, "leads": r.count}
+        else:
+            data_map[day_str]["leads"] = r.count
+            
+    return {"timeline": sorted(data_map.values(), key=lambda x: x["day"])}
+
+@router.get("/audit-logs")
+async def get_audit_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
+    """Get recent AI extraction and system logs."""
+    logs_res = await db.execute(
+        select(ExtractionLog)
+        .order_by(ExtractionLog.created_at.desc())
+        .limit(limit)
+    )
+    logs = logs_res.scalars().all()
+    
+    return {
+        "logs": [
+            {
+                "id": str(log.id),
+                "type": log.source_type,
+                "model": log.model_used,
+                "success": log.success,
+                "time_ms": log.processing_time_ms,
+                "created_at": log.created_at.isoformat(),
+                "details": f"Processed {log.source_type} ({log.source_id})"
+            }
+            for log in logs
+        ]
     }
 
 @router.get("/stats/distribution")

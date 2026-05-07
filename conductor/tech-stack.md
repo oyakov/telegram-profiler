@@ -16,8 +16,10 @@
 - **Broker:** Redis
 
 ## Frontend & Dashboard
-- **Framework:** Streamlit for rapid, data-dense internal dashboard creation.
-- **Visualization:** Plotly
+- **Framework:** React + TypeScript (Vite) for a modern, responsive, and real-time dashboard.
+- **State Management:** React Hooks & Context API.
+- **Styling:** Tailwind CSS (or similar).
+- **Visualization:** Recharts / Plotly.js
 
 ## AI & Machine Learning
 - **LLM Providers:** OpenAI and Google GenAI.

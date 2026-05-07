@@ -54,7 +54,7 @@ def test_enrich_contact_task():
 def test_orchestrate_multi_db_sync():
     def mock_run_async(coro):
         coro.close()
-        return ["crm_db1", "crm_db2"]
+        return {"status": "dispatched", "databases": ["crm_db1", "crm_db2"]}
 
     with patch("src.pipeline.tasks._run_async", side_effect=mock_run_async), \
          patch("src.pipeline.tasks.sync_telegram.delay") as mock_sync:
@@ -66,7 +66,7 @@ def test_orchestrate_multi_db_sync():
 def test_orchestrate_multi_db_message_processing():
     def mock_run_async(coro):
         coro.close()
-        return ["crm_db1"]
+        return {"status": "dispatched", "databases": ["crm_db1"]}
 
     with patch("src.pipeline.tasks._run_async", side_effect=mock_run_async), \
          patch("src.pipeline.tasks.process_unified_messages.delay") as mock_unif, \
@@ -78,7 +78,7 @@ def test_orchestrate_multi_db_message_processing():
 
 def test_sync_telegram_skipped_auto():
     with patch("src.db.database.get_session") as mock_get_session, \
-         patch("src.core.settings_service.SettingsService") as mock_svc_cls:
+         patch("src.core.config.SettingsService") as mock_svc_cls:
         
         mock_session = AsyncMock()
         mock_get_session.return_value.__aenter__.return_value = mock_session

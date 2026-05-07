@@ -9,6 +9,7 @@ import Monitoring from './pages/Monitoring';
 import Leads from './pages/Leads';
 import Contacts from './pages/Contacts';
 import Settings from './pages/Settings';
+import Projects from './pages/Projects';
 import './App.css';
 
 const App: React.FC = () => {
@@ -21,6 +22,7 @@ const App: React.FC = () => {
           <div className="scroll-area">
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/projects" element={<Projects />} />
               <Route path="/tracking" element={<Tracking />} />
               <Route path="/monitoring" element={<Monitoring />} />
               <Route path="/search" element={<Search />} />

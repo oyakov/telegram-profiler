@@ -26,26 +26,29 @@
   text-shadow: 0 0 10px var(--primary-glow);
 }
 
-.charts-container {
+.charts-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.5rem;
 }
 
-.chart-box {
-  padding: 1.5rem;
-  min-height: 400px;
+.chart-container.full-width {
+  grid-column: 1 / -1;
 }
 
-.chart-title {
-  font-size: 1.1rem;
-  font-weight: 700;
+.chart-container {
+  padding: 1.5rem;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chart-container h3 {
+  margin-top: 0;
   margin-bottom: 1.5rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  border-left: 3px solid var(--primary-emerald);
-  padding-left: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f8fafc;
 }
 
 .loading-serpent {

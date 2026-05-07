@@ -27,6 +27,22 @@ class Base(DeclarativeBase):
     pass
 
 
+class SystemProject(Base):
+    """Global project registry (stored in master 'crm' database)."""
+    __tablename__ = "system_projects"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    db_name = Column(String(255), unique=True, nullable=False) # e.g. "crm_crypto"
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self) -> str:
+        return f"<SystemProject {self.name} ({self.db_name})>"
+
+
 class TrackedFolder(Base):
     """A formal concept of a tracked Telegram folder/project."""
     __tablename__ = "tracked_folders"
@@ -34,6 +50,7 @@ class TrackedFolder(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), unique=True, nullable=False)  # e.g., "BG Intel" or "Crypto"
     description = Column(Text, nullable=True)
+    tags = Column(ARRAY(String), default=list) # Keywords/tags
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

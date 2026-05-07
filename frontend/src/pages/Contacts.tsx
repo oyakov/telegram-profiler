@@ -7,19 +7,22 @@ import './Contacts.css';
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const Contacts: React.FC = () => {
-  const { data, error } = useSWR('/api/contacts', fetcher);
+  const [page, setPage] = React.useState(1);
+  const { data, error } = useSWR(`/api/contacts?page=${page}&page_size=50`, fetcher);
 
   if (error) return <div className="error">Failed to load contacts</div>;
   if (!data) return <div className="loading">Loading contact database...</div>;
 
   const contacts = data.contacts || [];
+  const total = data.total || 0;
+  const totalPages = data.pages || 0;
 
   return (
     <div className="contacts-page">
       <div className="page-header-actions">
         <div>
           <h1 className="text-gradient">База Контактов</h1>
-          <p className="text-secondary">Всего выявлено: {contacts.length} профилей</p>
+          <p className="text-secondary">Всего выявлено: {total} профилей</p>
         </div>
         <div className="actions">
           <button className="btn-venom secondary">
@@ -67,6 +70,27 @@ const Contacts: React.FC = () => {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination Controls */}
+        <div className="pagination-controls">
+          <button 
+            disabled={page <= 1} 
+            onClick={() => setPage(p => p - 1)}
+            className="btn-page"
+          >
+            Предыдущая
+          </button>
+          <span className="page-info">
+            Страница {page} из {totalPages}
+          </span>
+          <button 
+            disabled={page >= totalPages} 
+            onClick={() => setPage(p => p + 1)}
+            className="btn-page"
+          >
+            Следующая
+          </button>
+        </div>
       </div>
     </div>
   );

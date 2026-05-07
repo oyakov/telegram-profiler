@@ -28,70 +28,78 @@ class MessageProcessor:
         self.ai_service = ExtractionService()
 
     async def process_batch(self, messages: list[Message], force_lead_detection: bool = False) -> dict:
-        """Process a batch of messages. 
+        """Process a batch of messages concurrently. 
         Detects contacts, leads, and generates embeddings.
         """
         stats = {"processed": 0, "contacts_found": 0, "leads_found": 0, "errors": 0}
+        
+        # Use semaphore to limit concurrent LLM calls
+        semaphore = asyncio.Semaphore(5)
 
-        for msg in messages:
-            try:
-                if not msg.content or len(msg.content.strip()) < 10:
-                    continue
+        async def _process_single(msg: Message):
+            async with semaphore:
+                try:
+                    if not msg.content or len(msg.content.strip()) < 10:
+                        return
 
-                # 1. Run Extraction
-                is_channel = msg.raw_json.get("is_channel", False) if msg.raw_json else False
-                
-                # Extract contacts
-                contacts, _ = await self.ai_service.extract(
-                    msg.content, 
-                    extraction_type="contacts", 
-                    source_context=f"Group: {msg.group_name or 'Unknown'}"
-                )
-                
-                # Extract leads (commercial intent)
-                leads = []
-                if is_channel or force_lead_detection:
-                    leads, _ = await self.ai_service.extract(
+                    # 1. Run Extraction
+                    is_channel = msg.raw_json.get("is_channel", False) if msg.raw_json else False
+                    
+                    # Extract contacts
+                    contacts, _ = await self.ai_service.extract(
                         msg.content, 
-                        extraction_type="leads",
+                        extraction_type="contacts", 
                         source_context=f"Group: {msg.group_name or 'Unknown'}"
                     )
-                
-                # 3. Sync contacts found (if any)
-                for c_data in contacts:
-                    contact = await self._sync_contact(c_data)
-                    if contact:
-                        stats["contacts_found"] += 1
-                        if not is_channel:
-                            msg.contact_id = contact.id
+                    
+                    # Extract leads (commercial intent)
+                    leads = []
+                    if is_channel or force_lead_detection:
+                        leads, _ = await self.ai_service.extract(
+                            msg.content, 
+                            extraction_type="leads",
+                            source_context=f"Group: {msg.group_name or 'Unknown'}"
+                        )
+                    
+                    # 3. Sync contacts found (if any)
+                    for c_data in contacts:
+                        contact = await self._sync_contact(c_data)
+                        if contact:
+                            stats["contacts_found"] += 1
+                            if not is_channel:
+                                msg.contact_id = contact.id
 
-                # 4. Sync leads found
-                for l_data in leads:
-                    if l_data.confidence < 0.6:
-                        continue
-                    contact = await self._sync_lead(l_data, msg)
-                    if contact:
-                        stats["leads_found"] += 1
+                    # 4. Sync leads found
+                    for l_data in leads:
+                        if l_data.confidence < 0.6:
+                            continue
+                        contact = await self._sync_lead(l_data, msg)
+                        if contact:
+                            stats["leads_found"] += 1
 
-                # 5. Log extraction
-                log_entry = ExtractionLog(
-                    source_type="unified_message",
-                    source_id=str(msg.id),
-                    model_used=self.ai_service.model,
-                    extracted_data={
-                        "contacts": [c.model_dump() for c in contacts],
-                        "leads": [l.model_dump() for l in leads]
-                    },
-                    success=True
-                )
-                self.session.add(log_entry)
-                stats["processed"] += 1
+                    # 5. Log extraction
+                    log_entry = ExtractionLog(
+                        source_type="unified_message",
+                        source_id=str(msg.id),
+                        model_used=self.ai_service.model,
+                        extracted_data={
+                            "contacts": [c.model_dump() for c in contacts],
+                            "leads": [l.model_dump() for l in leads]
+                        },
+                        success=True
+                    )
+                    self.session.add(log_entry)
+                    stats["processed"] += 1
 
-                await self.session.flush()
+                except Exception as e:
+                    logger.error("unified_message_processing_error", message_id=str(msg.id), error=str(e))
+                    stats["errors"] += 1
 
-            except Exception as e:
-                logger.error("unified_message_processing_error", message_id=str(msg.id), error=str(e))
-                stats["errors"] += 1
+        # Run all messages in parallel
+        await asyncio.gather(*[_process_single(msg) for msg in messages])
+        
+        # Flush all changes at once
+        await self.session.flush()
 
         return stats
 

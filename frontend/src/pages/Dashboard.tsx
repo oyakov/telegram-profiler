@@ -4,7 +4,7 @@ import api from '../services/api';
 import { Users, MessageSquare, Radio, Mic } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell 
+  PieChart, Pie, Cell, AreaChart, Area 
 } from 'recharts';
 import './Dashboard.css';
 
@@ -24,6 +24,7 @@ const MetricCard: React.FC<{ title: string, value: string | number, icon: React.
 const Dashboard: React.FC = () => {
   const { data: stats, error: statsError } = useSWR('/api/stats', fetcher);
   const { data: tracking, error: trackingError } = useSWR('/api/tracking/channels', fetcher);
+  const { data: timelineData } = useSWR('/api/stats/timeline', fetcher);
 
   const isLoading = !stats || !tracking;
 
@@ -72,6 +73,54 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="charts-grid">
+        <div className="chart-container timeline-chart full-width serpent-card">
+          <h3>📈 Динамика активности</h3>
+          <div style={{ width: '100%', height: 300 }}>
+            <ResponsiveContainer>
+              <AreaChart data={timelineData?.timeline}>
+                <defs>
+                  <linearGradient id="colorMsg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+                <XAxis 
+                  dataKey="day" 
+                  stroke="#94a3b8" 
+                  tickFormatter={(val) => val.split('-').slice(1).join('/')} 
+                  fontSize={12}
+                />
+                <YAxis stroke="#94a3b8" fontSize={12} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#f8fafc' }}
+                  itemStyle={{ fontSize: '12px' }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="messages" 
+                  name="Сообщения"
+                  stroke="#10b981" 
+                  fillOpacity={1} 
+                  fill="url(#colorMsg)" 
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="leads" 
+                  name="Лиды"
+                  stroke="#f59e0b" 
+                  fillOpacity={1} 
+                  fill="url(#colorLeads)" 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
         <div className="chart-container serpent-card">
           <h3>📊 Активность по источникам</h3>
           <div style={{ width: '100%', height: 300 }}>

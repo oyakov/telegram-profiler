@@ -110,27 +110,46 @@ class TelegramConnector(BaseConnector):
             async with client:
                 if not await client.is_user_authorized():
                     result.status = "error"; result.errors.append("Not authorized"); return result
+                
+                # Fetch target IDs
                 async with get_session(db_name=self.db_name) as session:
                     sync_state = await self._get_sync_state(session)
                     sync_state.status = "running"
                     await session.commit()
                     
-                    # Fetch tracked channels from new model
                     from src.db.models import TrackedChannel
                     res = await session.execute(select(TrackedChannel.telegram_id).where(TrackedChannel.is_active == True))
                     target_ids = [int(row[0]) for row in res.all()]
                     
                     if not target_ids:
-                        # Fallback for DMs if no tracked channels
                         dialogs = await client.get_dialogs(); target_ids = [d.id for d in dialogs if d.is_user]
-                    
-                    for target_id in target_ids:
+
+                # Run parallel sync with semaphore
+                semaphore = asyncio.Semaphore(3)
+                
+                async def _sync_task(tid):
+                    async with semaphore:
                         try:
-                            count = await self._sync_chat(client, session, target_id, limit, sync_state, offset_date=offset_date)
-                            result.messages_fetched += count
-                        except Exception as e: logger.error("telegram_sync_error", target_id=target_id, error=str(e))
+                            # Each task gets its own session for concurrency safety
+                            async with get_session(db_name=self.db_name) as task_session:
+                                # Fetch sync state fresh for this session if needed, 
+                                # but _sync_chat handles its own state lookups now
+                                count = await self._sync_chat(client, task_session, tid, limit, None, offset_date=offset_date)
+                                return count
+                        except Exception as e:
+                            logger.error("telegram_sync_error", target_id=tid, error=str(e))
+                            return 0
+
+                sync_tasks = [_sync_task(tid) for tid in target_ids]
+                fetched_counts = await asyncio.gather(*sync_tasks)
+                result.messages_fetched = sum(fetched_counts)
+
+                async with get_session(db_name=self.db_name) as session:
                     sync_state = await self._get_sync_state(session)
-                    sync_state.last_sync_at = datetime.now(timezone.utc); sync_state.status = "idle"; await session.commit()
+                    sync_state.last_sync_at = datetime.now(timezone.utc)
+                    sync_state.status = "idle"
+                    await session.commit()
+
         except Exception as e:
             result.status = "error"; result.errors.append(str(e))
         result.completed_at = datetime.now(timezone.utc)
@@ -138,7 +157,7 @@ class TelegramConnector(BaseConnector):
 
 
     async def deep_sync(self, chat_ids: list[str | int], limit: int = 500, days: int = 90) -> SyncResult:
-        """Fetch historical messages from specific chats/channels."""
+        """Fetch historical messages from specific chats/channels concurrently."""
         result = SyncResult(connector=self.name, started_at=datetime.now(timezone.utc))
         min_date = datetime.now(timezone.utc) - timedelta(days=days)
         client = self._get_client()
@@ -146,19 +165,25 @@ class TelegramConnector(BaseConnector):
             async with client:
                 if not await client.is_user_authorized():
                     result.status = "error"; result.errors.append("Not authorized"); return result
-                async with get_session(db_name=self.db_name) as session:
-                    for chat_id in chat_ids:
+                
+                semaphore = asyncio.Semaphore(2) # Stricter for deep sync
+                
+                async def _deep_sync_task(chat_id):
+                    async with semaphore:
                         try:
-                            # For deep sync we want to fetch up to 'limit' messages, 
-                            # but stop if we go further back than 'min_date'
-                            count = await self._sync_chat(client, session, chat_id, limit, None, min_date=min_date)
-                            result.messages_fetched += count
-
-                            # Note: _sync_chat now updates last_sync_at automatically
-                            await session.commit() 
-                        except Exception as e: 
+                            async with get_session(db_name=self.db_name) as session:
+                                count = await self._sync_chat(client, session, chat_id, limit, None, min_date=min_date)
+                                await session.commit()
+                                return count
+                        except Exception as e:
                             logger.error("telegram_deep_sync_error", chat_id=chat_id, error=str(e))
                             result.errors.append(f"{chat_id}: {str(e)}")
+                            return 0
+
+                tasks = [_deep_sync_task(cid) for cid in chat_ids]
+                fetched_counts = await asyncio.gather(*tasks)
+                result.messages_fetched = sum(fetched_counts)
+                
         except Exception as e:
             result.status = "error"; result.errors.append(str(e))
         result.completed_at = datetime.now(timezone.utc)

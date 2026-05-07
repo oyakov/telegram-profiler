@@ -36,7 +36,7 @@ A sophisticated personal CRM and market intelligence tool powered by Telegram, A
    ```bash
    docker-compose up --build
    ```
-4. Access the frontend at `http://localhost:3001`.
+4. Access the frontend at `http://localhost:3005`.
 5. Access the API documentation at `http://localhost:8000/docs`.
 
 ## Project Structure

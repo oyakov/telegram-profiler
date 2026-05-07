@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { RefreshCcw, Search, ExternalLink, Plus, Trash2, Folder, FolderOpen, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { 
+  RefreshCcw, Search, ExternalLink, Plus, Trash2, Folder, FolderOpen, 
+  ChevronDown, ChevronRight, Download, Settings as SettingsIcon, Tag, X 
+} from 'lucide-react';
 import './Tracking.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
@@ -76,7 +79,35 @@ const Tracking: React.FC = () => {
   const [tgFolders, setTgFolders] = useState<any[]>([]);
   const [tgFoldersLoading, setTgFoldersLoading] = useState(false);
 
+  // Folder Editing State
+  const [editingFolder, setEditingFolder] = useState<any>(null);
+  const [folderFormData, setFolderFormData] = useState({ name: '', description: '', tags_str: '' });
 
+  const handleOpenEditFolder = (folder: any) => {
+    setEditingFolder(folder);
+    setFolderFormData({
+      name: folder.name,
+      description: folder.description || '',
+      tags_str: (folder.tags || []).join(', ')
+    });
+  };
+
+  const handleUpdateFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const tags = folderFormData.tags_str.split(',').map(s => s.trim()).filter(s => !!s);
+      await api.patch(`/api/tracking/folders/${editingFolder.id}`, {
+        name: folderFormData.name,
+        description: folderFormData.description,
+        tags: tags
+      });
+      setEditingFolder(null);
+      mutateFolders();
+      mutate();
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Update failed'));
+    }
+  };
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -420,7 +451,18 @@ const Tracking: React.FC = () => {
                   {isCollapsed
                     ? <Folder size={16} style={{ color: '#a855f7' }} />
                     : <FolderOpen size={16} style={{ color: '#a855f7' }} />}
-                  <span style={{ color: '#f8fafc', fontWeight: '600', fontSize: '14px' }}>{folder.name}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ color: '#f8fafc', fontWeight: '600', fontSize: '14px' }}>{folder.name}</span>
+                    {folder.tags && folder.tags.length > 0 && (
+                      <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        {folder.tags.map((tag: string) => (
+                          <span key={tag} style={{ fontSize: '10px', background: 'rgba(255,255,255,0.05)', color: '#94a3b8', padding: '1px 5px', borderRadius: '3px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <span style={{
                     padding: '1px 8px',
                     background: 'rgba(168, 85, 247, 0.15)',
@@ -430,6 +472,19 @@ const Tracking: React.FC = () => {
                   }}>{channels.length}</span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); handleOpenEditFolder(folder); }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: '28px', height: '28px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '4px', color: '#94a3b8', cursor: 'pointer'
+                    }}
+                    title="Folder Settings"
+                  >
+                    <SettingsIcon size={13} />
+                  </button>
                   <button
                     onClick={e => { e.stopPropagation(); handleOpenImport(folder.id); }}
                     style={{
@@ -610,6 +665,56 @@ const Tracking: React.FC = () => {
             )}
           </div>
         </>
+      )}
+
+      {/* Folder Edit Modal */}
+      {editingFolder && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
+          <div className="modal-content serpent-card" style={{ width: '450px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Настройки папки</h2>
+              <button onClick={() => setEditingFolder(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleUpdateFolder}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>Имя папки</label>
+                <input 
+                  type="text" 
+                  value={folderFormData.name} 
+                  onChange={e => setFolderFormData({...folderFormData, name: e.target.value})}
+                  style={{ width: '100%', padding: '10px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: 'white' }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>Описание</label>
+                <textarea 
+                  value={folderFormData.description} 
+                  onChange={e => setFolderFormData({...folderFormData, description: e.target.value})}
+                  style={{ width: '100%', padding: '10px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: 'white', minHeight: '80px' }}
+                  placeholder="О чем эта папка..."
+                />
+              </div>
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>Тэги / Ключевые слова (через запятую)</label>
+                <div style={{ position: 'relative' }}>
+                  <Tag size={14} style={{ position: 'absolute', left: '10px', top: '12px', color: '#64748b' }} />
+                  <input 
+                    type="text" 
+                    value={folderFormData.tags_str} 
+                    onChange={e => setFolderFormData({...folderFormData, tags_str: e.target.value})}
+                    style={{ width: '100%', padding: '10px 10px 10px 32px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: 'white' }}
+                    placeholder="crypto, airdrops, news..."
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button type="button" onClick={() => setEditingFolder(null)} style={{ padding: '10px 16px', background: 'transparent', border: '1px solid #1e293b', color: '#94a3b8', borderRadius: '8px', cursor: 'pointer' }}>Отмена</button>
+                <button type="submit" style={{ padding: '10px 20px', background: '#10b981', border: 'none', color: 'white', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>Сохранить</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       <style>{`

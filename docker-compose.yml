@@ -156,7 +156,7 @@ services:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:8090}
     container_name: crm-frontend
     ports:
-      - "${FRONTEND_PORT:-3001}:80"
+      - "${FRONTEND_PORT:-3005}:80"
     depends_on:
       - app
     networks:
