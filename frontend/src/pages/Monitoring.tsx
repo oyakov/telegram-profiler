@@ -3,7 +3,7 @@ import useSWR from 'swr';
 import api from '../services/api';
 import {
   Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid
+  PieChart, Pie, Cell, LineChart, Line, YAxis, CartesianGrid
 } from 'recharts';
 import { Shield, Coins, Zap, Clock, Database, TrendingUp, Activity, CheckCircle2, AlertCircle } from 'lucide-react';
 import './Monitoring.css';
@@ -88,7 +88,7 @@ const MiniLatencyChart: React.FC<{ data: LatencyDataPoint[] }> = ({ data }) => {
 };
 
 const Monitoring: React.FC = () => {
-  const { data: stats, error } = useSWR('/api/stats/ai-monitoring', fetcher, { refreshInterval: 2000 });
+  const { data: stats } = useSWR('/api/stats/ai-monitoring', fetcher, { refreshInterval: 2000 });
   const { data: embedStats } = useSWR('/api/stats/embeddings', fetcher, { refreshInterval: 5000 });
   const [latencyHistory, setLatencyHistory] = useState<LatencyDataPoint[]>([]);
 
