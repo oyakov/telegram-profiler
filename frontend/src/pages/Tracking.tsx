@@ -82,6 +82,7 @@ const Tracking: React.FC = () => {
   const [telegramPhoneHash, setTelegramPhoneHash] = useState('');
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [telegramAuthorized, setTelegramAuthorized] = useState<boolean | null>(null);
+  const [activeTab, setActiveTab] = useState<'auth' | 'data'>('data');
 
   const checkTelegramAuth = async () => {
     try {
@@ -281,353 +282,244 @@ const Tracking: React.FC = () => {
 
   return (
     <div className="tracking-page">
-      {/* Top Section: Auth + Sync Status */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
-        {/* Telegram Auth Card */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(6, 78, 59, 0.1))',
-          border: '1px solid rgba(16, 185, 129, 0.2)',
-          borderRadius: '12px',
-          padding: '20px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <Phone size={20} style={{ color: '#10b981' }} />
-            <h3 style={{ color: '#f8fafc', margin: 0, fontSize: '16px' }}>Telegram Auth</h3>
-          </div>
+      {/* Tab Navigation */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '24px',
+        borderBottom: '1px solid rgba(148, 163, 184, 0.15)',
+        paddingBottom: '12px'
+      }}>
+        <button
+          onClick={() => setActiveTab('data')}
+          style={{
+            padding: '8px 16px',
+            background: activeTab === 'data' ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+            border: 'none',
+            color: activeTab === 'data' ? '#3b82f6' : '#64748b',
+            borderBottom: activeTab === 'data' ? '2px solid #3b82f6' : 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: activeTab === 'data' ? '600' : '400',
+            transition: 'all 0.2s'
+          }}
+        >
+          Данные Telegram
+        </button>
+        <button
+          onClick={() => setActiveTab('auth')}
+          style={{
+            padding: '8px 16px',
+            background: activeTab === 'auth' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+            border: 'none',
+            color: activeTab === 'auth' ? '#10b981' : '#64748b',
+            borderBottom: activeTab === 'auth' ? '2px solid #10b981' : 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: activeTab === 'auth' ? '600' : '400',
+            transition: 'all 0.2s'
+          }}
+        >
+          Авторизация
+        </button>
+      </div>
 
-          {telegramAuthorized === true ? (
-            <div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '12px',
-                padding: '12px',
-                background: 'rgba(16, 185, 129, 0.1)',
-                borderRadius: '8px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>✅</span>
-                  <div>
-                    <p style={{ color: '#10b981', margin: '0', fontWeight: 'bold', fontSize: '14px' }}>Connected</p>
-                    <p style={{ color: '#64748b', margin: '2px 0 0', fontSize: '11px' }}>Session active</p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleDisconnect}
-                  disabled={telegramLoading}
-                  style={{
-                    padding: '6px 12px',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    color: '#fca5a5',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '4px',
-                    cursor: telegramLoading ? 'not-allowed' : 'pointer',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {telegramLoading ? 'Processing...' : 'Disconnect'}
-                </button>
-              </div>
-            </div>
-          ) : telegramAuthorized === null ? (
-            <div style={{ color: '#cbd5e1', textAlign: 'center', padding: '16px', fontSize: '14px' }}>
-              Checking...
-            </div>
-          ) : (
-            <form onSubmit={
-              telegramStep === 'phone' ? handleSendCode :
-              telegramStep === 'code' ? handleVerifyCode :
-              handleVerify2FA
-            } style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                {telegramStep === 'phone' && (
-                  <>
-                    <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Phone</label>
-                    <input
-                      type="tel"
-                      placeholder="+38123456789"
-                      value={telegramPhone}
-                      onChange={(e) => setTelegramPhone(e.target.value)}
-                      disabled={telegramLoading}
-                      autoFocus
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        marginTop: '6px',
-                        background: 'rgba(15, 23, 42, 0.6)',
-                        border: '1px solid rgba(16, 185, 129, 0.2)',
-                        color: '#f8fafc',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </>
-                )}
-                {telegramStep === 'code' && (
-                  <>
-                    <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Code</label>
-                    <input
-                      type="text"
-                      placeholder="123456"
-                      value={telegramCode}
-                      onChange={(e) => setTelegramCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      disabled={telegramLoading}
-                      autoFocus
-                      maxLength={6}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        marginTop: '6px',
-                        background: 'rgba(15, 23, 42, 0.6)',
-                        border: '1px solid rgba(16, 185, 129, 0.2)',
-                        color: '#f8fafc',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        boxSizing: 'border-box',
-                        letterSpacing: '4px'
-                      }}
-                    />
-                  </>
-                )}
-                {telegramStep === 'password' && (
-                  <>
-                    <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>2FA Password</label>
-                    <input
-                      type="password"
-                      placeholder="Your password"
-                      value={telegramPassword}
-                      onChange={(e) => setTelegramPassword(e.target.value)}
-                      disabled={telegramLoading}
-                      autoFocus
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        marginTop: '6px',
-                        background: 'rgba(15, 23, 42, 0.6)',
-                        border: '1px solid rgba(16, 185, 129, 0.2)',
-                        color: '#f8fafc',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </>
-                )}
-              </div>
-              <button
-                type="submit"
-                disabled={telegramLoading}
-                style={{
-                  padding: '10px 16px',
-                  background: telegramLoading ? 'rgba(16, 185, 129, 0.5)' : 'linear-gradient(135deg, #10b981, #059669)',
-                  color: '#f8fafc',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: '600',
-                  cursor: telegramLoading ? 'not-allowed' : 'pointer',
-                  fontSize: '13px'
-                }}
-              >
-                {telegramLoading ? '⏳ Processing...' : `Continue →`}
-              </button>
-            </form>
-          )}
-        </div>
-
-        {/* Sync Status Card */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.1))',
-          border: '1px solid rgba(59, 130, 246, 0.2)',
-          borderRadius: '12px',
-          padding: '20px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <RefreshCcw size={20} style={{ color: '#3b82f6' }} />
-            <h3 style={{ color: '#f8fafc', margin: 0, fontSize: '16px' }}>Sync Status</h3>
-          </div>
-
-          {syncData?.connectors ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* Overall Statistics */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '10px',
-                padding: '12px',
-                background: 'rgba(148, 163, 184, 0.05)',
-                borderRadius: '8px'
-              }}>
-                <div>
-                  <p style={{ color: '#64748b', margin: 0, fontSize: '11px' }}>Channels</p>
-                  <p style={{ color: '#3b82f6', margin: '4px 0 0', fontSize: '16px', fontWeight: '600' }}>{channelsCount}</p>
-                </div>
-                <div>
-                  <p style={{ color: '#64748b', margin: 0, fontSize: '11px' }}>Messages</p>
-                  <p style={{ color: '#10b981', margin: '4px 0 0', fontSize: '16px', fontWeight: '600' }}>{totalMessages.toLocaleString()}</p>
-                </div>
+      {/* Data Tab */}
+      {activeTab === 'data' && (
+        <>
+          {/* Sync Status */}
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.1))',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '12px',
+              padding: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <RefreshCcw size={20} style={{ color: '#3b82f6' }} />
+                <h3 style={{ color: '#f8fafc', margin: 0, fontSize: '16px' }}>Статус Синхронизации</h3>
               </div>
 
-              {/* Connector Status */}
-              {syncData.connectors.map((connector: any) => {
-                const isRunning = connector.status === 'running';
-                const hasError = connector.status === 'error';
-
-                return (
-                  <div key={connector.connector} style={{
+              {syncData?.connectors ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Overall Statistics */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '10px',
                     padding: '12px',
-                    background: isRunning ? 'rgba(59, 130, 246, 0.1)' : hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(148, 163, 184, 0.05)',
-                    border: `1px solid ${isRunning ? 'rgba(59, 130, 246, 0.3)' : hasError ? 'rgba(239, 68, 68, 0.3)' : 'rgba(148, 163, 184, 0.15)'}`,
-                    borderRadius: '8px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
+                    background: 'rgba(148, 163, 184, 0.05)',
+                    borderRadius: '8px'
                   }}>
                     <div>
-                      <p style={{ color: '#f8fafc', margin: '0', fontWeight: '600', textTransform: 'capitalize', fontSize: '14px' }}>{connector.connector}</p>
-                      <p style={{ color: '#64748b', margin: '2px 0 0', fontSize: '11px' }}>
-                        {isRunning ? '⏳ Downloading...' : hasError ? '❌ Error' : '✓ Ready'}
-                      </p>
+                      <p style={{ color: '#64748b', margin: 0, fontSize: '11px' }}>Каналы</p>
+                      <p style={{ color: '#3b82f6', margin: '4px 0 0', fontSize: '16px', fontWeight: '600' }}>{channelsCount}</p>
+                    </div>
+                    <div>
+                      <p style={{ color: '#64748b', margin: 0, fontSize: '11px' }}>Сообщений</p>
+                      <p style={{ color: '#10b981', margin: '4px 0 0', fontSize: '16px', fontWeight: '600' }}>{totalMessages.toLocaleString()}</p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ color: '#cbd5e1', textAlign: 'center', padding: '16px', fontSize: '13px' }}>
-              Loading...
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px'
-      }}>
-        <div>
-          <h1 style={{ color: '#f8fafc', margin: 0, fontSize: '24px', fontWeight: '700' }}>Channels</h1>
-          <p style={{ color: '#64748b', margin: '6px 0 0', fontSize: '14px' }}>Tracked Telegram channels and groups</p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {showNewFolderInput ? (
-            <form onSubmit={handleCreateFolder} style={{ display: 'flex', gap: '8px' }}>
-              <input
-                autoFocus
-                type="text"
-                placeholder="Folder name..."
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
+                  {/* Connector Status */}
+                  {syncData.connectors.map((connector: any) => {
+                    const isRunning = connector.status === 'running';
+                    const hasError = connector.status === 'error';
+
+                    return (
+                      <div key={connector.connector} style={{
+                        padding: '12px',
+                        background: isRunning ? 'rgba(59, 130, 246, 0.1)' : hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(148, 163, 184, 0.05)',
+                        border: `1px solid ${isRunning ? 'rgba(59, 130, 246, 0.3)' : hasError ? 'rgba(239, 68, 68, 0.3)' : 'rgba(148, 163, 184, 0.15)'}`,
+                        borderRadius: '8px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div>
+                          <p style={{ color: '#f8fafc', margin: '0', fontWeight: '600', textTransform: 'capitalize', fontSize: '14px' }}>{connector.connector}</p>
+                          <p style={{ color: '#64748b', margin: '2px 0 0', fontSize: '11px' }}>
+                            {isRunning ? '⏳ Загружается...' : hasError ? '❌ Ошибка' : '✓ Готово'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ color: '#cbd5e1', textAlign: 'center', padding: '16px', fontSize: '13px' }}>
+                  Загрузка...
+                </div>
+              )}
+            </div>
+          </div>
+
+
+          {/* Header */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '20px'
+          }}>
+            <div>
+              <h1 style={{ color: '#f8fafc', margin: 0, fontSize: '24px', fontWeight: '700' }}>Каналы</h1>
+              <p style={{ color: '#64748b', margin: '6px 0 0', fontSize: '14px' }}>Отслеживаемые Telegram каналы и группы</p>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {showNewFolderInput ? (
+                <form onSubmit={handleCreateFolder} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="Имя папки..."
+                    value={newFolderName}
+                    onChange={e => setNewFolderName(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      border: '1px solid rgba(168, 85, 247, 0.4)',
+                      color: '#f8fafc',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      outline: 'none',
+                      width: '180px'
+                    }}
+                  />
+                  <button type="submit" style={{
+                    padding: '8px 14px',
+                    background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '600'
+                  }}>Создать</button>
+                  <button type="button" onClick={() => { setShowNewFolderInput(false); setNewFolderName(''); }} style={{
+                    padding: '8px 12px',
+                    background: 'rgba(148, 163, 184, 0.1)',
+                    border: '1px solid rgba(148, 163, 184, 0.2)',
+                    color: '#94a3b8',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px'
+                  }}>Отмена</button>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setShowNewFolderInput(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 16px',
+                    background: 'rgba(168, 85, 247, 0.1)',
+                    border: '1px solid rgba(168, 85, 247, 0.3)',
+                    color: '#a855f7',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '600'
+                  }}
+                >
+                  <Plus size={16} />
+                  Новая папка
+                </button>
+              )}
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
                 style={{
-                  padding: '8px 12px',
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  border: '1px solid rgba(168, 85, 247, 0.4)',
-                  color: '#f8fafc',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  background: isSyncing ? 'rgba(16, 185, 129, 0.5)' : 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  color: '#10b981',
                   borderRadius: '6px',
+                  cursor: isSyncing ? 'not-allowed' : 'pointer',
                   fontSize: '13px',
-                  outline: 'none',
-                  width: '180px'
+                  fontWeight: '600'
                 }}
-              />
-              <button type="submit" style={{
-                padding: '8px 14px',
-                background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
-                border: 'none',
-                color: '#fff',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: '600'
-              }}>Create</button>
-              <button type="button" onClick={() => { setShowNewFolderInput(false); setNewFolderName(''); }} style={{
-                padding: '8px 12px',
-                background: 'rgba(148, 163, 184, 0.1)',
-                border: '1px solid rgba(148, 163, 184, 0.2)',
-                color: '#94a3b8',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px'
-              }}>Cancel</button>
-            </form>
-          ) : (
-            <button
-              onClick={() => setShowNewFolderInput(true)}
+              >
+                <RefreshCcw size={16} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                {isSyncing ? 'Синхронизация...' : 'Синхронизировать'}
+              </button>
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px 16px',
+            background: 'rgba(30, 41, 59, 0.5)',
+            border: '1px solid rgba(148, 163, 184, 0.15)',
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <Search size={18} style={{ color: '#64748b' }} />
+            <input
+              type="text"
+              placeholder="Поиск каналов..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 16px',
-                background: 'rgba(168, 85, 247, 0.1)',
-                border: '1px solid rgba(168, 85, 247, 0.3)',
-                color: '#a855f7',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: '600'
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                color: '#f8fafc',
+                outline: 'none',
+                fontSize: '14px'
               }}
-            >
-              <Plus size={16} />
-              New Folder
-            </button>
-          )}
-          <button
-            onClick={handleSync}
-            disabled={isSyncing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              background: isSyncing ? 'rgba(16, 185, 129, 0.5)' : 'rgba(16, 185, 129, 0.1)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              color: '#10b981',
-              borderRadius: '6px',
-              cursor: isSyncing ? 'not-allowed' : 'pointer',
-              fontSize: '13px',
-              fontWeight: '600'
-            }}
-          >
-            <RefreshCcw size={16} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
-            {isSyncing ? 'Syncing...' : 'Sync Now'}
-          </button>
-        </div>
-      </div>
+            />
+          </div>
 
-      {/* Search Bar */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        padding: '12px 16px',
-        background: 'rgba(30, 41, 59, 0.5)',
-        border: '1px solid rgba(148, 163, 184, 0.15)',
-        borderRadius: '8px',
-        marginBottom: '20px'
-      }}>
-        <Search size={18} style={{ color: '#64748b' }} />
-        <input
-          type="text"
-          placeholder="Search channels..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{
-            flex: 1,
-            background: 'transparent',
-            border: 'none',
-            color: '#f8fafc',
-            outline: 'none',
-            fontSize: '14px'
-          }}
-        />
-      </div>
-
-      {/* Folders + Channels */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Folders + Channels */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {folders.map((folder: any) => {
           const channels = channelsByFolder[folder.id] || [];
           const isCollapsed = collapsedFolders.has(folder.id);
@@ -835,19 +727,177 @@ const Tracking: React.FC = () => {
           </div>
         )}
 
-        {filteredChannels.length === 0 && folders.length === 0 && (
-          <div style={{
-            padding: '48px',
-            textAlign: 'center',
-            color: '#64748b',
-            background: 'rgba(30, 41, 59, 0.3)',
-            border: '1px solid rgba(148, 163, 184, 0.15)',
-            borderRadius: '8px'
-          }}>
-            No channels or folders yet
+            {filteredChannels.length === 0 && folders.length === 0 && (
+              <div style={{
+                padding: '48px',
+                textAlign: 'center',
+                color: '#64748b',
+                background: 'rgba(30, 41, 59, 0.3)',
+                border: '1px solid rgba(148, 163, 184, 0.15)',
+                borderRadius: '8px'
+              }}>
+                Нет каналов или папок
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* Auth Tab */}
+      {activeTab === 'auth' && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(6, 78, 59, 0.1))',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          borderRadius: '12px',
+          padding: '20px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <Phone size={20} style={{ color: '#10b981' }} />
+            <h3 style={{ color: '#f8fafc', margin: 0, fontSize: '16px' }}>Авторизация Telegram</h3>
+          </div>
+
+          {telegramAuthorized === true ? (
+            <div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '12px',
+                padding: '12px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                borderRadius: '8px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>✅</span>
+                  <div>
+                    <p style={{ color: '#10b981', margin: '0', fontWeight: 'bold', fontSize: '14px' }}>Подключено</p>
+                    <p style={{ color: '#64748b', margin: '2px 0 0', fontSize: '11px' }}>Сеанс активен</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDisconnect}
+                  disabled={telegramLoading}
+                  style={{
+                    padding: '6px 12px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#fca5a5',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '4px',
+                    cursor: telegramLoading ? 'not-allowed' : 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {telegramLoading ? 'Обработка...' : 'Отключить'}
+                </button>
+              </div>
+            </div>
+          ) : telegramAuthorized === null ? (
+            <div style={{ color: '#cbd5e1', textAlign: 'center', padding: '16px', fontSize: '14px' }}>
+              Проверка...
+            </div>
+          ) : (
+            <form onSubmit={
+              telegramStep === 'phone' ? handleSendCode :
+              telegramStep === 'code' ? handleVerifyCode :
+              handleVerify2FA
+            } style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                {telegramStep === 'phone' && (
+                  <>
+                    <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Номер телефона</label>
+                    <input
+                      type="tel"
+                      placeholder="+38123456789"
+                      value={telegramPhone}
+                      onChange={(e) => setTelegramPhone(e.target.value)}
+                      disabled={telegramLoading}
+                      autoFocus
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        marginTop: '6px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        color: '#f8fafc',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </>
+                )}
+                {telegramStep === 'code' && (
+                  <>
+                    <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Код</label>
+                    <input
+                      type="text"
+                      placeholder="123456"
+                      value={telegramCode}
+                      onChange={(e) => setTelegramCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      disabled={telegramLoading}
+                      autoFocus
+                      maxLength={6}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        marginTop: '6px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        color: '#f8fafc',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        boxSizing: 'border-box',
+                        letterSpacing: '4px'
+                      }}
+                    />
+                  </>
+                )}
+                {telegramStep === 'password' && (
+                  <>
+                    <label style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Пароль 2FA</label>
+                    <input
+                      type="password"
+                      placeholder="Ваш пароль"
+                      value={telegramPassword}
+                      onChange={(e) => setTelegramPassword(e.target.value)}
+                      disabled={telegramLoading}
+                      autoFocus
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        marginTop: '6px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        color: '#f8fafc',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={telegramLoading}
+                style={{
+                  padding: '10px 16px',
+                  background: telegramLoading ? 'rgba(16, 185, 129, 0.5)' : 'linear-gradient(135deg, #10b981, #059669)',
+                  color: '#f8fafc',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: telegramLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                {telegramLoading ? '⏳ Обработка...' : `Продолжить →`}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
 
       <style>{`
         @keyframes spin {
