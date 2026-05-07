@@ -10,8 +10,8 @@ router = APIRouter(prefix="/connectors", tags=["Connectors"])
 async def trigger_sync(connector: str, request: Request):
     """Manually trigger a connector sync."""
     db_name = request.headers.get("X-Database")
-    from src.pipeline.tasks import import_excel, scrape_social, sync_crm, sync_telegram
-    task_map = {"telegram": sync_telegram, "excel": import_excel, "crm": sync_crm, "social": scrape_social}
+    from src.pipeline.tasks import import_excel, sync_crm, sync_telegram
+    task_map = {"telegram": sync_telegram, "excel": import_excel, "crm": sync_crm}
     task_fn = task_map.get(connector)
     if not task_fn: raise HTTPException(400, f"Unknown connector: {connector}")
     result = task_fn.delay(db_name=db_name)

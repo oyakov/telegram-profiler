@@ -18,7 +18,7 @@ async def main():
     # Use dedicated discovery session to avoid locks
     client = TelegramClient("sessions/bg_discovery.session", int(settings.telegram_api_id), settings.telegram_api_hash)
     
-    keywords = ["Белград", "Сербия", "Belgrade", "Serbia", "Понаехали", "ВНЖ Сербия", "Работа Сербия", "Аренда Белград", "Белград объявления"]
+    keywords = ["Белград", "Сербия", "Belgrade", "Serbia", "ВНЖ Сербия", "Работа Сербия", "Аренда Белград", "Белград объявления"]
     
     async with client:
         # 1. Get current count

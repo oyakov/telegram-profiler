@@ -61,7 +61,7 @@ async def main():
     client = TelegramClient(f"sessions/{settings.telegram_session_name}", int(settings.telegram_api_id), settings.telegram_api_hash)
     
     categories = {
-        "BG Intel": ["Белград", "Сербия", "Belgrade", "Serbia", "Понаехали", "ВНЖ Сербия", "Релокация Сербия", "Балканы", "Гайд Белград", "Чат Белграда", "Сербия Чат", "Белград Чат"],
+        "BG Intel": ["Белград", "Сербия", "Belgrade", "Serbia", "ВНЖ Сербия", "Релокация Сербия", "Балканы", "Гайд Белград", "Чат Белграда", "Сербия Чат", "Белград Чат"],
         "Crypto": ["Crypto", "Bitcoin", "Solana", "DEX", "Meme coins", "Crypto News", "Alpha", "DeFi", "Ethereum", "Trading Signals", "Binance News", "Crypto Gems", "NFT Alpha"],
         "BG - Rent": ["Аренда Белград", "Stanovi Beograd", "Rent Belgrade", "Белград Снять", "Nekretnine Srbija", "Izdavanje Beograd", "Apartments Belgrade", "Flat share Belgrade", "Smeštaj Beograd"],
         "BG - Cars": ["Авто Сербия", "Белград Машины", "Autopijaca", "Serbia Cars", "Prodaja auta Srbija", "Polovni automobili", "Auto oglasi Srbija", "Delovi Srbija", "Kupujem Prodajem Auto"],
