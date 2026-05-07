@@ -39,3 +39,13 @@ alembic/versions/__pycache__/
 .pytest_cache/
 htmlcov/
 .coverage
+
+# Generated data
+expansion_candidates.*
+scripts/check_*.py
+scripts/consolidated_progress.py
+scripts/convert_to_csv.py
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
