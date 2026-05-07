@@ -1,0 +1,112 @@
+:root {
+  /* Dark Serpentis Palette */
+  --bg-color: #020617;
+  --surface-color: #0f172a;
+  --surface-alt: #1e293b;
+  
+  --primary-emerald: #10b981;
+  --primary-glow: rgba(16, 185, 129, 0.4);
+  --secondary-forest: #064e3b;
+  --accent-venom: #f59e0b; /* Golden accent */
+  
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-color: rgba(16, 185, 129, 0.2);
+  
+  --font-family: 'Inter', -apple-system, sans-serif;
+  
+  /* Low Poly Sharpness */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 0px; /* Sharp corners for serpentis low poly */
+  
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  background-image: 
+    linear-gradient(135deg, rgba(2, 6, 23, 0.9), rgba(6, 78, 59, 0.8)),
+    url('/assets/bg.png');
+  background-size: cover;
+  background-attachment: fixed;
+  color: var(--text-main);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Serpentis Low Poly Utilities */
+.serpent-card {
+  background: var(--surface-color);
+  background-image: url('/assets/scales.png');
+  background-blend-mode: overlay;
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+  clip-path: polygon(5% 0, 100% 0, 100% 95%, 95% 100%, 0 100%, 0 5%); /* Faceted corners */
+  transition: var(--transition-fast);
+}
+
+.serpent-card:hover {
+  border-color: var(--primary-emerald);
+  box-shadow: 0 0 20px var(--primary-glow);
+  transform: translateY(-2px);
+}
+
+.serpent-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary-emerald), transparent);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary-emerald), var(--accent-venom));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.btn-venom {
+  background: linear-gradient(135deg, var(--secondary-forest), var(--bg-color));
+  border: 1px solid var(--primary-emerald);
+  color: var(--primary-emerald);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+  transition: var(--transition-fast);
+}
+
+.btn-venom:hover {
+  background: var(--primary-emerald);
+  color: var(--bg-color);
+  box-shadow: 0 0 15px var(--primary-glow);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-emerald);
+  border-radius: 0;
+}

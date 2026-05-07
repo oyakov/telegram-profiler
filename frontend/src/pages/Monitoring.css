@@ -1,0 +1,108 @@
+.monitoring-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.monitor-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+}
+
+.monitor-card .icon {
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.monitor-card .icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+.monitor-card .icon.yellow { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.monitor-card .icon.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.monitor-card .icon.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+
+.monitor-card .info {
+  display: flex;
+  flex-direction: column;
+}
+
+.monitor-card .label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.monitor-card .value {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.monitoring-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-xl);
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-xl);
+  margin-top: var(--spacing-md);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.blue { background: #3b82f6; }
+.dot.red { background: #ef4444; }
+
+.status-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+}
+
+.status-tag {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-tag.ok { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.status-tag.warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+
+@media (max-width: 1000px) {
+  .monitoring-charts {
+    grid-template-columns: 1fr;
+  }
+}
