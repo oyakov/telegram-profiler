@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.database import get_db
-from src.core.settings_service import SettingsService
+from src.core.config import SettingsService
 from src.core.config import get_settings
 from src.api.schemas import SettingUpdate
 

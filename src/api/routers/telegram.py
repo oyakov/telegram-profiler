@@ -11,7 +11,7 @@ from src.api.schemas import (
 )
 from src.connectors.telegram_connector import TelegramConnector
 from src.db.database import get_session
-from src.core.settings_service import SettingsService
+from src.core.config import SettingsService
 from src.db.models import TrackedFolder, TrackedChannel
 from src.pipeline.tasks import deep_sync_telegram
 

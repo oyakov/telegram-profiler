@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.connectors.base import BaseConnector, SyncResult
-from src.core.settings_service import SettingsService
+from src.core.config import SettingsService
 from src.db.database import get_session
 from src.db.models import Contact, SyncState
 

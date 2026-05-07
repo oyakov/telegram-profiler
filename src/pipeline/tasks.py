@@ -27,7 +27,7 @@ def sync_telegram(auto: bool = False, chat_ids: list[int] | None = None, limit: 
                   db_name: str | None = None):
     """Sync messages from Telegram."""
     from src.connectors.telegram_connector import TelegramConnector
-    from src.core.settings_service import SettingsService
+    from src.core.config import SettingsService
     from src.db.database import get_session
     from datetime import datetime, timezone
 

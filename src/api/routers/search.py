@@ -12,7 +12,7 @@ router = APIRouter(prefix="/search", tags=["Search"])
 @router.post("")
 async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)):
     """Semantic search across contacts and messages using embeddings."""
-    from src.ai.embeddings import generate_embedding
+    from src.ai.analysis import generate_embedding
 
     query_embedding = await generate_embedding(req.query)
 
