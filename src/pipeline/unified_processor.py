@@ -318,7 +318,7 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
         except Exception as e:
             logger.error("message_embedding_error", message_id=str(msg.id), error=str(e))
             stats["errors"] += 1
-    await session.flush()
+    await session.commit()
     return stats
 
 
