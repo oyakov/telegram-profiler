@@ -98,11 +98,15 @@ async def get_ai_monitoring_stats(db: AsyncSession = Depends(get_db)):
     
     # 4. Success rate over time (last 30 days)
     # This is a bit complex for a single query, but let's just return basic success counts
-    
-    # Estimating cost (rough estimate for gpt-4o or gemini)
-    # Gemini 1.5 Flash is effectively free/very cheap, but let's use a generic 1$ per 1M tokens as illustration
-    total_tokens = prompt_tokens + completion_tokens
-    estimated_cost_usd = (prompt_tokens / 1_000_000 * 0.15) + (completion_tokens / 1_000_000 * 0.60) # Gemini 1.5 Flash prices
+
+    # Estimating cost based on LLM provider
+    settings = get_settings()
+    if settings.llm_provider.lower() == "lmstudio":
+        # LMStudio is local, no costs
+        estimated_cost_usd = 0.0
+    else:
+        # Gemini pricing (prompt: $0.075/1M, completion: $0.30/1M)
+        estimated_cost_usd = (prompt_tokens / 1_000_000 * 0.075) + (completion_tokens / 1_000_000 * 0.30)
     
     return {
         "total_runs": total_runs,
