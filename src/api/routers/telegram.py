@@ -141,6 +141,65 @@ async def telegram_verify_2fa(req: TelegramTwoFA, request: Request):
         raise HTTPException(400, result.get("message", "2FA failed"))
     return result
 
+@router.get("/folders")
+async def telegram_list_folders(request: Request):
+    """List Telegram dialog filters (folders) with channel counts."""
+    db_name = request.headers.get("X-Database")
+    connector = TelegramConnector(db_name=db_name)
+    folders = await connector.list_telegram_folders()
+    return {"folders": folders}
+
+
+@router.post("/folders/import")
+async def telegram_import_folder(request: Request):
+    """Import channels from Telegram folder peers into a DB folder."""
+    from pydantic import BaseModel
+    from sqlalchemy import select
+    from src.db.database import get_session
+    from src.db.models import TrackedFolder, TrackedChannel
+
+    body = await request.json()
+    folder_id = body.get("folder_id")
+    peer_ids = body.get("peer_ids", [])
+    db_name = request.headers.get("X-Database")
+
+    if not folder_id or not peer_ids:
+        raise HTTPException(400, "folder_id and peer_ids are required")
+
+    connector = TelegramConnector(db_name=db_name)
+    channels = await connector.import_folder_channels(peer_ids)
+
+    added = 0
+    skipped = 0
+    async with get_session(db_name=db_name) as session:
+        res = await session.execute(select(TrackedFolder).where(TrackedFolder.id == folder_id))
+        folder = res.scalar_one_or_none()
+        if not folder:
+            raise HTTPException(404, "Folder not found")
+
+        for ch in channels:
+            existing = await session.execute(
+                select(TrackedChannel).where(TrackedChannel.telegram_id == ch["telegram_id"])
+            )
+            existing_chan = existing.scalar_one_or_none()
+            if existing_chan:
+                existing_chan.folder_id = folder.id
+                skipped += 1
+            else:
+                new_chan = TrackedChannel(
+                    folder_id=folder.id,
+                    telegram_id=ch["telegram_id"],
+                    title=ch["title"],
+                    username=ch["username"],
+                    entity_type=ch["entity_type"],
+                )
+                session.add(new_chan)
+                added += 1
+        await session.commit()
+
+    return {"status": "success", "added": added, "moved": skipped, "total": len(channels)}
+
+
 @router.post("/auth/logout")
 async def telegram_logout(request: Request):
     """Log out from Telegram."""

@@ -305,7 +305,9 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
     )
     result = await session.execute(query)
     messages = result.scalars().all()
-    if not messages: return stats
+    if not messages:
+        logger.info("no_messages_to_embed")
+        return stats
 
     for msg in messages:
         try:
@@ -318,7 +320,15 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
         except Exception as e:
             logger.error("message_embedding_error", message_id=str(msg.id), error=str(e))
             stats["errors"] += 1
-    await session.commit()
+
+    logger.info("embeddings_before_commit", processed=stats["processed"], errors=stats["errors"])
+    try:
+        await session.commit()
+        logger.info("embeddings_commit_success", processed=stats["processed"])
+    except Exception as e:
+        logger.error("embeddings_commit_failed", error=str(e), processed=stats["processed"])
+        raise
+
     return stats
 
 

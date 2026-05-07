@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { RefreshCcw, Search, ExternalLink, Plus, Phone, Trash2, Folder, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { RefreshCcw, Search, ExternalLink, Plus, Phone, Trash2, Folder, FolderOpen, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import './Tracking.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
@@ -72,6 +72,9 @@ const Tracking: React.FC = () => {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const [importingFolderId, setImportingFolderId] = useState<string | null>(null);
+  const [tgFolders, setTgFolders] = useState<any[]>([]);
+  const [tgFoldersLoading, setTgFoldersLoading] = useState(false);
   const [telegramPhone, setTelegramPhone] = useState('');
   const [telegramCode, setTelegramCode] = useState('');
   const [telegramPassword, setTelegramPassword] = useState('');
@@ -212,6 +215,38 @@ const Tracking: React.FC = () => {
       mutate();
     } catch (err: any) {
       alert('Error: ' + (err.response?.data?.detail || 'Failed to delete channel'));
+    }
+  };
+
+  const handleOpenImport = async (folderId: string) => {
+    setImportingFolderId(folderId);
+    setTgFoldersLoading(true);
+    setTgFolders([]);
+    try {
+      const res = await api.get('/api/telegram/folders');
+      setTgFolders(res.data.folders || []);
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Could not load Telegram folders'));
+      setImportingFolderId(null);
+    } finally {
+      setTgFoldersLoading(false);
+    }
+  };
+
+  const handleImportFromTg = async (folderId: string, tgFolder: any) => {
+    if (!window.confirm(`Import ${tgFolder.channel_count} channels from Telegram folder "${tgFolder.name}"?`)) return;
+    try {
+      const res = await api.post('/api/telegram/folders/import', {
+        folder_id: folderId,
+        peer_ids: tgFolder.peer_ids,
+      });
+      const { added, moved, total } = res.data;
+      alert(`Done: ${added} added, ${moved} moved to this folder (${total} total)`);
+      setImportingFolderId(null);
+      mutate();
+      mutateFolders();
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Import failed'));
     }
   };
 
@@ -633,25 +668,86 @@ const Tracking: React.FC = () => {
                     fontSize: '11px'
                   }}>{channels.length}</span>
                 </div>
-                <button
-                  onClick={e => { e.stopPropagation(); handleDeleteFolder(folder.id, folder.name); }}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '28px',
-                    height: '28px',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '4px',
-                    color: '#fca5a5',
-                    cursor: 'pointer'
-                  }}
-                  title="Delete folder"
-                >
-                  <Trash2 size={13} />
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); handleOpenImport(folder.id); }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                      padding: '4px 10px', height: '28px',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '4px', color: '#10b981', cursor: 'pointer', fontSize: '12px'
+                    }}
+                    title="Import channels from Telegram folder"
+                  >
+                    <Download size={12} /> Import
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); handleDeleteFolder(folder.id, folder.name); }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: '28px', height: '28px',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '4px', color: '#fca5a5', cursor: 'pointer'
+                    }}
+                    title="Delete folder"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
+
+              {/* Import modal */}
+              {importingFolderId === folder.id && (
+                <div style={{
+                  padding: '16px',
+                  borderBottom: isCollapsed ? 'none' : '1px solid rgba(148, 163, 184, 0.1)',
+                  background: 'rgba(16, 185, 129, 0.04)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600' }}>
+                      Select Telegram folder to import:
+                    </span>
+                    <button onClick={() => setImportingFolderId(null)} style={{
+                      background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '18px', lineHeight: 1
+                    }}>×</button>
+                  </div>
+                  {tgFoldersLoading ? (
+                    <div style={{ color: '#64748b', fontSize: '13px' }}>Loading Telegram folders...</div>
+                  ) : tgFolders.length === 0 ? (
+                    <div style={{ color: '#64748b', fontSize: '13px' }}>No Telegram folders found (or not authorized)</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {tgFolders.map((tf: any) => (
+                        <button
+                          key={tf.id}
+                          onClick={() => handleImportFromTg(folder.id, tf)}
+                          style={{
+                            padding: '6px 14px',
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            borderRadius: '6px',
+                            color: '#10b981',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            display: 'flex', alignItems: 'center', gap: '6px'
+                          }}
+                        >
+                          <Folder size={13} />
+                          {tf.name}
+                          <span style={{
+                            padding: '0 6px',
+                            background: 'rgba(16, 185, 129, 0.2)',
+                            borderRadius: '8px',
+                            fontSize: '11px'
+                          }}>{tf.channel_count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Channels Table */}
               {!isCollapsed && (
