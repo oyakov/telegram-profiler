@@ -54,36 +54,54 @@ class TelegramConnector(BaseConnector):
 
 
     async def is_authorized(self) -> bool:
-        async with self._get_client() as client:
+        client = self._get_client()
+        await client.connect()
+        try:
             return await client.is_user_authorized()
+        finally:
+            await client.disconnect()
 
     async def send_code_request(self, phone: str) -> str:
-        async with self._get_client() as client:
+        client = self._get_client()
+        await client.connect()
+        try:
             result = await client.send_code_request(phone)
             return result.phone_code_hash
+        finally:
+            await client.disconnect()
 
     async def sign_in(self, phone: str, code: str, phone_code_hash: str) -> dict:
         from telethon.errors import SessionPasswordNeededError
-        async with self._get_client() as client:
-            try:
-                await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
-                return {"status": "success"}
-            except SessionPasswordNeededError:
-                return {"status": "requires_2fa"}
-            except Exception as e:
-                return {"status": "error", "message": str(e)}
+        client = self._get_client()
+        await client.connect()
+        try:
+            await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+            return {"status": "success"}
+        except SessionPasswordNeededError:
+            return {"status": "requires_2fa"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+        finally:
+            await client.disconnect()
 
     async def sign_in_2fa(self, password: str) -> dict:
-        async with self._get_client() as client:
-            try:
-                await client.sign_in(password=password)
-                return {"status": "success"}
-            except Exception as e:
-                return {"status": "error", "message": str(e)}
+        client = self._get_client()
+        await client.connect()
+        try:
+            await client.sign_in(password=password)
+            return {"status": "success"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+        finally:
+            await client.disconnect()
 
     async def logout(self):
-        async with self._get_client() as client:
+        client = self._get_client()
+        await client.connect()
+        try:
             await client.log_out()
+        finally:
+            await client.disconnect()
 
     async def sync(self, chat_ids: list[int] | None = None, limit: int = 100, offset_date: datetime | None = None, **kwargs) -> SyncResult:
         result = SyncResult(connector=self.name, started_at=datetime.now(timezone.utc))

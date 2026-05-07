@@ -129,8 +129,11 @@ def process_unified_messages(limit: int = 50, db_name: str | None = None):
 def process_message_embeddings(limit: int = 100, db_name: str | None = None):
     """Generate embeddings for messages that don't have them."""
     from src.pipeline.unified_processor import maintenance_index_messages
+    logger.info("process_embeddings_task_started", limit=limit, db_name=db_name)
     async def _do():
-        return await maintenance_index_messages(batch_size=limit, db_name=db_name)
+        result = await maintenance_index_messages(batch_size=limit, db_name=db_name)
+        logger.info("process_embeddings_task_result", result=result, db_name=db_name)
+        return result
     return _run_async(_do())
 
 
@@ -168,20 +171,20 @@ def orchestrate_multi_db_sync():
     import asyncio
     from src.db.database import get_engine
     import sqlalchemy as sa
-    
+
     async def _get_dbs():
         engine = get_engine("postgres", use_pooling=False)
         async with engine.connect() as conn:
-            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm_%'"))
+            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm%' ORDER BY datname"))
             return [row[0] for row in res.fetchall()]
-    
+
     dbs = _run_async(_get_dbs())
     if not dbs:
-        dbs = ["crm"] # Fallback
-    
+        dbs = ["crm"]
+
     for db in dbs:
         sync_telegram.delay(auto=True, db_name=db)
-    
+
     return {"status": "dispatched", "databases": dbs}
 
 @celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_maintenance")
@@ -190,20 +193,20 @@ def orchestrate_multi_db_maintenance():
     import asyncio
     from src.db.database import get_engine
     import sqlalchemy as sa
-    
+
     async def _get_dbs():
         engine = get_engine("postgres", use_pooling=False)
         async with engine.connect() as conn:
-            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm_%'"))
+            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm%' ORDER BY datname"))
             return [row[0] for row in res.fetchall()]
-    
+
     dbs = _run_async(_get_dbs())
     if not dbs:
         dbs = ["crm"]
-        
+
     for db in dbs:
         process_contact_batch.delay(db_name=db)
-    
+
     return {"status": "dispatched", "databases": dbs}
 
 @celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_message_processing")
@@ -212,22 +215,22 @@ def orchestrate_multi_db_message_processing():
     import asyncio
     from src.db.database import get_engine
     import sqlalchemy as sa
-    
+
     async def _get_dbs():
         engine = get_engine("postgres", use_pooling=False)
         async with engine.connect() as conn:
-            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm_%'"))
+            res = await conn.execute(sa.text("SELECT datname FROM pg_database WHERE datname LIKE 'crm%' ORDER BY datname"))
             return [row[0] for row in res.fetchall()]
-    
+
     dbs = _run_async(_get_dbs())
     if not dbs:
         dbs = ["crm"]
-        
+
     for db in dbs:
         logger.info("dispatching_message_processing", db=db)
         process_unified_messages.delay(limit=200, db_name=db)
         process_message_embeddings.delay(limit=5000, db_name=db)
-    
+
     return {"status": "dispatched", "databases": dbs}
 
 

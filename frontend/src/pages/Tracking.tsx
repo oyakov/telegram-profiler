@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { RefreshCcw, Search, ExternalLink, Plus, Phone, Trash2 } from 'lucide-react';
+import { RefreshCcw, Search, ExternalLink, Plus, Phone, Trash2, Folder, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
 import './Tracking.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const Tracking: React.FC = () => {
   const { data, mutate } = useSWR('/api/tracking/channels', fetcher);
+  const { data: foldersData, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
   const { data: syncData, mutate: mutateSyncStatus } = useSWR('/api/connectors/status', fetcher, { refreshInterval: 2000 });
   const [searchTerm, setSearchTerm] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [newFolderName, setNewFolderName] = useState('');
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [telegramPhone, setTelegramPhone] = useState('');
   const [telegramCode, setTelegramCode] = useState('');
   const [telegramPassword, setTelegramPassword] = useState('');
