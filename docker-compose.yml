@@ -221,18 +221,6 @@ services:
     networks:
       - crm-net
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: crm-grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
-    networks:
-      - crm-net
-
 volumes:
   pgdata:
   redisdata:
@@ -240,7 +228,6 @@ volumes:
   session_data:
   opensearch_data:
   prometheus_data:
-  grafana_data:
 
 networks:
   crm-net:
