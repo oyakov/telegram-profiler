@@ -132,6 +132,19 @@ async def get_embeddings_stats(db: AsyncSession = Depends(get_db)):
         "progress_percent": round((messages_with_embeddings / total_messages * 100) if total_messages > 0 else 0, 1)
     }
 
+@router.post("/embeddings/reindex")
+async def reindex_embeddings_endpoint(db: AsyncSession = Depends(get_db)):
+    """Trigger embeddings reindexing via Celery task."""
+    from src.pipeline.celery_app import app as celery_app
+
+    task = celery_app.send_task('src.pipeline.tasks.reindex_embeddings', queue='processing')
+
+    return {
+        "status": "queued",
+        "task_id": task.id,
+        "message": "Embeddings reindexing started. Check task status for progress."
+    }
+
 @router.get("/workers")
 async def get_workers_status():
     """Get Celery workers status."""

@@ -15,9 +15,10 @@ A sophisticated personal CRM and market intelligence tool powered by Telegram, A
 - **Backend**: FastAPI (Python 3.12)
 - **Database**: PostgreSQL with `pgvector`
 - **Background Tasks**: Celery + Redis
-- **Frontend**: React + TypeScript (Vite)
+- **Frontend**: React + TypeScript (Vite) — modern dashboard with semantic search, embeddings management, and real-time monitoring
 - **AI**: Google Gemini (Direct or OpenAI-compat) / LM Studio
 - **ASR**: Whisper (for voice notes)
+- **Observability**: Prometheus, OpenSearch + Grafana (optional)
 
 ## Getting Started
 

@@ -16,7 +16,7 @@ COPY . .
 # Make entrypoint executable
 RUN chmod +x scripts/entrypoint.sh
 
-EXPOSE 8000 8501
+EXPOSE 8000
 
 # Default command (can be overridden in docker-compose.yml)
 CMD ["scripts/entrypoint.sh"]

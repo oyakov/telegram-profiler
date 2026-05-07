@@ -385,3 +385,81 @@
     font-size: 1.1rem;
   }
 }
+
+/* Evidence/Quotes Section */
+.evidence-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(16, 185, 129, 0.1);
+}
+
+.evidence-header {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(16, 185, 129, 0.7);
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.evidence-quotes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.evidence-quote {
+  background: rgba(16, 185, 129, 0.05);
+  border-left: 3px solid rgba(16, 185, 129, 0.3);
+  padding: 10px 12px;
+  border-radius: 6px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.evidence-quote:hover {
+  background: rgba(16, 185, 129, 0.08);
+  border-left-color: rgba(16, 185, 129, 0.5);
+}
+
+.quote-mark {
+  font-size: 1.5rem;
+  color: rgba(16, 185, 129, 0.3);
+  position: absolute;
+  top: -2px;
+  left: 4px;
+  font-weight: bold;
+}
+
+.evidence-quote p {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: rgba(248, 250, 252, 0.8);
+  margin: 0;
+  padding-left: 12px;
+  word-break: break-word;
+}
+
+.evidence-relevance {
+  font-size: 0.7rem;
+  color: rgba(16, 185, 129, 0.6);
+  font-weight: 600;
+  display: block;
+  margin-top: 4px;
+  padding-left: 12px;
+}
+
+/* Search Type Badge */
+.search-type-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(16, 185, 129, 0.7);
+  background: rgba(16, 185, 129, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 6px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
