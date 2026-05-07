@@ -93,6 +93,22 @@ const Search: React.FC = () => {
                       <div className="similarity-bar">
                         <div className="bar-fill" style={{ width: `${c.similarity * 100}%` }}></div>
                       </div>
+
+                      {/* Evidence quotes */}
+                      {c.evidence && c.evidence.length > 0 && (
+                        <div className="evidence-section">
+                          <div className="evidence-header">Подтверждение:</div>
+                          <div className="evidence-quotes">
+                            {c.evidence.map((quote: any, idx: number) => (
+                              <div key={idx} className="evidence-quote">
+                                <span className="quote-mark">"</span>
+                                <p>{quote.text}</p>
+                                <span className="evidence-relevance">совпадение: {(quote.relevance * 100).toFixed(0)}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
