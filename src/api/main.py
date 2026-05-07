@@ -11,8 +11,8 @@ import time
 import uuid
 
 from src.api.routers import (
-    contacts, messages, telegram, leads, 
-    search, system, settings, connectors, upload, tracking
+    contacts, messages, telegram, leads,
+    search, system, settings, pipeline, tracking
 )
 import structlog
 from src.core.logging import setup_logging
@@ -72,8 +72,7 @@ app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(search.router, prefix=API_PREFIX)
 app.include_router(system.router, prefix=API_PREFIX)
 app.include_router(settings.router, prefix=API_PREFIX)
-app.include_router(connectors.router, prefix=API_PREFIX)
-app.include_router(upload.router, prefix=API_PREFIX)
+app.include_router(pipeline.router, prefix=API_PREFIX)
 app.include_router(tracking.router, prefix=API_PREFIX)
 
 @app.get("/")
