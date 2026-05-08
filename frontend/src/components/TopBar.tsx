@@ -1,80 +1,227 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { NavLink } from 'react-router-dom';
 import useSWR from 'swr';
-import { ChevronDown, Check, LayoutGrid, MessageCircle } from 'lucide-react';
-import { getDatabase, setDatabase } from '../services/api';
+import { 
+  Database, 
+  LogOut, 
+  ChevronRight, 
+  Phone, 
+  Key, 
+  Lock,
+  Loader2
+} from 'lucide-react';
 import api from '../services/api';
 import './TopBar.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const TopBar: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentDb, setCurrentDb] = useState(getDatabase());
-  const { data: telegramStatus } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 5000 });
-  const { data: projectsData } = useSWR('/api/projects', fetcher);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Telegram Auth State
+  const [telegramPhone, setTelegramPhone] = useState('');
+  const [telegramCode, setTelegramCode] = useState('');
+  const [telegramPassword, setTelegramPassword] = useState('');
+  const [telegramStep, setTelegramStep] = useState<'phone' | 'code' | 'password'>('phone');
+  const [telegramPhoneHash, setTelegramPhoneHash] = useState('');
+  const [telegramLoading, setTelegramLoading] = useState(false);
+  
+  const { data: telegramStatus, mutate: mutateStatus } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 5000 });
+  const { data: telegramUser } = useSWR(telegramStatus?.authorized ? '/api/telegram/user' : null, fetcher);
 
-  const projects = (projectsData || []).map((p: { name: string, db_name: string, description?: string }) => ({
-    id: p.db_name,
-    label: p.name,
-    description: p.description
-  }));
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  // Ensure 'crm' is always available as a fallback if no projects are loaded
-  if (projects.length === 0) {
-    projects.push({ id: 'crm', label: '🇷🇸 Belgrade Intel', description: 'General intelligence' });
-  }
+  const handleSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTelegramLoading(true);
+    try {
+      const res = await api.post('/api/telegram/auth/send_code', { phone: telegramPhone });
+      setTelegramPhoneHash(res.data.phone_code_hash);
+      setTelegramStep('code');
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Failed to send code'));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
 
-  const handleSelect = (id: string) => {
-    setDatabase(id);
-    setCurrentDb(id);
-    setIsOpen(false);
-    window.location.reload(); // Hard reload to clear all SWR caches and reset context
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTelegramLoading(true);
+    try {
+      const res = await api.post('/api/telegram/auth/verify', {
+        phone: telegramPhone,
+        code: telegramCode,
+        phone_code_hash: telegramPhoneHash,
+      });
+      if (res.data.status === 'requires_2fa') {
+        setTelegramStep('password');
+      } else {
+        await mutateStatus();
+        setTelegramPhone('');
+        setTelegramCode('');
+      }
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Verification failed'));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTelegramLoading(true);
+    try {
+      await api.post('/api/telegram/auth/2fa', { password: telegramPassword });
+      await mutateStatus();
+      setTelegramPhone('');
+      setTelegramCode('');
+      setTelegramPassword('');
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || '2FA failed'));
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Disconnect Telegram?')) return;
+    setTelegramLoading(true);
+    try {
+      await api.post('/api/telegram/auth/logout');
+      await mutateStatus();
+      setTelegramStep('phone');
+      setTelegramPhone('');
+      setTelegramCode('');
+      setTelegramPassword('');
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.detail || 'Logout failed'));
+    } finally {
+      setTelegramLoading(false);
+    }
   };
 
   return (
     <header className="top-bar">
-      <div className="project-switcher-container">
-        <button className="switcher-btn" onClick={() => setIsOpen(!isOpen)}>
-          <LayoutGrid size={18} className="text-secondary" />
-          <span className="current-project-label">
-            {projects.find((p: { id: string, label: string }) => p.id === currentDb)?.label || currentDb}
-          </span>
-          <ChevronDown size={16} className={`chevron ${isOpen ? 'open' : ''}`} />
-        </button>
-
-        {isOpen && (
-          <div className="project-menu serpent-card">
-            {projects.map((project: { id: string, label: string, description?: string }) => (
-              <div 
-                key={project.id} 
-                className={`project-item ${currentDb === project.id ? 'active' : ''}`}
-                onClick={() => handleSelect(project.id)}
-              >
-                <div className="project-item-info">
-                  <span className="project-label">{project.label}</span>
-                  <span className="project-desc">{project.description}</span>
-                </div>
-                {currentDb === project.id && <Check size={16} className="check-icon" />}
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="top-bar-left">
+        <NavLink to="/projects" className="top-nav-link">
+          <Database size={18} />
+          <span>Проекты</span>
+        </NavLink>
       </div>
 
       <div className="header-right">
         {telegramStatus?.authorized && (
-          <div className="telegram-status" title="Telegram connected">
-            <MessageCircle size={16} style={{ color: '#10b981' }} />
-            <span className="status-text" style={{ color: '#10b981' }}>Telegram</span>
-            <span className="pulse-dot" style={{ backgroundColor: '#10b981' }}></span>
+          <div className="telegram-status-chip" title="Telegram connected">
+            <div className="status-dot online"></div>
+            <span>Telegram</span>
           </div>
         )}
-        <div className="search-status">
-          <span className="pulse-dot"></span>
-          <span className="status-text">System Online</span>
+        
+        <div className="system-status">
+          <div className="status-dot online"></div>
+          <span>System Online</span>
         </div>
-        <div className="user-profile">
-          <div className="avatar">O</div>
+
+        <div className="profile-container" ref={dropdownRef}>
+          <button 
+            className={`profile-trigger ${profileOpen ? 'active' : ''}`}
+            onClick={() => setProfileOpen(!profileOpen)}
+          >
+            <div className="avatar-wrapper">
+              {telegramUser?.photo_url ? (
+                <img src={telegramUser.photo_url} alt="Profile" className="avatar-img" />
+              ) : (
+                <div className="avatar-placeholder">{telegramUser?.first_name?.[0] || 'O'}</div>
+              )}
+            </div>
+          </button>
+
+          {profileOpen && (
+            <div className="profile-dropdown serpent-card">
+              <div className="dropdown-header">
+                <h3>Аккаунт</h3>
+                <p>{telegramStatus?.authorized ? 'Telegram подключен' : 'Требуется авторизация'}</p>
+              </div>
+
+              <div className="dropdown-content">
+                {telegramStatus?.authorized ? (
+                  <div className="user-info-section">
+                    <div className="user-details">
+                      <div className="user-name">
+                        {telegramUser?.first_name} {telegramUser?.last_name}
+                      </div>
+                      <div className="user-phone">{telegramUser?.phone}</div>
+                    </div>
+                    <button className="disconnect-btn" onClick={handleDisconnect} disabled={telegramLoading}>
+                      <LogOut size={16} />
+                      <span>Отключить</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="auth-form-section">
+                    <form onSubmit={
+                      telegramStep === 'phone' ? handleSendCode :
+                      telegramStep === 'code' ? handleVerifyCode :
+                      handleVerify2FA
+                    }>
+                      {telegramStep === 'phone' && (
+                        <div className="auth-input-group">
+                          <label><Phone size={14} /> Номер телефона</label>
+                          <input 
+                            type="tel" 
+                            placeholder="+7..." 
+                            value={telegramPhone}
+                            onChange={e => setTelegramPhone(e.target.value)}
+                            autoFocus
+                          />
+                        </div>
+                      )}
+                      {telegramStep === 'code' && (
+                        <div className="auth-input-group">
+                          <label><Key size={14} /> Код подтверждения</label>
+                          <input 
+                            type="text" 
+                            placeholder="12345" 
+                            value={telegramCode}
+                            onChange={e => setTelegramCode(e.target.value)}
+                            autoFocus
+                          />
+                        </div>
+                      )}
+                      {telegramStep === 'password' && (
+                        <div className="auth-input-group">
+                          <label><Lock size={14} /> 2FA Пароль</label>
+                          <input 
+                            type="password" 
+                            placeholder="Пароль" 
+                            value={telegramPassword}
+                            onChange={e => setTelegramPassword(e.target.value)}
+                            autoFocus
+                          />
+                        </div>
+                      )}
+                      
+                      <button type="submit" className="auth-submit-btn" disabled={telegramLoading}>
+                        {telegramLoading ? <Loader2 size={16} className="spin" /> : 'Продолжить'}
+                        <ChevronRight size={16} />
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>

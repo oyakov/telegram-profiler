@@ -1,14 +1,32 @@
 import React from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { Users, MessageSquare, Radio, Mic } from 'lucide-react';
+import { Users, MessageSquare, Radio, Mic, Activity, CheckCircle2, AlertCircle } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area 
+  AreaChart, Area 
 } from 'recharts';
 import './Dashboard.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
+
+// Status Indicator Component (Moved from Monitoring)
+const StatusIndicator: React.FC<{ status: 'ok' | 'warning' | 'error' | 'processing' }> = ({ status }) => {
+  const config = {
+    ok: { color: '#10b981', icon: CheckCircle2, label: 'OK' },
+    warning: { color: '#f59e0b', icon: AlertCircle, label: 'Warning' },
+    error: { color: '#ef4444', icon: AlertCircle, label: 'Error' },
+    processing: { color: '#3b82f6', icon: Activity, label: 'Processing' }
+  };
+
+  const { color, icon: Icon, label } = config[status];
+  return (
+    <div className="status-indicator" style={{ borderColor: color }}>
+      <Icon size={16} style={{ color }} />
+      <span className="status-label">{label}</span>
+    </div>
+  );
+};
 
 const MetricCard: React.FC<{ title: string, value: string | number, icon: React.ReactNode, trend?: string }> = ({ title, value, icon, trend }) => (
   <div className="metric-card serpent-card">
@@ -34,17 +52,10 @@ const Dashboard: React.FC = () => {
   const chartData = stats.contacts_by_source ? 
     Object.entries(stats.contacts_by_source).map(([name, value]) => ({ name, value })) : [];
 
-  const pieData = [
-    { name: 'Contacts', value: stats.total_contacts || 0 },
-    { name: 'Leads', value: stats.total_leads || 0 },
-  ];
-
-  const COLORS = ['#10b981', '#064e3b', '#f59e0b', '#065f46'];
-
   return (
     <div className="dashboard-page">
       <div className="page-header">
-        <h1 className="text-gradient">Обзор Проекта</h1>
+        <h1 className="text-gradient">Обзор</h1>
         <p className="text-secondary">Сводная аналитика по всем источникам данных</p>
       </div>
 
@@ -121,6 +132,32 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* System Status Widget */}
+        <div className="chart-container serpent-card">
+          <h3>🕒 Статус компонентов</h3>
+          <div className="status-list">
+            <div className="status-item">
+              <div className="status-name">Database</div>
+              <StatusIndicator status="ok" />
+            </div>
+            <div className="status-item">
+              <div className="status-name">Vector Engine</div>
+              <StatusIndicator status="ok" />
+            </div>
+            <div className="status-item">
+              <div className="status-name">Pipeline</div>
+              <StatusIndicator status="processing" />
+            </div>
+            <div className="status-item">
+              <div className="status-name">Embedding Service</div>
+              <StatusIndicator status="processing" />
+            </div>
+          </div>
+          <div className="auto-refresh-note">
+            🔄 Обновляется автоматически
+          </div>
+        </div>
+
         <div className="chart-container serpent-card">
           <h3>📊 Активность по источникам</h3>
           <div style={{ width: '100%', height: 300 }}>
@@ -135,30 +172,6 @@ const Dashboard: React.FC = () => {
                 />
                 <Bar dataKey="value" fill="#10b981" />
               </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="chart-container glass">
-          <h3>📈 Распределение аудитории</h3>
-          <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {pieData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                   contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#f8fafc' }}
-                />
-              </PieChart>
             </ResponsiveContainer>
           </div>
         </div>

@@ -10,6 +10,7 @@ import Leads from './pages/Leads';
 import Contacts from './pages/Contacts';
 import Settings from './pages/Settings';
 import Projects from './pages/Projects';
+import Audit from './pages/Audit';
 import './App.css';
 
 const App: React.FC = () => {
@@ -25,6 +26,7 @@ const App: React.FC = () => {
               <Route path="/projects" element={<Projects />} />
               <Route path="/tracking" element={<Tracking />} />
               <Route path="/monitoring" element={<Monitoring />} />
+              <Route path="/audit" element={<Audit />} />
               <Route path="/search" element={<Search />} />
               <Route path="/leads" element={<Leads />} />
               <Route path="/contacts" element={<Contacts />} />

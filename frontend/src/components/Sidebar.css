@@ -56,20 +56,153 @@
 }
 
 .sidebar-footer {
-  padding: 1.5rem;
+  padding: 1rem;
   border-top: 1px solid var(--border-color);
+  background: rgba(2, 6, 23, 0.4);
 }
 
-.db-badge {
+.project-switcher {
+  position: relative;
+}
+
+.db-switcher-btn {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
   background: var(--surface-alt);
-  padding: 0.5rem 1rem;
-  border-radius: 0;
-  font-size: 0.75rem;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  clip-path: polygon(0 0, 95% 0, 100% 20%, 100% 100%, 5% 100%, 0 80%);
+}
+
+.db-switcher-btn:hover {
+  border-color: var(--primary-emerald);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.db-switcher-btn.open {
+  border-color: var(--primary-emerald);
+  box-shadow: 0 0 15px var(--primary-glow);
+}
+
+.db-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.db-icon {
   color: var(--primary-emerald);
+}
+
+.db-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.db-label {
+  font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 1px;
-  border: 1px solid var(--border-color);
+  color: var(--text-muted);
 }
+
+.db-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary-emerald);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.db-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 260px;
+  z-index: 200;
+  overflow: hidden;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.db-menu-header {
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(2, 6, 23, 0.8);
+}
+
+.db-menu-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.db-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.db-menu-item:hover {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.db-menu-item.active {
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.db-menu-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.db-menu-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.db-menu-item.active .db-menu-label {
+  color: var(--primary-emerald);
+}
+
+.db-menu-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.db-menu-item .check-icon {
+  color: var(--primary-emerald);
+}
+
+.chevron {
+  transition: transform 0.3s ease;
+  color: var(--text-muted);
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+  color: var(--primary-emerald);
+}
+
