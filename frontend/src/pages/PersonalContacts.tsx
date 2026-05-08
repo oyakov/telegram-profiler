@@ -12,6 +12,7 @@ const PersonalContacts: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isSyncingContacts, setIsSyncingContacts] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
 
   const queryParams = new URLSearchParams();
@@ -60,6 +61,25 @@ const PersonalContacts: React.FC = () => {
     }
   };
 
+  const handleSyncContacts = async () => {
+    setIsSyncingContacts(true);
+    setStatusMessage('Синхронизация контактов из Telegram...');
+
+    try {
+      const response = await api.post('/api/telegram/contacts/sync');
+      setStatusMessage(`✓ Синхронизировано: +${response.data.added} контактов, обновлено: ${response.data.updated}`);
+      // Refresh the contacts list
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      setStatusMessage('Ошибка при синхронизации контактов');
+      console.error(err);
+    } finally {
+      setIsSyncingContacts(false);
+    }
+  };
+
   const handleFetchHistory = async () => {
     if (selectedIds.size === 0) {
       setStatusMessage('Выберите хотя бы один контакт');
@@ -93,25 +113,44 @@ const PersonalContacts: React.FC = () => {
           <h1 className="text-gradient">Мои Контакты</h1>
           <p className="text-secondary">Всего: {total} контактов</p>
         </div>
-        {selectedIds.size > 0 && (
+        <div className="header-buttons">
           <button
-            onClick={handleFetchHistory}
-            disabled={isLoadingHistory}
-            className="btn-fetch-history"
+            onClick={handleSyncContacts}
+            disabled={isSyncingContacts}
+            className="btn-sync"
           >
-            {isLoadingHistory ? (
+            {isSyncingContacts ? (
               <>
                 <Loader size={16} className="spinner" />
-                Загрузка...
+                Синхронизация...
               </>
             ) : (
               <>
                 <Download size={16} />
-                Получить историю ({selectedIds.size})
+                Синхронизировать
               </>
             )}
           </button>
-        )}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleFetchHistory}
+              disabled={isLoadingHistory}
+              className="btn-fetch-history"
+            >
+              {isLoadingHistory ? (
+                <>
+                  <Loader size={16} className="spinner" />
+                  Загрузка...
+                </>
+              ) : (
+                <>
+                  <Download size={16} />
+                  Получить историю ({selectedIds.size})
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {statusMessage && (

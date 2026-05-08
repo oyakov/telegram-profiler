@@ -1,0 +1,188 @@
+{
+  "scenario": "C:\\Projects\\solana-dex-bmv\\data\\scenarios\\pump_and_dump.csv",
+  "ticks": [
+    {
+      "timestamp": 1710892800,
+      "price": 50.444,
+      "pivot": 50.444,
+      "buy_levels": [],
+      "sell_levels": [],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.001,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892860,
+      "price": 50.992831,
+      "pivot": 50.992831,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 52.020375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.1780125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.33565,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.4932875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.650925,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.8085625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.9662,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.002,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892920,
+      "price": 51.611884,
+      "pivot": 50.6299679732693,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 52.020375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.1780125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.33565,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.4932875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.650925,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.8085625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.9662,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.003,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892980,
+      "price": 52.148647,
+      "pivot": 52.148647,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 52.020375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.1780125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.33565,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.4932875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.650925,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.8085625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 52.9662,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 4.844869504375,
+      "total_fees_paid": 0.004005,
+      "attack_impact": null
+    }
+  ],
+  "summary": {
+    "initial_capital": 1000.0,
+    "total_realized_pnl": 4.844869504375,
+    "total_unrealized_pnl": 0.0,
+    "total_fees_paid": 0.004005,
+    "max_drawdown": 0.003,
+    "max_drawdown_percent": 0.0003,
+    "max_drawdown_duration": 3,
+    "sharpe_ratio": 9.157584489841192,
+    "sortino_ratio": 0.0,
+    "trade_count": 1,
+    "buy_count": 0,
+    "sell_count": 1,
+    "volume_sol": 3.125,
+    "duration_seconds": 180,
+    "start_price": 50.444,
+    "end_price": 52.148647,
+    "equity_curve": [
+      1000.0,
+      999.999,
+      999.998,
+      999.997,
+      1004.840864504375
+    ],
+    "win_rate": 0.25,
+    "profit_factor": 1614.6215014583333,
+    "expectancy": 1.21021612609375,
+    "max_adverse_excursion": 0.001,
+    "max_favorable_excursion": 4.843864504375,
+    "value_at_risk_95": -1e-6
+  }
+}

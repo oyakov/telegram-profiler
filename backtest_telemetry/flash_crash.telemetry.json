@@ -1,0 +1,1802 @@
+{
+  "scenario": "C:\\Projects\\solana-dex-bmv\\data\\scenarios\\flash_crash.csv",
+  "ticks": [
+    {
+      "timestamp": 1710892800,
+      "price": 179.635,
+      "pivot": 179.635,
+      "buy_levels": [],
+      "sell_levels": [],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.001,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892860,
+      "price": 179.885,
+      "pivot": 179.885,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.002,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892920,
+      "price": 180.36,
+      "pivot": 179.6896276120815,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.003,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892980,
+      "price": 180.835,
+      "pivot": 179.8161291491655,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.004,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893040,
+      "price": 181.29,
+      "pivot": 179.9722580710519,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.005,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893100,
+      "price": 181.165,
+      "pivot": 180.1686856968541,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.006,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893160,
+      "price": 180.845,
+      "pivot": 180.291340246489,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.007,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893220,
+      "price": 180.875,
+      "pivot": 180.355874261604,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.008,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893280,
+      "price": 180.6,
+      "pivot": 180.6,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.009,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893340,
+      "price": 180.735,
+      "pivot": 180.735,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.01,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893400,
+      "price": 180.665,
+      "pivot": 180.665,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.011,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893460,
+      "price": 180.9,
+      "pivot": 180.9,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.012,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893520,
+      "price": 181.11,
+      "pivot": 181.11,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.013,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893580,
+      "price": 181.28,
+      "pivot": 181.28,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.014,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893640,
+      "price": 180.915,
+      "pivot": 180.915,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.015,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893700,
+      "price": 180.8,
+      "pivot": 180.8,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.016,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893760,
+      "price": 181.015,
+      "pivot": 181.015,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.017,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893820,
+      "price": 180.725,
+      "pivot": 180.725,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.018,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893880,
+      "price": 180.74,
+      "pivot": 180.74,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.019,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710893940,
+      "price": 181.2,
+      "pivot": 181.2,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.02,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894000,
+      "price": 181.635,
+      "pivot": 181.635,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.021,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894060,
+      "price": 181.665,
+      "pivot": 181.665,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.022,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894120,
+      "price": 181.265,
+      "pivot": 181.265,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.023,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894180,
+      "price": 180.905,
+      "pivot": 180.905,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.024,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894240,
+      "price": 181.22,
+      "pivot": 181.22,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.025,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894300,
+      "price": 180.72,
+      "pivot": 180.72,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.026,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894360,
+      "price": 180.405,
+      "pivot": 180.405,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.027,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894420,
+      "price": 180.67,
+      "pivot": 180.67,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.028,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894480,
+      "price": 180.21,
+      "pivot": 180.21,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.029,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894540,
+      "price": 180.05,
+      "pivot": 180.05,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.03,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894600,
+      "price": 169.247,
+      "pivot": 169.247,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.031,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894660,
+      "price": 158.444,
+      "pivot": 180.7124190557994,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.032,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894720,
+      "price": 147.641,
+      "pivot": 180.6854541494291,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.033,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894780,
+      "price": 136.838,
+      "pivot": 180.6472483328375,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.034,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894840,
+      "price": 126.035,
+      "pivot": 178.8252989904495,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.035,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894900,
+      "price": 126.389158,
+      "pivot": 175.1273252076079,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 185.24859375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 185.809953125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.3713125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 186.932671875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 187.49403125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.055390625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 188.61675,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.036,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710894960,
+      "price": 126.525659,
+      "pivot": 126.525659,
+      "buy_levels": [
+        {
+          "price": 174.032779425,
+          "size": 0.019211142289138165,
+          "side": "buy"
+        },
+        {
+          "price": 173.7591429794,
+          "size": 0.034580056120448704,
+          "side": "buy"
+        },
+        {
+          "price": 173.4855065337,
+          "size": 0.06224410101680766,
+          "side": "buy"
+        },
+        {
+          "price": 173.2118700881,
+          "size": 0.1120393818302538,
+          "side": "buy"
+        },
+        {
+          "price": 172.9382336425,
+          "size": 0.2016708872944568,
+          "side": "buy"
+        },
+        {
+          "price": 172.6645971968,
+          "size": 0.3630075971300223,
+          "side": "buy"
+        },
+        {
+          "price": 172.3909607512,
+          "size": 0.6534136748340401,
+          "side": "buy"
+        },
+        {
+          "price": 172.1173243056,
+          "size": 1.1761446147012722,
+          "side": "buy"
+        },
+        {
+          "price": 171.8436878599,
+          "size": 2.11706030646229,
+          "side": "buy"
+        },
+        {
+          "price": 171.5700514143,
+          "size": 3.810708551632122,
+          "side": "buy"
+        },
+        {
+          "price": 171.2964149686,
+          "size": 6.859275392937819,
+          "side": "buy"
+        },
+        {
+          "price": 171.022778523,
+          "size": 12.346695707288076,
+          "side": "buy"
+        },
+        {
+          "price": 170.7491420774,
+          "size": 22.224052273118534,
+          "side": "buy"
+        }
+      ],
+      "sell_levels": [],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 422.81971464020063,
+      "total_fees_paid": 0.037065,
+      "attack_impact": null
+    }
+  ],
+  "summary": {
+    "initial_capital": 1000.0,
+    "total_realized_pnl": 422.81971464020063,
+    "total_unrealized_pnl": 0.0,
+    "total_fees_paid": 0.037065,
+    "max_drawdown": 0.036,
+    "max_drawdown_percent": 0.0036,
+    "max_drawdown_duration": 36,
+    "sharpe_ratio": 2.6455197872964953,
+    "sortino_ratio": 0.0,
+    "trade_count": 13,
+    "buy_count": 13,
+    "sell_count": 0,
+    "volume_sol": 49.9801036861,
+    "duration_seconds": 2160,
+    "start_price": 179.635,
+    "end_price": 126.525659,
+    "equity_curve": [
+      1000.0,
+      999.999,
+      999.998,
+      999.997,
+      999.996,
+      999.995,
+      999.994,
+      999.993,
+      999.992,
+      999.991,
+      999.99,
+      999.989,
+      999.988,
+      999.987,
+      999.986,
+      999.985,
+      999.984,
+      999.983,
+      999.982,
+      999.981,
+      999.98,
+      999.979,
+      999.978,
+      999.977,
+      999.976,
+      999.975,
+      999.974,
+      999.973,
+      999.972,
+      999.971,
+      999.97,
+      999.969,
+      999.968,
+      999.967,
+      999.966,
+      999.965,
+      999.964,
+      1422.7826496402006
+    ],
+    "win_rate": 0.027027027027027025,
+    "profit_factor": 11744.962490005573,
+    "expectancy": 11.426558098383799,
+    "max_adverse_excursion": 0.001,
+    "max_favorable_excursion": 422.81864964020065,
+    "value_at_risk_95": -1e-6
+  }
+}

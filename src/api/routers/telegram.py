@@ -211,3 +211,13 @@ async def telegram_logout(request: Request):
     except Exception as e:
         raise HTTPException(400, f"Logout failed: {str(e)}")
 
+@router.post("/contacts/sync")
+async def telegram_sync_contacts(request: Request):
+    """Fetch and sync contacts from Telegram account."""
+    db_name = request.headers.get("X-Database")
+    connector = TelegramConnector(db_name=db_name)
+    result = await connector.sync_contacts()
+    if result["status"] == "error":
+        raise HTTPException(400, result.get("error", "Failed to sync contacts"))
+    return result
+

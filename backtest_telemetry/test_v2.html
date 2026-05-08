@@ -1,0 +1,264 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backtest Report: data/scenarios/test_v2.json</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            padding: 12px;
+            border-radius: 6px;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #8b949e;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #58a6ff;
+        }
+        .positive { color: #3fb950 !important; }
+        .negative { color: #f85149 !important; }
+        
+        .chart-container {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            padding: 10px;
+        }
+        .chart {
+            width: 100%;
+            height: 450px;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #8b949e;
+            text-align: center;
+        }
+        .attack-summary {
+            margin-top: 20px;
+            background: #1c2128;
+            border: 1px solid #ff7b72;
+            padding: 15px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Backtest: data/scenarios/test_v2.json</h1>
+        <div>Generated: 2026-04-30 03:26:34</div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-label">Total Realized PnL</div>
+            <div class="stat-value positive">0.0000 SOL</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Max Drawdown</div>
+            <div class="stat-value negative">0.0000 SOL</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Win Rate</div>
+            <div class="stat-value">100.0%</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Expectancy</div>
+            <div class="stat-value">0.0000</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg Counter-Attack Eff.</div>
+            <div class="stat-value" id="avg-eff">N/A</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <div id="main-chart" class="chart"></div>
+    </div>
+    
+    <div class="chart-container">
+        <div id="pnl-chart" class="chart"></div>
+    </div>
+
+    <div class="chart-container" id="eff-container" style="display:none;">
+        <div id="eff-chart" class="chart"></div>
+    </div>
+
+    <div class="footer">
+        Solana DEX BMV Adversarial Analysis Suite v2.1
+    </div>
+
+    <script>
+        const timestamps = ["2024-03-20 01:00:00", "2024-03-20 01:01:00", "2024-03-20 01:02:00"];
+        const prices = [100.0, 80.0, 120.0];
+        const pivots = [100.3762227238525, 86.5582257956764, 113.1479869350342];
+        const buyTimes = ["2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00"];
+        const buyPrices = [96.6121143717, 95.6710872836, 94.7300601956, 93.7890331075, 92.8480060195, 91.9069789315, 90.9659518434, 90.0249247554, 89.0838976674, 88.1428705793, 87.2018434913, 86.2608164033, 85.3197893152, 77.0331794305, 76.252437747, 75.4716960636, 74.6909543802, 73.9102126968, 73.1294710134, 72.3487293299, 71.5679876465, 70.7872459631];
+        const sellTimes = ["2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:01:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00", "2024-03-20 01:02:00"];
+        const sellPrices = [104.1403310759, 106.022385252, 107.9044394281, 109.7864936042, 111.6685477802, 113.5506019563, 115.4326561324, 117.3147103085, 119.1967644845, 121.0788186606, 122.9608728367, 124.8429270127, 126.7249811888, 128.6070353649, 130.489089541, 84.8405962646, 86.4020796315, 87.9635629983, 89.5250463651, 91.086529732, 92.6480130988, 94.2094964656, 95.7709798325, 97.3324631993, 98.8939465661, 100.455429933, 102.0169132998, 103.5783966666, 105.1398800335, 106.7013634003, 108.2628467671];
+        const totalPnl = [0.0, 0.0, 0.0];
+        const attackPoints = [];
+        const effTimes = [];
+        const effValues = [];
+
+        const tracePrice = {
+            x: timestamps,
+            y: prices,
+            name: 'Market Price',
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#58a6ff', width: 2 },
+            zorder: 10
+        };
+
+        const tracePivot = {
+            x: timestamps,
+            y: pivots,
+            name: 'Pivot Price',
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#8b949e', width: 1, dash: 'dot' },
+            zorder: 5
+        };
+
+        const traceBuys = {
+            x: buyTimes,
+            y: buyPrices,
+            name: 'Grid Buys',
+            type: 'scatter',
+            mode: 'markers',
+            marker: { color: '#3fb950', size: 4, opacity: 0.4 },
+            hoverinfo: 'skip'
+        };
+
+        const traceSells = {
+            x: sellTimes,
+            y: sellPrices,
+            name: 'Grid Sells',
+            type: 'scatter',
+            mode: 'markers',
+            marker: { color: '#f85149', size: 4, opacity: 0.4 },
+            hoverinfo: 'skip'
+        };
+
+        // Bot Attack Annotations
+        const attackTraces = [];
+        const attackTypes = [...new Set(attackPoints.map(p => p.type))];
+        const typeColors = { 'frontrun': '#ffa657', 'sandwich': '#ff7b72', 'liquidity_drain': '#d29922' };
+
+        attackTypes.forEach(type => {
+            const pts = attackPoints.filter(p => p.type === type);
+            attackTraces.push({
+                x: pts.map(p => p.x),
+                y: pts.map(p => p.y),
+                name: `Bot Attack: ${type}`,
+                mode: 'markers',
+                type: 'scatter',
+                marker: { 
+                    symbol: 'diamond-open',
+                    size: 12,
+                    color: typeColors[type] || '#ffffff',
+                    line: { width: 2 }
+                },
+                text: pts.map(p => `Eff: ${p.efficiency.toFixed(2)} | Slip: +${p.slippage}bps`),
+                hoverinfo: 'name+x+text'
+            });
+        });
+
+        const mainLayout = {
+            title: 'Price & Order Grid (Adversarial View)',
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#c9d1d9' },
+            margin: { t: 40, r: 40, b: 40, l: 60 },
+            xaxis: { gridcolor: '#30363d', zeroline: false, linecolor: '#30363d' },
+            yaxis: { gridcolor: '#30363d', linecolor: '#30363d', tickformat: '.4f', title: 'Price (USD)' },
+            hovermode: 'closest',
+            legend: { orientation: 'h', y: 1.1 }
+        };
+
+        const traceTotalPnl = {
+            x: timestamps,
+            y: totalPnl,
+            name: 'Total PnL',
+            fill: 'tozeroy',
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#d29922', width: 2 }
+        };
+
+        const pnlLayout = {
+            title: 'Cumulative Performance (SOL)',
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#c9d1d9' },
+            margin: { t: 40, r: 40, b: 40, l: 60 },
+            xaxis: { gridcolor: '#30363d', zeroline: false, linecolor: '#30363d' },
+            yaxis: { gridcolor: '#30363d', linecolor: '#30363d', title: 'PnL (SOL)' },
+            hovermode: 'x unified',
+            legend: { orientation: 'h', y: 1.1 }
+        };
+
+        Plotly.newPlot('main-chart', [traceBuys, traceSells, tracePivot, tracePrice, ...attackTraces], mainLayout);
+        Plotly.newPlot('pnl-chart', [traceTotalPnl], pnlLayout);
+
+        if (effValues.length > 0) {
+            document.getElementById('eff-container').style.display = 'block';
+            const avgEff = effValues.reduce((a, b) => a + b, 0) / effValues.length;
+            document.getElementById('avg-eff').innerText = avgEff.toFixed(1) + '%';
+            
+            const traceEff = {
+                x: effTimes,
+                y: effValues,
+                name: 'Counter-Attack Efficiency',
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: '#3fb950' },
+                marker: { size: 6 }
+            };
+            
+            const effLayout = {
+                title: 'Counter-Attack Efficiency (%)',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#c9d1d9' },
+                margin: { t: 40, r: 40, b: 40, l: 60 },
+                xaxis: { gridcolor: '#30363d', zeroline: false, linecolor: '#30363d' },
+                yaxis: { gridcolor: '#30363d', linecolor: '#30363d', range: [0, 105], title: 'Efficiency %' },
+                hovermode: 'x unified'
+            };
+            Plotly.newPlot('eff-chart', [traceEff], effLayout);
+        }
+    </script>
+</body>
+</html>
+    

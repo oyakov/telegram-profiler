@@ -1,0 +1,92 @@
+{
+  "scenario": "C:\\Projects\\solana-dex-bmv\\data\\scenarios\\high_volatility.csv",
+  "ticks": [
+    {
+      "timestamp": 1710892800,
+      "price": 131.027,
+      "pivot": 131.027,
+      "buy_levels": [],
+      "sell_levels": [],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.001,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892860,
+      "price": 137.316296,
+      "pivot": 137.316296,
+      "buy_levels": [],
+      "sell_levels": [
+        {
+          "price": 135.12159375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 135.531053125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 135.9405125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 136.349971875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 136.75943125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 137.168890625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 137.57835,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 94.69020763875,
+      "total_fees_paid": 0.00203,
+      "attack_impact": null
+    }
+  ],
+  "summary": {
+    "initial_capital": 1000.0,
+    "total_realized_pnl": 94.69020763875,
+    "total_unrealized_pnl": 0.0,
+    "total_fees_paid": 0.00203,
+    "max_drawdown": 0.001,
+    "max_drawdown_percent": 0.0001,
+    "max_drawdown_duration": 1,
+    "sharpe_ratio": 15.874172572732755,
+    "sortino_ratio": 0.0,
+    "trade_count": 6,
+    "buy_count": 0,
+    "sell_count": 6,
+    "volume_sol": 18.75,
+    "duration_seconds": 60,
+    "start_price": 131.027,
+    "end_price": 137.316296,
+    "equity_curve": [
+      1000.0,
+      999.999,
+      1094.68817763875
+    ],
+    "win_rate": 0.5,
+    "profit_factor": 94689.17763875,
+    "expectancy": 47.344088819375,
+    "max_adverse_excursion": 0.001,
+    "max_favorable_excursion": 94.68917763875,
+    "value_at_risk_95": -1e-6
+  }
+}

@@ -540,3 +540,51 @@ class TelegramConnector(BaseConnector):
         try:
             async with self._get_client() as client: return (await client.get_me()) is not None
         except Exception: return False
+
+    async def sync_contacts(self) -> dict:
+        """Fetch and sync contacts from Telegram account."""
+        try:
+            async with self._get_client() as client:
+                contacts = await client.get_contacts()
+                added = 0
+                updated = 0
+
+                async with get_session(self.db_name) as session:
+                    for contact in contacts:
+                        if not contact.contact:
+                            continue
+
+                        # Check if contact already exists
+                        tg_id = str(contact.id)
+                        result = await session.execute(
+                            select(Contact).where(Contact.telegram_id == tg_id)
+                        )
+                        existing = result.scalar_one_or_none()
+
+                        if existing:
+                            # Update existing contact
+                            existing.first_name = contact.first_name or existing.first_name
+                            existing.last_name = contact.last_name or existing.last_name
+                            existing.telegram_username = contact.username or existing.telegram_username
+                            existing.updated_at = datetime.now(timezone.utc)
+                            updated += 1
+                        else:
+                            # Create new contact
+                            new_contact = Contact(
+                                telegram_id=tg_id,
+                                first_name=contact.first_name or "Unknown",
+                                last_name=contact.last_name,
+                                telegram_username=contact.username,
+                                source="telegram",
+                            )
+                            session.add(new_contact)
+                            added += 1
+
+                    await session.commit()
+
+                logger.info("contacts_synced", added=added, updated=updated, db=self.db_name)
+                return {"status": "success", "added": added, "updated": updated, "total": len(contacts)}
+
+        except Exception as e:
+            logger.error("sync_contacts_failed", error=str(e), db=self.db_name)
+            return {"status": "error", "error": str(e)}

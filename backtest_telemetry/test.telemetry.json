@@ -1,0 +1,351 @@
+{
+  "scenario": "data/scenarios/test.json",
+  "ticks": [
+    {
+      "timestamp": 1710892800,
+      "price": 100.0,
+      "pivot": 100.0,
+      "buy_levels": [],
+      "sell_levels": [],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.001,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892860,
+      "price": 101.0,
+      "pivot": 101.0,
+      "buy_levels": [
+        {
+          "price": 96.25,
+          "size": 0.019211142289138165,
+          "side": "buy"
+        },
+        {
+          "price": 95.3125,
+          "size": 0.034580056120448704,
+          "side": "buy"
+        },
+        {
+          "price": 94.375,
+          "size": 0.06224410101680766,
+          "side": "buy"
+        },
+        {
+          "price": 93.4375,
+          "size": 0.1120393818302538,
+          "side": "buy"
+        },
+        {
+          "price": 92.5,
+          "size": 0.2016708872944568,
+          "side": "buy"
+        },
+        {
+          "price": 91.5625,
+          "size": 0.3630075971300223,
+          "side": "buy"
+        },
+        {
+          "price": 90.625,
+          "size": 0.6534136748340401,
+          "side": "buy"
+        },
+        {
+          "price": 89.6875,
+          "size": 1.1761446147012722,
+          "side": "buy"
+        },
+        {
+          "price": 88.75,
+          "size": 2.11706030646229,
+          "side": "buy"
+        },
+        {
+          "price": 87.8125,
+          "size": 3.810708551632122,
+          "side": "buy"
+        },
+        {
+          "price": 86.875,
+          "size": 6.859275392937819,
+          "side": "buy"
+        },
+        {
+          "price": 85.9375,
+          "size": 12.346695707288076,
+          "side": "buy"
+        },
+        {
+          "price": 85.0,
+          "size": 22.224052273118534,
+          "side": "buy"
+        }
+      ],
+      "sell_levels": [
+        {
+          "price": 103.75,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 105.625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 107.5,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 109.375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 111.25,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 113.125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 115.0,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 116.875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 118.75,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 120.625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 122.5,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 124.375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 126.25,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 128.125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 130.0,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.002,
+      "attack_impact": null
+    },
+    {
+      "timestamp": 1710892920,
+      "price": 102.0,
+      "pivot": 100.2672627435736,
+      "buy_levels": [
+        {
+          "price": 96.25,
+          "size": 0.019211142289138165,
+          "side": "buy"
+        },
+        {
+          "price": 95.3125,
+          "size": 0.034580056120448704,
+          "side": "buy"
+        },
+        {
+          "price": 94.375,
+          "size": 0.06224410101680766,
+          "side": "buy"
+        },
+        {
+          "price": 93.4375,
+          "size": 0.1120393818302538,
+          "side": "buy"
+        },
+        {
+          "price": 92.5,
+          "size": 0.2016708872944568,
+          "side": "buy"
+        },
+        {
+          "price": 91.5625,
+          "size": 0.3630075971300223,
+          "side": "buy"
+        },
+        {
+          "price": 90.625,
+          "size": 0.6534136748340401,
+          "side": "buy"
+        },
+        {
+          "price": 89.6875,
+          "size": 1.1761446147012722,
+          "side": "buy"
+        },
+        {
+          "price": 88.75,
+          "size": 2.11706030646229,
+          "side": "buy"
+        },
+        {
+          "price": 87.8125,
+          "size": 3.810708551632122,
+          "side": "buy"
+        },
+        {
+          "price": 86.875,
+          "size": 6.859275392937819,
+          "side": "buy"
+        },
+        {
+          "price": 85.9375,
+          "size": 12.346695707288076,
+          "side": "buy"
+        },
+        {
+          "price": 85.0,
+          "size": 22.224052273118534,
+          "side": "buy"
+        }
+      ],
+      "sell_levels": [
+        {
+          "price": 103.75,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 105.625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 107.5,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 109.375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 111.25,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 113.125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 115.0,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 116.875,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 118.75,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 120.625,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 122.5,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 124.375,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 126.25,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 128.125,
+          "size": 3.125,
+          "side": "sell"
+        },
+        {
+          "price": 130.0,
+          "size": 3.125,
+          "side": "sell"
+        }
+      ],
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_fees_paid": 0.003,
+      "attack_impact": null
+    }
+  ],
+  "summary": {
+    "initial_capital": 1000.0,
+    "total_realized_pnl": 0.0,
+    "total_unrealized_pnl": 0.0,
+    "total_fees_paid": 0.003,
+    "max_drawdown": 0.003,
+    "max_drawdown_percent": 0.0003,
+    "max_drawdown_duration": 3,
+    "sharpe_ratio": 0.0,
+    "sortino_ratio": 0.0,
+    "trade_count": 0,
+    "buy_count": 0,
+    "sell_count": 0,
+    "volume_sol": 0.0,
+    "duration_seconds": 120,
+    "start_price": 100.0,
+    "end_price": 102.0,
+    "equity_curve": [
+      999.999,
+      999.998,
+      999.997
+    ],
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "expectancy": 0.0,
+    "max_adverse_excursion": 0.0,
+    "max_favorable_excursion": 0.0,
+    "value_at_risk_95": -1e-6
+  }
+}

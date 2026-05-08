@@ -1,0 +1,14 @@
+time="2026-04-29T15:29:07+02:00" level=warning msg="The \"placeholderhash\" variable is not set. Defaulting to a blank string."
+time="2026-04-29T15:29:07+02:00" level=warning msg="The \"placeholderhash\" variable is not set. Defaulting to a blank string."
+time="2026-04-29T15:29:07+02:00" level=warning msg="The \"placeholderhash\" variable is not set. Defaulting to a blank string."
+time="2026-04-29T15:29:07+02:00" level=warning msg="The \"placeholderhash\" variable is not set. Defaulting to a blank string."
+time="2026-04-29T15:29:07+02:00" level=warning msg="The \"placeholderhash\" variable is not set. Defaulting to a blank string."
+ Container postgres-backtest  Running
+[2m2026-04-29T13:29:09.306165Z[0m [32m INFO[0m [2msolana_dex_bmv[0m[2m:[0m Starting in backtest mode [3mfile[0m[2m=[0mdata/scenarios/bull_run_v2.json
+[2m2026-04-29T13:29:09.306228Z[0m [32m INFO[0m [2msolana_dex_bmv[0m[2m:[0m Loading backtest data from data/scenarios/bull_run_v2.json...
+[2m2026-04-29T13:29:09.306423Z[0m [32m INFO[0m [2msolana_dex_bmv::infra::observability[0m[2m:[0m Metrics server started on http://127.0.0.1:9000
+Error: Failed to parse backtest data as JSON
+
+Caused by:
+    invalid type: map, expected a sequence at line 1 column 0
+

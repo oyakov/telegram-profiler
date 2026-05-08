@@ -27,6 +27,13 @@
   opacity: 0.7;
 }
 
+.header-buttons {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.btn-sync,
 .btn-fetch-history {
   padding: 10px 20px;
   background: linear-gradient(135deg, #10b981, #059669);
