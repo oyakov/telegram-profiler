@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,9 @@ from src.db.models import Contact
 from src.api.schemas import ContactCreate, ContactUpdate, ContactResponse
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
+
+class AddToTrackedRequest(BaseModel):
+    contact_ids: list[str]
 
 def _contact_to_response(c: Contact) -> dict:
     return {
@@ -118,3 +122,23 @@ async def delete_contact(contact_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "Contact not found")
     await db.delete(contact)
     await db.commit()
+
+@router.post("/add-to-tracked")
+async def add_to_tracked(
+    req: AddToTrackedRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Add contacts to tracked list."""
+    if not req.contact_ids:
+        raise HTTPException(400, "No contact IDs provided")
+
+    result = await db.execute(
+        select(Contact).where(Contact.id.in_(req.contact_ids))
+    )
+    contacts = result.scalars().all()
+
+    for contact in contacts:
+        contact.is_lead = True
+
+    await db.commit()
+    return {"status": "success", "count": len(contacts)}
