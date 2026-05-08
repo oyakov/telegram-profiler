@@ -8,6 +8,7 @@ import Search from './pages/Search';
 import Monitoring from './pages/Monitoring';
 import Leads from './pages/Leads';
 import Contacts from './pages/Contacts';
+import PersonalContacts from './pages/PersonalContacts';
 import Settings from './pages/Settings';
 import Projects from './pages/Projects';
 import Audit from './pages/Audit';
@@ -30,6 +31,7 @@ const App: React.FC = () => {
               <Route path="/search" element={<Search />} />
               <Route path="/leads" element={<Leads />} />
               <Route path="/contacts" element={<Contacts />} />
+              <Route path="/personal-contacts" element={<PersonalContacts />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </div>

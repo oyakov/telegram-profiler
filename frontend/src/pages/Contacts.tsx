@@ -21,7 +21,7 @@ const Contacts: React.FC = () => {
     <div className="contacts-page">
       <div className="page-header-actions">
         <div>
-          <h1 className="text-gradient">База Контактов</h1>
+          <h1 className="text-gradient">Index-Контактов</h1>
           <p className="text-secondary">Всего выявлено: {total} профилей</p>
         </div>
         <div className="actions">
