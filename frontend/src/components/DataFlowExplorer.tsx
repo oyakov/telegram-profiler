@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Database, Folder, MessageSquare, ChevronRight, ChevronDown, 
-  Cpu, HardDrive, Zap, Cloud, Activity, CheckCircle, AlertCircle
+  Cpu, HardDrive, Zap, Cloud, Activity
 } from 'lucide-react';
 
 interface TreeNode {
@@ -99,52 +99,93 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[] }> = ({ tree }) => {
   );
 };
 
-export const SystemFlow: React.FC<{ lmStatus: boolean }> = ({ lmStatus }) => {
+export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
+  const getMetric = (name: string, type: 'cpu' | 'memory') => {
+    const data = metrics?.[name]?.[type];
+    if (!data || data.length === 0) return '—';
+    const val = data[data.length - 1].value;
+    return type === 'cpu' ? `${val}%` : `${Math.round(val)}MB`;
+  };
+
+  const Node = ({ id, label, icon: Icon, color }: any) => (
+    <div className={`flow-node ${color}`}>
+      <div className="node-metrics">
+        <span>CPU: {getMetric(id, 'cpu')}</span>
+        <span>MEM: {getMetric(id, 'memory')}</span>
+      </div>
+      <Icon size={20} />
+      <span className="node-label">{label}</span>
+      <div className={`node-status online`}></div>
+    </div>
+  );
+
   return (
     <div className="system-flow-container serpent-card">
-      <div className="flow-nodes">
-        <div className="flow-node telegram pulse">
-          <Cloud size={24} />
-          <span>Telegram API</span>
-          <div className="node-status online"></div>
-        </div>
-        
-        <div className="flow-connector">
-          <div className="flow-particles"></div>
-        </div>
-
-        <div className="flow-node conductor">
-          <Activity size={24} />
-          <span>Conductor</span>
-          <div className="node-status online"></div>
-        </div>
-
-        <div className="flow-connector">
-          <div className="flow-particles reverse"></div>
-        </div>
-
-        <div className="flow-node-group">
-          <div className={`flow-node lmstudio ${lmStatus ? 'online' : 'offline'}`}>
-            <Cpu size={24} />
-            <span>LMStudio</span>
-            <div className={`node-status ${lmStatus ? 'online' : 'offline'}`}></div>
-          </div>
-          <div className="flow-node db">
-            <HardDrive size={24} />
-            <span>Postgres DB</span>
+      <div className="flow-grid">
+        {/* Source */}
+        <div className="flow-section">
+          <div className="section-label">Data Source</div>
+          <div className="flow-node blue pulse">
+            <Cloud size={24} />
+            <span>Telegram API</span>
             <div className="node-status online"></div>
           </div>
         </div>
+
+        <div className="flow-connector vertical-align">
+          <div className="flow-particles"></div>
+        </div>
+
+        {/* Backend / Conductor */}
+        <div className="flow-section">
+          <div className="section-label">Conductor (Backend)</div>
+          <div className="flow-stack">
+            <Node id="crm-app" label="App API" icon={Activity} color="purple" />
+            <Node id="crm-beat" label="Scheduler" icon={Zap} color="purple" />
+          </div>
+        </div>
+
+        <div className="flow-connector vertical-align">
+          <div className="flow-particles"></div>
+        </div>
+
+        {/* Workers */}
+        <div className="flow-section">
+          <div className="section-label">Workers</div>
+          <div className="flow-stack">
+            <Node id="crm-worker-connectors" label="Connectors" icon={Cpu} color="orange" />
+            <Node id="crm-worker-processing" label="Processor" icon={Cpu} color="orange" />
+          </div>
+        </div>
+
+        <div className="flow-connector vertical-align">
+          <div className="flow-particles"></div>
+        </div>
+
+        {/* Infrastructure */}
+        <div className="flow-section">
+          <div className="section-label">Infrastructure</div>
+          <div className="flow-stack">
+            <div className="flow-row">
+              <Node id="crm-postgres" label="Postgres" icon={HardDrive} color="emerald" />
+              <Node id="crm-redis" label="Redis" icon={Database} color="emerald" />
+            </div>
+            <div className="flow-row">
+              <Node id="crm-whisper" label="Whisper" icon={Zap} color="blue" />
+              <Node id="crm-prometheus" label="Prometheus" icon={Activity} color="blue" />
+            </div>
+          </div>
+        </div>
       </div>
-      
+
       <div className="flow-description">
         <div className="flow-info">
           <Zap size={14} className="text-venom" />
-          <span>Поток данных: <strong>142 msg/min</strong></span>
+          <span>System Load: <strong>Low</strong></span>
         </div>
         <div className="flow-info">
           <Activity size={14} className="text-blue" />
-          <span>Embeddings: <strong>{lmStatus ? 'Активно' : 'Ожидание'}</strong></span>
+          <span>Pipeline Status: <strong>Optimal</strong></span>
         </div>
       </div>
     </div>

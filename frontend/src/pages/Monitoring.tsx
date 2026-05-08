@@ -85,9 +85,7 @@ function EmbeddingsManager() {
 
 const Monitoring: React.FC = () => {
   const { data: treeData } = useSWR('/api/stats/tree', fetcher, { refreshInterval: 5000 });
-  const { data: healthData } = useSWR('/api/stats/health', fetcher, { refreshInterval: 5000 });
-
-  const lmStatus = healthData?.checks?.llm !== 'error' && healthData?.checks?.llm !== 'unavailable';
+  const { data: metricsData } = useSWR('/api/stats/prometheus', fetcher, { refreshInterval: 5000 });
 
   return (
     <div className="monitoring-page animate-fade-in">
@@ -101,7 +99,7 @@ const Monitoring: React.FC = () => {
           <Zap size={20} className="text-venom" />
           Поток данных (Data Pipeline)
         </h2>
-        <SystemFlow lmStatus={lmStatus} />
+        <SystemFlow metrics={metricsData} />
       </div>
 
       <div style={{ marginBottom: '32px' }}>

@@ -7,16 +7,42 @@
 /* System Flow Styles */
 .system-flow-container {
   margin-bottom: var(--spacing-lg);
-  padding: var(--spacing-lg);
+  padding: 24px;
   background: rgba(15, 23, 42, 0.4);
 }
 
-.flow-nodes {
+.flow-grid {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--spacing-md);
-  position: relative;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.flow-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+
+.flow-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flow-row {
+  display: flex;
+  gap: 12px;
 }
 
 .flow-node {
@@ -28,15 +54,38 @@
   padding: 16px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
-  min-width: 140px;
+  min-width: 130px;
   position: relative;
+  transition: all 0.3s ease;
 }
 
-.flow-node.telegram { border-color: #3b82f6; color: #3b82f6; }
-.flow-node.conductor { border-color: #a855f7; color: #a855f7; }
-.flow-node.db { border-color: #10b981; color: #10b981; }
-.flow-node.lmstudio.online { border-color: #f59e0b; color: #f59e0b; }
-.flow-node.lmstudio.offline { border-color: #ef4444; color: #ef4444; opacity: 0.7; }
+.node-metrics {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.node-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.flow-node.purple { border-color: #a855f7; color: #a855f7; }
+.flow-node.orange { border-color: #f59e0b; color: #f59e0b; }
+.flow-node.emerald { border-color: #10b981; color: #10b981; }
+.flow-node.blue { border-color: #3b82f6; color: #3b82f6; }
+
+.flow-connector.vertical-align {
+  flex: 1;
+  height: 2px;
+  min-width: 30px;
+}
 
 .node-status {
   position: absolute;
