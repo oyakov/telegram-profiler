@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
 import {
@@ -12,7 +12,6 @@ import {
   Loader,
   History,
   TrashIcon,
-  Edit2,
 } from 'lucide-react';
 import './Leads.css';
 

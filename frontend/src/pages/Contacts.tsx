@@ -39,7 +39,6 @@ const Contacts: React.FC = () => {
               <th>Имя</th>
               <th>Username</th>
               <th>Источник</th>
-              <th>Score</th>
               <th>Действия</th>
             </tr>
           </thead>
@@ -56,11 +55,6 @@ const Contacts: React.FC = () => {
                 </td>
                 <td className="username-cell">@{c.telegram_username || 'Н/Д'}</td>
                 <td><span className="source-tag">{c.source || 'crm'}</span></td>
-                <td>
-                  <div className="score-badge" style={{ backgroundColor: `rgba(16, 185, 129, ${c.lead_score / 100})` }}>
-                    {c.lead_score}
-                  </div>
-                </td>
                 <td>
                   <a href={`https://t.me/${c.telegram_username}`} target="_blank" rel="noreferrer" className="action-icon">
                     <ExternalLink size={16} />

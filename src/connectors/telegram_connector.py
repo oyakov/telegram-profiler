@@ -76,6 +76,9 @@ class TelegramConnector(BaseConnector):
         await client.connect()
         try:
             await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+            await client.disconnect()
+            # Trigger auto-sync in background or sequentially
+            asyncio.create_task(self.auto_sync_on_login())
             return {"status": "success"}
         except SessionPasswordNeededError:
             return {"status": "requires_2fa"}
@@ -89,6 +92,9 @@ class TelegramConnector(BaseConnector):
         await client.connect()
         try:
             await client.sign_in(password=password)
+            await client.disconnect()
+            # Trigger auto-sync in background
+            asyncio.create_task(self.auto_sync_on_login())
             return {"status": "success"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -102,6 +108,105 @@ class TelegramConnector(BaseConnector):
             await client.log_out()
         finally:
             await client.disconnect()
+
+    async def auto_sync_on_login(self, force: bool = False):
+        """Automatically sync folders and contacts after login.
+        If force=False, respects the 'telegram_auto_sync_on_login' setting.
+        """
+        from src.core.settings_service import SettingsService
+        from src.db.models import TrackedFolder, TrackedChannel, SystemProject
+        from src.db.database import ensure_database_exists, init_database_schema
+        import re
+
+        def slugify(text: str) -> str:
+            text = text.lower()
+            text = re.sub(r'[^\w\s-]', '', text)
+            return re.sub(r'[-\s]+', '_', text).strip('_')
+        
+        # Check if enabled in settings
+        if not force:
+            async with get_session(db_name=self.db_name) as session:
+                svc = SettingsService(session)
+                is_enabled = await svc.get("telegram_auto_sync_on_login", True)
+                if not is_enabled:
+                    logger.info("telegram_auto_sync_skipped", reason="disabled_in_settings", db=self.db_name)
+                    return
+
+        logger.info("telegram_auto_sync_started", force=force, db=self.db_name)
+        try:
+            # 1. Sync Contacts
+            await self.sync_contacts()
+            
+            # 2. Sync Folders into TrackedFolders/TrackedChannels
+            folders = await self.list_telegram_folders()
+            if folders:
+                async with get_session(db_name=self.db_name) as session:
+                    svc = SettingsService(session)
+                    auto_create_projects = await svc.get("telegram_auto_create_projects", False)
+
+                    for folder_data in folders:
+                        # A. Auto-create SystemProject if enabled
+                        if auto_create_projects:
+                            slug = slugify(folder_data["name"])
+                            new_db_name = f"crm_{slug}"
+                            
+                            # Check master DB for project
+                            async with get_session(db_name="crm") as master_session:
+                                res = await master_session.execute(
+                                    select(SystemProject).where(SystemProject.db_name == new_db_name)
+                                )
+                                if not res.scalar_one_or_none():
+                                    logger.info("telegram_auto_creating_project", name=folder_data["name"], db=new_db_name)
+                                    new_proj = SystemProject(
+                                        name=folder_data["name"],
+                                        db_name=new_db_name,
+                                        description=f"Auto-created from Telegram folder '{folder_data['name']}'"
+                                    )
+                                    master_session.add(new_proj)
+                                    await master_session.commit()
+                                    
+                                    try:
+                                        await ensure_database_exists(new_db_name)
+                                        await init_database_schema(new_db_name)
+                                    except Exception as e:
+                                        logger.error("telegram_project_init_failed", db=new_db_name, error=str(e))
+
+                        # B. Sync Folder in current DB
+                        res = await session.execute(
+                            select(TrackedFolder).where(TrackedFolder.name == folder_data["name"])
+                        )
+                        db_folder = res.scalar_one_or_none()
+                        if not db_folder:
+                            db_folder = TrackedFolder(name=folder_data["name"], description=f"Imported from Telegram folder {folder_data['id']}")
+                            session.add(db_folder)
+                            await session.flush()
+                        
+                        # Import channels from this folder
+                        channels_info = await self.import_folder_channels(folder_data["peer_ids"])
+                        for ch in channels_info:
+                            # Check if channel already exists
+                            res = await session.execute(
+                                select(TrackedChannel).where(TrackedChannel.telegram_id == ch["telegram_id"])
+                            )
+                            existing_chan = res.scalar_one_or_none()
+                            if not existing_chan:
+                                new_chan = TrackedChannel(
+                                    folder_id=db_folder.id,
+                                    telegram_id=ch["telegram_id"],
+                                    title=ch["title"],
+                                    username=ch["username"],
+                                    entity_type=ch["entity_type"]
+                                )
+                                session.add(new_chan)
+                            else:
+                                # Ensure it belongs to this folder
+                                existing_chan.folder_id = db_folder.id
+                    
+                    await session.commit()
+            
+            logger.info("telegram_auto_sync_completed", db=self.db_name, folders_found=len(folders))
+        except Exception as e:
+            logger.error("telegram_auto_sync_failed", error=str(e), db=self.db_name)
 
     async def sync(self, chat_ids: list[int] | None = None, limit: int = 100, offset_date: datetime | None = None, **kwargs) -> SyncResult:
         result = SyncResult(connector=self.name, started_at=datetime.now(timezone.utc))

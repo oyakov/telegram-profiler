@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import useSWR, { mutate } from 'swr';
 import api from '../services/api';
-import { Settings2, Cpu, Database, Mic, Monitor, RotateCcw, Save, CheckCircle, AlertCircle } from 'lucide-react';
+import { Settings2, Cpu, Database, Mic, Monitor, RotateCcw, Save, CheckCircle, AlertCircle, Share2 } from 'lucide-react';
 import './Settings.css';
 
 interface EffectiveSetting {
@@ -26,10 +26,11 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode; colo
   llm:        { label: 'AI / LLM',    icon: <Cpu size={18} />,      color: 'purple' },
   embeddings: { label: 'Embeddings',  icon: <Database size={18} />, color: 'blue'   },
   whisper:    { label: 'Whisper STT', icon: <Mic size={18} />,      color: 'green'  },
+  connectors: { label: 'Connectors',  icon: <Share2 size={18} />,   color: 'orange' },
   system:     { label: 'System',      icon: <Monitor size={18} />,  color: 'yellow' },
 };
 
-const CATEGORY_ORDER = ['llm', 'embeddings', 'whisper', 'system'];
+const CATEGORY_ORDER = ['llm', 'embeddings', 'whisper', 'connectors', 'system'];
 
 type SaveState = 'idle' | 'saving' | 'ok' | 'err';
 

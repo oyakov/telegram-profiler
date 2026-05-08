@@ -122,13 +122,16 @@ async def telegram_send_code(req: TelegramSendCode, request: Request):
         raise HTTPException(400, f"Failed to send code: {str(e)}")
 
 @router.post("/auth/verify")
-async def telegram_verify_code(req: TelegramVerifyCode, request: Request):
+async def telegram_verify_code(req: TelegramVerifyCode, request: Request, force_sync: bool = False):
     """Verify the code and log in."""
     db_name = request.headers.get("X-Database")
     connector = TelegramConnector(db_name=db_name)
     result = await connector.sign_in(req.phone, req.code, req.phone_code_hash)
     if result["status"] == "error":
         raise HTTPException(400, result.get("message", "Verification failed"))
+    
+    # If user manually checked the box or it is enabled in settings, auto_sync handles it
+    # We don't need to change sign_in signature because it calls auto_sync internally
     return result
 
 @router.post("/auth/2fa")

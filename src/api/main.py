@@ -72,7 +72,7 @@ app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(search.router, prefix=API_PREFIX)
 app.include_router(system.router, prefix=API_PREFIX)
 app.include_router(settings.router, prefix=API_PREFIX)
-app.include_router(pipeline.router, prefix=API_PREFIX)
+app.include_router(pipeline.router, prefix=f"{API_PREFIX}/connectors")
 app.include_router(tracking.router, prefix=API_PREFIX)
 app.include_router(projects.router, prefix=API_PREFIX)
 
