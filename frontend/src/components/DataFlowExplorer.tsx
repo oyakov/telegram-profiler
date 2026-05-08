@@ -100,11 +100,30 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[] }> = ({ tree }) => {
 };
 
 export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
+  const throughput = metrics?.throughput || { ingestion: 0, extraction: 0, embeddings: 0 };
+  
   const getMetric = (name: string, type: 'cpu' | 'memory') => {
     const data = metrics?.[name]?.[type];
     if (!data || data.length === 0) return '—';
     const val = data[data.length - 1].value;
     return type === 'cpu' ? `${val}%` : `${Math.round(val)}MB`;
+  };
+
+  const Connector = ({ value, unit, label, active, reverse }: any) => {
+    // Calculate animation speed: more throughput = faster particles
+    const speed = value > 0 ? Math.max(0.4, 2 - (value / 500)) : 0;
+    const opacity = value > 0 ? 1 : 0.2;
+
+    return (
+      <div className="flow-connector vertical-align" style={{ opacity }}>
+        <div className="connector-label-top">{value} {unit}</div>
+        <div 
+          className={`flow-particles ${reverse ? 'reverse' : ''}`} 
+          style={{ animationDuration: `${speed}s`, display: value > 0 ? 'block' : 'none' }}
+        ></div>
+        <div className="connector-label-bottom">{label}</div>
+      </div>
+    );
   };
 
   const Node = ({ id, label, icon: Icon, color }: any) => (
@@ -132,22 +151,28 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
           </div>
         </div>
 
-        <div className="flow-connector vertical-align">
-          <div className="flow-particles"></div>
-        </div>
+        <Connector 
+          value={throughput.ingestion} 
+          unit="msg/m" 
+          label="Ingestion" 
+          active={throughput.ingestion > 0} 
+        />
 
         {/* Backend / Conductor */}
         <div className="flow-section">
-          <div className="section-label">Conductor (Backend)</div>
+          <div className="section-label">Conductor</div>
           <div className="flow-stack">
             <Node id="crm-app" label="App API" icon={Activity} color="purple" />
             <Node id="crm-beat" label="Scheduler" icon={Zap} color="purple" />
           </div>
         </div>
 
-        <div className="flow-connector vertical-align">
-          <div className="flow-particles"></div>
-        </div>
+        <Connector 
+          value={throughput.extraction} 
+          unit="tasks/m" 
+          label="AI Process" 
+          active={throughput.extraction > 0} 
+        />
 
         {/* Workers */}
         <div className="flow-section">
@@ -158,9 +183,12 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
           </div>
         </div>
 
-        <div className="flow-connector vertical-align">
-          <div className="flow-particles"></div>
-        </div>
+        <Connector 
+          value={throughput.embeddings} 
+          unit="vec/m" 
+          label="Vectors" 
+          active={throughput.embeddings > 0} 
+        />
 
         {/* Infrastructure */}
         <div className="flow-section">
@@ -181,11 +209,11 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
       <div className="flow-description">
         <div className="flow-info">
           <Zap size={14} className="text-venom" />
-          <span>System Load: <strong>Low</strong></span>
+          <span>Active Streams: <strong>{throughput.ingestion > 0 ? 'High Activity' : 'Standby'}</strong></span>
         </div>
         <div className="flow-info">
           <Activity size={14} className="text-blue" />
-          <span>Pipeline Status: <strong>Optimal</strong></span>
+          <span>Aggregate Load: <strong>{throughput.extraction > 10 ? 'Heavy AI' : 'Normal'}</strong></span>
         </div>
       </div>
     </div>

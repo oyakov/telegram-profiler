@@ -349,13 +349,50 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
     return {"tree": tree}
 
 @router.get("/prometheus")
-async def get_prometheus_metrics(range: str = "1h"):
-    """Get Prometheus metrics for all system containers."""
+async def get_prometheus_metrics(range: str = "1h", db: AsyncSession = Depends(get_db)):
+    """Get Prometheus metrics and real-time throughput for all system containers."""
     import random
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
+    from src.db.models import SystemProject, Message, MessageEmbedding, ExtractionLog
+    from src.db.database import get_session
 
+    # 1. Calculate real throughput across ALL databases
+    now = datetime.now(timezone.utc)
+    one_min_ago = now - timedelta(minutes=1)
+    
+    # Get all projects
+    projects_res = await db.execute(select(SystemProject).where(SystemProject.is_active == True))
+    projects = projects_res.scalars().all()
+    
+    total_ingestion = 0  # msg/min
+    total_extraction = 0 # tasks/min
+    total_embeddings = 0 # vectors/min
+
+    for proj in projects:
+        try:
+            async with get_session(db_name=proj.db_name) as proj_session:
+                # Count recent messages
+                m_count = (await proj_session.execute(
+                    select(func.count(Message.id)).where(Message.created_at >= one_min_ago)
+                )).scalar() or 0
+                total_ingestion += m_count
+
+                # Count recent extractions
+                e_count = (await proj_session.execute(
+                    select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= one_min_ago)
+                )).scalar() or 0
+                total_extraction += e_count
+
+                # Count recent embeddings
+                v_count = (await proj_session.execute(
+                    select(func.count(MessageEmbedding.id)).where(MessageEmbedding.created_at >= one_min_ago)
+                )).scalar() or 0
+                total_embeddings += v_count
+        except Exception:
+            continue
+
+    # 2. Mock some system metrics (CPU/MEM) but use real throughput
     def generate_metric_data(base_value: float, variation: float, count: int = 10) -> list:
-        now = datetime.utcnow()
         data = []
         for i in range(count):
             timestamp = (now - timedelta(minutes=(count - i) * 5)).timestamp() * 1000
@@ -370,7 +407,6 @@ async def get_prometheus_metrics(range: str = "1h"):
 
     metrics = {}
     for container in containers:
-        # Base CPU/MEM values based on container type
         base_cpu = 5.0 if "worker" in container else 1.0
         base_mem = 800.0 if "whisper" in container else 120.0
         
@@ -379,5 +415,13 @@ async def get_prometheus_metrics(range: str = "1h"):
             "memory": generate_metric_data(base_mem, base_mem * 0.1),
             "status": "online"
         }
+
+    # Add throughput to the response
+    metrics["throughput"] = {
+        "ingestion": total_ingestion,    # msg/min
+        "extraction": total_extraction,  # tasks/min
+        "embeddings": total_embeddings,  # vectors/min
+        "timestamp": now.isoformat()
+    }
 
     return metrics
