@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
+import { ExternalLink, ChevronDown, ChevronUp, Download, Loader } from 'lucide-react';
 import './PersonalContacts.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
@@ -10,9 +10,11 @@ const PersonalContacts: React.FC = () => {
   const [page, setPage] = React.useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
 
   const queryParams = new URLSearchParams();
-  queryParams.append('source', 'manual');
   queryParams.append('page', page.toString());
   queryParams.append('page_size', '50');
   if (searchQuery) {
@@ -24,8 +26,8 @@ const PersonalContacts: React.FC = () => {
     fetcher
   );
 
-  if (error) return <div className="error">Failed to load personal contacts</div>;
-  if (!data) return <div className="loading">Loading personal contacts...</div>;
+  if (error) return <div className="error">Failed to load contacts</div>;
+  if (!data) return <div className="loading">Loading contacts...</div>;
 
   const contacts = data.contacts || [];
   const total = data.total || 0;
@@ -40,14 +42,83 @@ const PersonalContacts: React.FC = () => {
     setExpandedId(expandedId === id ? null : id);
   };
 
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === contacts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(contacts.map((c: any) => c.id)));
+    }
+  };
+
+  const handleFetchHistory = async () => {
+    if (selectedIds.size === 0) {
+      setStatusMessage('Выберите хотя бы один контакт');
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    setStatusMessage('Загрузка истории сообщений...');
+
+    try {
+      const contactIds = Array.from(selectedIds);
+      for (const contactId of contactIds) {
+        await api.post(`/api/pipeline/extract-contact-history`, {
+          contact_id: contactId,
+        });
+      }
+      setStatusMessage(`✓ Запрос отправлен для ${selectedIds.size} контактов`);
+      setSelectedIds(new Set());
+    } catch (err) {
+      setStatusMessage('Ошибка при загрузке истории');
+      console.error(err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   return (
     <div className="personal-contacts-page">
       <div className="page-header">
         <div>
-          <h1 className="text-gradient">Личные Контакты</h1>
-          <p className="text-secondary">Всего сохранено: {total} контактов</p>
+          <h1 className="text-gradient">Мои Контакты</h1>
+          <p className="text-secondary">Всего: {total} контактов</p>
         </div>
+        {selectedIds.size > 0 && (
+          <button
+            onClick={handleFetchHistory}
+            disabled={isLoadingHistory}
+            className="btn-fetch-history"
+          >
+            {isLoadingHistory ? (
+              <>
+                <Loader size={16} className="spinner" />
+                Загрузка...
+              </>
+            ) : (
+              <>
+                <Download size={16} />
+                Получить историю ({selectedIds.size})
+              </>
+            )}
+          </button>
+        )}
       </div>
+
+      {statusMessage && (
+        <div className={`status-message ${statusMessage.includes('✓') ? 'success' : 'error'}`}>
+          {statusMessage}
+        </div>
+      )}
 
       <div className="search-section">
         <input
@@ -59,19 +130,46 @@ const PersonalContacts: React.FC = () => {
         />
       </div>
 
+      {contacts.length > 0 && (
+        <div className="selection-bar">
+          <label className="select-all-checkbox">
+            <input
+              type="checkbox"
+              checked={selectedIds.size === contacts.length && contacts.length > 0}
+              onChange={toggleSelectAll}
+            />
+            <span>Выбрать всё ({contacts.length})</span>
+          </label>
+          {selectedIds.size > 0 && (
+            <span className="selected-count">Выбрано: {selectedIds.size}</span>
+          )}
+        </div>
+      )}
+
       <div className="contacts-list serpent-card">
         {contacts.length === 0 ? (
           <div className="empty-state">
-            <p>Нет контактов, соответствующих вашему поиску</p>
+            <p>Нет контактов</p>
           </div>
         ) : (
           contacts.map((contact: any) => (
-            <div key={contact.id} className="contact-item">
-              <div
-                className="contact-header"
-                onClick={() => toggleExpand(contact.id)}
-              >
-                <div className="contact-main-info">
+            <div
+              key={contact.id}
+              className={`contact-item ${selectedIds.has(contact.id) ? 'selected' : ''}`}
+            >
+              <div className="contact-header">
+                <input
+                  type="checkbox"
+                  className="contact-checkbox"
+                  checked={selectedIds.has(contact.id)}
+                  onChange={() => toggleSelect(contact.id)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <div
+                  className="contact-main-info"
+                  onClick={() => toggleExpand(contact.id)}
+                  style={{ flex: 1, cursor: 'pointer' }}
+                >
                   <div className="mini-avatar">
                     {contact.first_name?.[0] || 'U'}
                   </div>
