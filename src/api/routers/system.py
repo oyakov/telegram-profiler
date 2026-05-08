@@ -252,6 +252,102 @@ async def get_workers_status():
     except Exception as e:
         return {"workers": [], "status": "error", "error": str(e)}
 
+@router.get("/tree")
+async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
+    """Get hierarchical tree of data (Project > Folder > Channel) with stats."""
+    from src.db.models import SystemProject, TrackedFolder, TrackedChannel, Message
+    from src.db.database import get_session
+    import os
+
+    # 1. Get all projects from master DB
+    projects_res = await db.execute(select(SystemProject).order_by(SystemProject.name))
+    projects = projects_res.scalars().all()
+    
+    tree = []
+    
+    for proj in projects:
+        proj_node = {
+            "id": str(proj.id),
+            "name": proj.name,
+            "type": "project",
+            "db_name": proj.db_name,
+            "children": [],
+            "files": 0,
+            "percentage": 0,
+            "status": "active" if proj.is_active else "inactive"
+        }
+        
+        try:
+            # 2. Connect to project-specific DB
+            async with get_session(db_name=proj.db_name) as proj_session:
+                # Get folders
+                folders_res = await proj_session.execute(select(TrackedFolder).order_by(TrackedFolder.name))
+                folders = folders_res.scalars().all()
+                
+                # Get channels
+                channels_res = await proj_session.execute(select(TrackedChannel).order_by(TrackedChannel.title))
+                channels = channels_res.scalars().all()
+                
+                # Get message counts per channel
+                msg_counts_res = await proj_session.execute(
+                    select(Message.group_id, func.count(Message.id))
+                    .group_by(Message.group_id)
+                )
+                msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
+                
+                proj_total_files = sum(msg_counts.values())
+                proj_node["files"] = proj_total_files
+                
+                # Organize into tree
+                folder_nodes = {}
+                for f in folders:
+                    f_node = {
+                        "id": str(f.id),
+                        "name": f.name,
+                        "type": "folder",
+                        "children": [],
+                        "files": 0,
+                        "percentage": 0,
+                        "last_change": f.updated_at.isoformat() if f.updated_at else None
+                    }
+                    folder_nodes[str(f.id)] = f_node
+                    proj_node["children"].append(f_node)
+                
+                for ch in channels:
+                    ch_files = msg_counts.get(ch.telegram_id, 0)
+                    ch_node = {
+                        "id": str(ch.id),
+                        "name": ch.title,
+                        "type": "channel",
+                        "username": ch.username,
+                        "files": ch_files,
+                        "percentage": 0,
+                        "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
+                    }
+                    
+                    if str(ch.folder_id) in folder_nodes:
+                        folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
+                        folder_nodes[str(ch.folder_id)]["files"] += ch_files
+                    else:
+                        proj_node["children"].append(ch_node)
+                
+                # Calculate percentages relative to project
+                for fn in proj_node["children"]:
+                    if proj_total_files > 0:
+                        fn["percentage"] = round((fn["files"] / proj_total_files) * 100, 1)
+                        if "children" in fn:
+                            for cn in fn["children"]:
+                                if fn["files"] > 0:
+                                    cn["percentage"] = round((cn["files"] / fn["files"]) * 100, 1)
+        
+        except Exception as e:
+            proj_node["error"] = str(e)
+            proj_node["status"] = "error"
+            
+        tree.append(proj_node)
+        
+    return {"tree": tree}
+
 @router.get("/prometheus")
 async def get_prometheus_metrics(range: str = "1h"):
     """Get Prometheus metrics for visualization."""
