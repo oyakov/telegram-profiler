@@ -7,13 +7,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-crm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backups:/backups
-      - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm}"]
+      test: ["CMD-SHELL", "pg_isready -U crm"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,116 +33,80 @@ services:
     networks:
       - crm-net
 
-  whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    container_name: crm-whisper
-    environment:
-      ASR_MODEL: ${WHISPER_MODEL:-small}
-      ASR_ENGINE: openai_whisper
-    ports:
-      - "9000:9000"
+  app:
+    build: .
+    container_name: crm-app
+    env_file: .env
     volumes:
-      - whisper_cache:/root/.cache
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
+      - .:/app
+      - session_data:/app/sessions
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - crm-net
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: crm-app
+  # Dedicated worker for AI processing (embeddings, extraction)
+  worker-processing:
+    build: .
+    container_name: crm-worker-processing
+    command: celery -A src.pipeline.celery_app worker --loglevel=info -Q processing -c 2
     env_file: .env
-    environment:
-      DB_FOLDER_MAPPING: "BG Intel:crm,Crypto:crm_crypto,BG - Rent:crm_bg_rent,BG - Cars:crm_bg_cars,BG - Work:crm_bg_work,BG - News:crm_bg_news"
-    ports:
-      - "${APP_PORT:-8090}:8000"
     volumes:
-      - ./uploads:/app/uploads
-      - ./backups:/app/backups
-      - ./src:/app/src
-      - ./alembic:/app/alembic
-      - ./scripts:/app/scripts
-      - ./tests:/app/tests
+      - .:/app
       - session_data:/app/sessions
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - crm-net
 
-  # Dedicated worker for heavy Telegram sync tasks
+  # Dedicated worker for background connectors (Telegram sync)
   worker-connectors:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: crm-worker-connectors
-    entrypoint: ["celery", "-A", "src.pipeline.celery_app", "worker", "--loglevel=info", "-Q", "connectors", "--concurrency=${CONNECTORS_CONCURRENCY:-2}"]
+    command: celery -A src.pipeline.celery_app worker --loglevel=info -Q connectors -c 1
     env_file: .env
-    environment:
-      DB_FOLDER_MAPPING: "BG Intel:crm,Crypto:crm_crypto,BG - Rent:crm_bg_rent,BG - Cars:crm_bg_cars,BG - Work:crm_bg_work,BG - News:crm_bg_news"
     volumes:
-      - ./uploads:/app/uploads
-      - ./backups:/app/backups
-      - ./src:/app/src
-      - ./alembic:/app/alembic
-      - ./scripts:/app/scripts
-      - ./tests:/app/tests
+      - .:/app
       - session_data:/app/sessions
     depends_on:
-      - app
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - crm-net
-
-  # Dedicated worker for AI processing (embeddings, extraction)
-  worker-processing:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: crm-worker-processing
-    entrypoint: ["celery", "-A", "src.pipeline.celery_app", "worker", "--loglevel=info", "-Q", "processing,default", "--concurrency=${PROCESSING_CONCURRENCY:-4}"]
-    env_file: .env
-    environment:
-      DB_FOLDER_MAPPING: "BG Intel:crm,Crypto:crm_crypto,BG - Rent:crm_bg_rent,BG - Cars:crm_bg_cars,BG - Work:crm_bg_work,BG - News:crm_bg_news"
-    volumes:
-      - ./uploads:/app/uploads
-      - ./backups:/app/backups
-      - ./src:/app/src
-      - ./alembic:/app/alembic
-      - ./scripts:/app/scripts
-      - ./tests:/app/tests
-      - session_data:/app/sessions
-    depends_on:
-      - app
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - crm-net
 
   beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: crm-beat
-    entrypoint: ["celery", "-A", "src.pipeline.celery_app", "beat", "--loglevel=info"]
+    command: celery -A src.pipeline.celery_app beat --loglevel=info
     env_file: .env
-    environment:
-      DB_FOLDER_MAPPING: "BG Intel:crm,Crypto:crm_crypto,BG - Rent:crm_bg_rent,BG - Cars:crm_bg_cars,BG - Work:crm_bg_work,BG - News:crm_bg_news"
+    volumes:
+      - .:/app
     depends_on:
-      - app
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      redis:
+        condition: service_healthy
+    networks:
+      - crm-net
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: crm-whisper
+    environment:
+      - ASR_MODEL=${WHISPER_MODEL:-small}
+      - ASR_ENGINE=${WHISPER_ENGINE:-openai_whisper}
+    ports:
+      - "9000:9000"
+    volumes:
+      - whisper_cache:/root/.cache/whisper
     networks:
       - crm-net
 
@@ -163,47 +125,6 @@ services:
       - crm-net
 
   # --- Observability ---
-
-  opensearch:
-    image: opensearchproject/opensearch:2.11.0
-    container_name: crm-opensearch
-    environment:
-      - cluster.name=opensearch-cluster
-      - node.name=opensearch-node1
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - "DISABLE_INSTALL_DEMO_CONFIG=true"
-      - "DISABLE_SECURITY_PLUGIN=true"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
-    volumes:
-      - opensearch_data:/usr/share/opensearch/data
-    ports:
-      - "9200:9200"
-      - "9600:9600"
-    networks:
-      - crm-net
-
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.11.0
-    container_name: crm-dashboards
-    ports:
-      - "5601:5601"
-    expose:
-      - "5601"
-    environment:
-      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
-      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
-    depends_on:
-      - opensearch
-    networks:
-      - crm-net
 
   prometheus:
     image: prom/prometheus:latest
@@ -226,7 +147,6 @@ volumes:
   redisdata:
   whisper_cache:
   session_data:
-  opensearch_data:
   prometheus_data:
 
 networks:
