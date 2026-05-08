@@ -251,3 +251,33 @@ async def get_workers_status():
         return {"workers": workers, "status": "ok", "timestamp": datetime.utcnow().isoformat()}
     except Exception as e:
         return {"workers": [], "status": "error", "error": str(e)}
+
+@router.get("/prometheus")
+async def get_prometheus_metrics(range: str = "1h"):
+    """Get Prometheus metrics for visualization."""
+    import random
+    from datetime import datetime, timedelta
+
+    # Generate mock data for demonstration
+    # In production, you would query actual Prometheus instance
+    def generate_metric_data(base_value: float, variation: float, count: int = 20) -> list:
+        """Generate mock metric data with realistic variation."""
+        now = datetime.utcnow()
+        data = []
+        for i in range(count):
+            timestamp = (now - timedelta(minutes=count - i)).timestamp() * 1000
+            value = base_value + random.uniform(-variation, variation)
+            data.append({"timestamp": int(timestamp), "value": round(value, 2)})
+        return data
+
+    # Determine time range multiplier
+    range_multipliers = {"1h": 1, "6h": 6, "24h": 24}
+    multiplier = range_multipliers.get(range, 1)
+
+    return {
+        "cpu_usage": generate_metric_data(45.5, 15.0, 20 * multiplier),
+        "memory_usage": generate_metric_data(2048.0, 512.0, 20 * multiplier),
+        "request_latency": generate_metric_data(125.0, 50.0, 20 * multiplier),
+        "error_rate": generate_metric_data(0.5, 0.3, 20 * multiplier),
+        "active_connections": generate_metric_data(150.0, 30.0, 20 * multiplier)
+    }
