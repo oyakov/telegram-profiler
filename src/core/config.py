@@ -59,7 +59,6 @@ class AppSettings(BaseSettings):
     # --- Observability ---
     enable_metrics: bool = Field(True)
     prometheus_dir: str = Field("/tmp/prometheus_multiproc_dir")
-    opensearch_url: str = Field("http://opensearch:9200")
     enable_json_logging: bool = Field(True)
 
     @property

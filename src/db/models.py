@@ -305,3 +305,26 @@ class SyncState(Base):
     error_message = Column(Text, nullable=True)
     metadata_json = Column(JSONB, default=dict)  # connector-specific state
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LeadSearch(Base):
+    """Saved lead search/profile tracker."""
+    __tablename__ = "lead_searches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    profile_filter = Column(JSONB, nullable=False)  # Serialized LeadProfileFilter
+    is_active = Column(Boolean, default=True)
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    last_result_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_lead_searches_is_active", "is_active"),
+        Index("idx_lead_searches_created", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<LeadSearch {self.name}>"

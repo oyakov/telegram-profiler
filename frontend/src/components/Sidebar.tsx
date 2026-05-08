@@ -33,6 +33,7 @@ const Sidebar: React.FC = () => {
     { name: 'Поиск и AI', path: '/search', icon: <Search size={20} /> },
     { name: 'Лиды', path: '/leads', icon: <BrainCircuit size={20} /> },
     { name: 'Контакты', path: '/contacts', icon: <Users size={20} /> },
+    { name: 'Личные Контакты', path: '/personal-contacts', icon: <Users size={20} /> },
     { name: 'Настройки', path: '/settings', icon: <Settings size={20} /> },
   ];
 
