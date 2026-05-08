@@ -18,6 +18,7 @@ const PersonalContacts: React.FC = () => {
   const queryParams = new URLSearchParams();
   queryParams.append('page', page.toString());
   queryParams.append('page_size', '50');
+  queryParams.append('source', 'telegram');
   if (searchQuery) {
     queryParams.append('search', searchQuery);
   }
@@ -80,26 +81,24 @@ const PersonalContacts: React.FC = () => {
     }
   };
 
-  const handleFetchHistory = async () => {
+  const handleAddToTracked = async () => {
     if (selectedIds.size === 0) {
       setStatusMessage('Выберите хотя бы один контакт');
       return;
     }
 
     setIsLoadingHistory(true);
-    setStatusMessage('Загрузка истории сообщений...');
+    setStatusMessage('Добавление в отслеживаемый...');
 
     try {
       const contactIds = Array.from(selectedIds);
-      for (const contactId of contactIds) {
-        await api.post(`/api/pipeline/extract-contact-history`, {
-          contact_id: contactId,
-        });
-      }
-      setStatusMessage(`✓ Запрос отправлен для ${selectedIds.size} контактов`);
+      await api.post(`/api/contacts/add-to-tracked`, {
+        contact_ids: contactIds,
+      });
+      setStatusMessage(`✓ Добавлено ${selectedIds.size} контактов в отслеживаемый`);
       setSelectedIds(new Set());
     } catch (err) {
-      setStatusMessage('Ошибка при загрузке истории');
+      setStatusMessage('Ошибка при добавлении в отслеживаемый');
       console.error(err);
     } finally {
       setIsLoadingHistory(false);
@@ -133,19 +132,19 @@ const PersonalContacts: React.FC = () => {
           </button>
           {selectedIds.size > 0 && (
             <button
-              onClick={handleFetchHistory}
+              onClick={handleAddToTracked}
               disabled={isLoadingHistory}
               className="btn-fetch-history"
             >
               {isLoadingHistory ? (
                 <>
                   <Loader size={16} className="spinner" />
-                  Загрузка...
+                  Добавление...
                 </>
               ) : (
                 <>
                   <Download size={16} />
-                  Получить историю ({selectedIds.size})
+                  Добавить в отслеживаемый ({selectedIds.size})
                 </>
               )}
             </button>
