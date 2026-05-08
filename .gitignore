@@ -9,6 +9,7 @@ build/
 *.egg
 .venv/
 venv/
+celerybeat-schedule
 
 # Environment
 .env
@@ -22,11 +23,20 @@ docker-compose.override.yml
 .vscode/
 *.swp
 *.swo
+.claude/
 
 # Data
 backups/
 uploads/
 *.session
+*.csv
+!reklamodately_targets_full_20260417_0651.csv
+!sales_targets_20260417_0648.csv
+
+# Logs & Debug
+*.log
+test_output.txt
+test_search.py
 
 # OS
 .DS_Store
@@ -45,7 +55,10 @@ expansion_candidates.*
 scripts/check_*.py
 scripts/consolidated_progress.py
 scripts/convert_to_csv.py
+scripts/audit_db.py
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
