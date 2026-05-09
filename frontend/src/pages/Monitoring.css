@@ -7,8 +7,9 @@
 /* System Flow Styles */
 .system-flow-container {
   margin-bottom: var(--spacing-lg);
-  padding: 24px;
+  padding: 40px 24px;
   background: rgba(15, 23, 42, 0.4);
+  overflow: visible;
 }
 
 .flow-grid {
@@ -90,24 +91,30 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  overflow: visible;
 }
 
 .connector-label-top {
   position: absolute;
-  top: -20px;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 10px;
   font-weight: 700;
   color: var(--primary-emerald);
   white-space: nowrap;
-  background: rgba(16, 185, 129, 0.1);
-  padding: 2px 6px;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  z-index: 10;
 }
 
 .connector-label-bottom {
   position: absolute;
-  bottom: -18px;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 9px;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -151,7 +158,6 @@
   background: var(--border-color);
   margin: 0 10px;
   position: relative;
-  overflow: hidden;
 }
 
 .flow-particles::after {
