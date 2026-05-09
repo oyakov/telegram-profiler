@@ -20,40 +20,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     connection = op.get_bind()
-    
+
     # For each folder, find the matching project and update the folder's project_id
     # Also update all messages in that folder to have the correct project_id
-    
+
     # Get all folders with their names
     folders = connection.execute(text("""
         SELECT id, name FROM tracked_folders WHERE project_id IS NULL
     """)).fetchall()
-    
+
     for folder_id, folder_name in folders:
         # Find the project with matching name
-        project = connection.execute(text(f"""
-            SELECT id FROM system_projects WHERE name = '{folder_name}'
-        """)).fetchone()
-        
+        project = connection.execute(text("""
+            SELECT id FROM system_projects WHERE name = %s
+        """), [folder_name]).fetchone()
+
         if project:
             project_id = project[0]
-            
+
             # Update the folder to assign it to this project
-            connection.execute(text(f"""
-                UPDATE tracked_folders 
-                SET project_id = '{project_id}'
-                WHERE id = '{folder_id}'
-            """))
-            
+            connection.execute(text("""
+                UPDATE tracked_folders
+                SET project_id = :project_id
+                WHERE id = :folder_id
+            """), {"project_id": project_id, "folder_id": folder_id})
+
             # Update all messages with this folder_id to have the correct project_id
-            connection.execute(text(f"""
+            connection.execute(text("""
                 UPDATE messages
-                SET project_id = '{project_id}'
-                WHERE folder_id = '{folder_id}'
-            """))
-    
-    # Commit the transaction
-    connection.commit()
+                SET project_id = :project_id
+                WHERE folder_id = :folder_id
+            """), {"project_id": project_id, "folder_id": folder_id})
 
 
 def downgrade() -> None:
@@ -65,4 +62,3 @@ def downgrade() -> None:
     connection.execute(text("""
         UPDATE messages SET project_id = NULL WHERE folder_id IN (SELECT id FROM tracked_folders)
     """))
-    connection.commit()
