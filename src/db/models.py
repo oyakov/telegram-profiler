@@ -28,19 +28,26 @@ class Base(DeclarativeBase):
 
 
 class SystemProject(Base):
-    """Global project registry (stored in master 'crm' database)."""
+    """Project — represents a folder/category of messages and contacts."""
     __tablename__ = "system_projects"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
-    db_name = Column(String(255), unique=True, nullable=False) # e.g. "crm_crypto"
     description = Column(Text, nullable=True)
+    telegram_folder_id = Column(String(100), nullable=True)  # Telegram folder ID if auto-created
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # Relationships
+    folders = relationship("TrackedFolder", back_populates="project")
+
+    __table_args__ = (
+        Index("idx_project_telegram_folder_id", "telegram_folder_id"),
+    )
+
     def __repr__(self) -> str:
-        return f"<SystemProject {self.name} ({self.db_name})>"
+        return f"<SystemProject {self.name}>"
 
 
 class UserProfile(Base):
@@ -64,11 +71,13 @@ class UserProfile(Base):
 
 
 class TrackedFolder(Base):
-    """A formal concept of a tracked Telegram folder/project."""
+    """A Telegram folder/label within a project."""
     __tablename__ = "tracked_folders"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), unique=True, nullable=False)  # e.g., "BG Intel" or "Crypto"
+    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=False)
+    telegram_folder_id = Column(String(100), nullable=True)  # Telegram folder ID
+    name = Column(String(255), nullable=False)  # e.g., "BG Intel" or "Crypto"
     description = Column(Text, nullable=True)
     tags = Column(ARRAY(String), default=list) # Keywords/tags
     is_active = Column(Boolean, default=True)
@@ -76,7 +85,13 @@ class TrackedFolder(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    project = relationship("SystemProject", back_populates="folders")
     channels = relationship("TrackedChannel", back_populates="folder", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_folder_project_id", "project_id"),
+        Index("idx_folder_telegram_folder_id", "telegram_folder_id"),
+    )
 
     def __repr__(self) -> str:
         return f"<TrackedFolder {self.name}>"
@@ -119,13 +134,14 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=True)
     first_name = Column(String(255))
     last_name = Column(String(255))
     company = Column(String(255))
     position = Column(String(255))
-    email = Column(String(255), unique=True, nullable=True)
+    email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
-    telegram_id = Column(String(100), unique=True, nullable=True)
+    telegram_id = Column(String(100), nullable=True)
     telegram_username = Column(String(100), nullable=True)
     linkedin_url = Column(String(500), nullable=True)
     source = Column(String(50), nullable=False, default="manual")  # telegram|excel|crm|social|manual
@@ -134,13 +150,13 @@ class Contact(Base):
     notes = Column(Text, nullable=True)
     context = Column(Text, nullable=True)  # meeting context, how we met, etc.
     facts_json = Column(JSONB, default=dict)  # arbitrary structured facts from LLM
-    
+
     # Lead Specific Fields
     is_lead = Column(Boolean, default=False)
     lead_score = Column(Float, default=0.0)
     our_channel_ratio = Column(Float, default=0.0)  # % of ads in "our" channel
     lead_context = Column(JSONB, default=dict)  # Metadata about lead/ad purchases
-    
+
     # User Profiling Fields
     bio = Column(Text, nullable=True)
     profile_photo_path = Column(String(500), nullable=True)
@@ -148,13 +164,13 @@ class Contact(Base):
     is_verified = Column(Boolean, default=False)
     last_enriched_at = Column(DateTime(timezone=True), nullable=True)
     telegram_metadata = Column(JSONB, default=dict)
-    
+
     # Tracking Stats
     is_tracked = Column(Boolean, default=False)
     total_messages_synced = Column(Integer, default=0)
     oldest_message_id = Column(String(255), nullable=True)
     oldest_message_date = Column(DateTime(timezone=True), nullable=True)
-    
+
     embedding = Column(Vector(1024), nullable=True)
     embedding_dirty = Column(Boolean, default=True)
     last_interaction = Column(DateTime(timezone=True), nullable=True)
@@ -164,11 +180,10 @@ class Contact(Base):
     # Relationships
     messages = relationship("Message", back_populates="contact", cascade="all, delete-orphan")
     voice_notes = relationship("VoiceNote", back_populates="contact", cascade="all, delete-orphan")
-    
-    # New many-to-many relationship for any association with a message
     associated_messages = relationship("MessageContact", back_populates="contact", cascade="all, delete-orphan")
 
     __table_args__ = (
+        Index("idx_contacts_project_id", "project_id"),
         Index("idx_contacts_source", "source"),
         Index("idx_contacts_embedding_dirty", "embedding_dirty"),
         Index("idx_contacts_last_interaction", "last_interaction"),
@@ -182,13 +197,15 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=True)
+    folder_id = Column(UUID(as_uuid=True), ForeignKey("tracked_folders.id", ondelete="SET NULL"), nullable=True)
     contact_id = Column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False)
     source = Column(String(50), nullable=False)  # telegram|crm|social
     source_message_id = Column(String(255), nullable=True)  # external ID
     direction = Column(String(10), default="incoming")  # incoming|outgoing
     content = Column(Text, nullable=True)
     media_type = Column(String(50), nullable=True)  # text|voice|image|video|document
-    group_id = Column(String(100), nullable=True)
+    group_id = Column(String(100), nullable=True)  # Telegram channel/group ID
     group_name = Column(String(255), nullable=True)
     raw_json = Column(JSONB, nullable=True)  # original API payload
     timestamp = Column(DateTime(timezone=True), nullable=False)
@@ -197,11 +214,11 @@ class Message(Base):
     # Relationships
     contact = relationship("Contact", back_populates="messages")
     embeddings = relationship("MessageEmbedding", back_populates="message", cascade="all, delete-orphan")
-    
-    # New many-to-many relationship for any associated contact (sender, buyer, etc.)
     associated_contacts = relationship("MessageContact", back_populates="message", cascade="all, delete-orphan")
 
     __table_args__ = (
+        Index("idx_messages_project_id", "project_id"),
+        Index("idx_messages_folder_id", "folder_id"),
         Index("idx_messages_contact_id", "contact_id"),
         Index("idx_messages_timestamp", "timestamp"),
         Index("idx_messages_source", "source"),
@@ -265,6 +282,7 @@ class VoiceNote(Base):
     __tablename__ = "voice_notes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=True)
     contact_id = Column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=True)
     file_path = Column(String(500), nullable=False)
     duration_seconds = Column(Float, nullable=True)
@@ -277,6 +295,7 @@ class VoiceNote(Base):
     contact = relationship("Contact", back_populates="voice_notes")
 
     __table_args__ = (
+        Index("idx_voice_notes_project_id", "project_id"),
         Index("idx_voice_notes_contact_id", "contact_id"),
         Index("idx_voice_notes_processed", "processed"),
     )
