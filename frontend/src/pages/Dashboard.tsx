@@ -1,41 +1,30 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { CheckCircle2, AlertCircle, Search, Activity } from 'lucide-react';
+import { Search } from 'lucide-react';
 import './Dashboard.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
-
-const StatusIndicator: React.FC<{ status: 'ok' | 'warning' | 'error' | 'processing' }> = ({ status }) => {
-  const config = {
-    ok: { color: '#10b981', icon: CheckCircle2, label: 'OK' },
-    warning: { color: '#f59e0b', icon: AlertCircle, label: 'Warning' },
-    error: { color: '#ef4444', icon: AlertCircle, label: 'Error' },
-    processing: { color: '#3b82f6', icon: Activity, label: 'Processing' }
-  };
-
-  const { color, icon: Icon, label } = config[status];
-  return (
-    <div className="status-indicator" style={{ borderColor: color }}>
-      <Icon size={16} style={{ color }} />
-      <span className="status-label">{label}</span>
-    </div>
-  );
-};
-
 
 const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: stats, error: statsError, isLoading: statsLoading } = useSWR('/api/stats', fetcher);
-  const { data: tracking, error: trackingError } = useSWR('/api/tracking/channels', fetcher);
-  const { data: timelineData } = useSWR('/api/stats/timeline', fetcher);
-  const { data: folders } = useSWR('/api/tracking/folders', fetcher);
+  const { data: tracking } = useSWR('/api/tracking/channels', fetcher);
+  const { data: foldersData } = useSWR('/api/tracking/folders', fetcher);
   const { data: contacts } = useSWR('/api/contacts', fetcher);
   const { data: user } = useSWR('/api/telegram/user', fetcher);
 
+  const folders = foldersData?.folders || [];
+
   const isLoading = statsLoading || !stats || !tracking;
-  if (statsError) return <div className="error">Failed to load dashboard data</div>;
+  if (statsError) {
+    const statusCode = statsError.response?.status;
+    if (statusCode === 401) {
+      return <div className="error">Please log in to view dashboard data</div>;
+    }
+    return <div className="error">Failed to load dashboard data</div>;
+  }
   if (isLoading) return <div className="loading">Loading intelligence...</div>;
 
   const userName = user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'User';
