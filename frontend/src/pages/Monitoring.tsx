@@ -4,6 +4,7 @@ import api from '../services/api';
 import { RefreshCw, Activity, Database, Zap, Cpu } from 'lucide-react';
 import { DataFlowTree, SystemFlow } from '../components/DataFlowExplorer';
 import { DataQualityMetrics, SyncHealthMetrics, BusinessMetrics } from '../components/MetricsPanel';
+import SyncStatusPanel from '../components/SyncStatusPanel';
 import './Monitoring.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
@@ -104,6 +105,14 @@ const Monitoring: React.FC = () => {
           Data Pipeline
         </h2>
         <SystemFlow metrics={metricsData} />
+      </div>
+
+      <div style={{ marginBottom: '32px' }}>
+        <h2 style={{ fontSize: '1.25rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Database size={20} className="text-blue" />
+          Telegram Sync Status
+        </h2>
+        <SyncStatusPanel />
       </div>
 
       <div style={{ marginBottom: '32px' }}>

@@ -21,11 +21,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     connection = op.get_bind()
-    
+
     # Update messages with folder_id and project_id based on their group_id matching channel telegram_id
     update_query = text("""
         UPDATE messages m
-        SET 
+        SET
             folder_id = tc.folder_id,
             project_id = tf.project_id
         FROM tracked_channels tc
@@ -34,14 +34,9 @@ def upgrade() -> None:
         AND m.folder_id IS NULL
         AND tc.folder_id IS NOT NULL
     """)
-    
-    try:
-        result = connection.execute(update_query)
-        connection.commit()
-        print(f"Updated {result.rowcount} messages with folder and project assignments")
-    except Exception as e:
-        print(f"Error updating messages: {e}")
-        connection.rollback()
+
+    result = connection.execute(update_query)
+    print(f"Updated {result.rowcount} messages with folder and project assignments")
 
 
 def downgrade() -> None:
@@ -53,4 +48,3 @@ def downgrade() -> None:
         SET folder_id = NULL
         WHERE folder_id IN (SELECT id FROM tracked_folders)
     """))
-    connection.commit()

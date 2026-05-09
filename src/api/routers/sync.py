@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
@@ -18,9 +19,13 @@ BATCH_SIZE = 100
 async def get_sync_status(db: AsyncSession = Depends(get_db)):
     """Get sync status for all folders and channels."""
 
-    # Get all folders with their channels
-    result = await db.execute(select(TrackedFolder))
-    folders = result.scalars().all()
+    # Get all folders with their channels (eager load relationships)
+    result = await db.execute(
+        select(TrackedFolder).options(
+            selectinload(TrackedFolder.channels).selectinload(TrackedChannel.sync_state)
+        )
+    )
+    folders = result.unique().scalars().all()
 
     folders_data = []
     for folder in folders:
