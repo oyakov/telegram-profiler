@@ -20,14 +20,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add is_personal column
-    op.add_column('contacts', sa.Column('is_personal', sa.Boolean(), nullable=False, server_default='false'))
+    from sqlalchemy import inspect
 
-    # Add saved_at column
-    op.add_column('contacts', sa.Column('saved_at', sa.DateTime(timezone=True), nullable=True))
+    # Check if columns already exist (idempotent)
+    connection = op.get_bind()
+    inspector = inspect(connection)
+    columns = {col['name'] for col in inspector.get_columns('contacts')}
 
-    # Create index on is_personal for efficient filtering
-    op.create_index('idx_contacts_is_personal', 'contacts', ['is_personal'])
+    # Add is_personal column if it doesn't exist
+    if 'is_personal' not in columns:
+        op.add_column('contacts', sa.Column('is_personal', sa.Boolean(), nullable=False, server_default='false'))
+
+    # Add saved_at column if it doesn't exist
+    if 'saved_at' not in columns:
+        op.add_column('contacts', sa.Column('saved_at', sa.DateTime(timezone=True), nullable=True))
+
+    # Create index on is_personal if it doesn't exist
+    indexes = {idx['name'] for idx in inspector.get_indexes('contacts')}
+    if 'idx_contacts_is_personal' not in indexes:
+        op.create_index('idx_contacts_is_personal', 'contacts', ['is_personal'])
 
 
 def downgrade() -> None:
