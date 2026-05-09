@@ -209,11 +209,17 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
     queued_count = 0
 
     for channel in folder.channels:
-        if channel.sync_state and channel.sync_state.phase in ["metadata", "syncing"]:
+        # Include 'reconciling' in the active check
+        if channel.sync_state and channel.sync_state.phase in ["metadata", "syncing", "reconciling"]:
             logger.info("skipping_channel_already_syncing", channel_id=str(channel.id), phase=channel.sync_state.phase)
             continue
 
         try:
+            # Clean up ANY old sync states to ensure true 1:1 relationship
+            from sqlalchemy import delete
+            await db.execute(delete(ChannelSyncState).where(ChannelSyncState.channel_id == channel.id))
+            await db.flush()
+
             # Create new sync state
             sync_state = ChannelSyncState(
                 channel_id=channel.id,
