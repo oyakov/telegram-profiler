@@ -12,6 +12,12 @@
   z-index: 90;
 }
 
+.top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .top-nav-link {
   display: flex;
   align-items: center;

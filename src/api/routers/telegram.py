@@ -198,6 +198,7 @@ async def telegram_import_folder(request: Request):
     from sqlalchemy import select
     from src.db.database import get_session
     from src.db.models import TrackedFolder, TrackedChannel
+    from uuid import UUID
 
     body = await request.json()
     folder_id = body.get("folder_id")
@@ -207,8 +208,18 @@ async def telegram_import_folder(request: Request):
     if not folder_id or not peer_ids:
         raise HTTPException(400, "folder_id and peer_ids are required")
 
+    # Convert folder_id to UUID if it's a string
+    try:
+        if isinstance(folder_id, str):
+            folder_id = UUID(folder_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid folder_id format")
+
     connector = TelegramConnector(db_name=db_name)
-    channels = await connector.import_folder_channels(peer_ids)
+    try:
+        channels = await connector.import_folder_channels(peer_ids)
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch channels from Telegram: {str(e)}")
 
     added = 0
     skipped = 0

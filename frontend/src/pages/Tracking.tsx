@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
 import { 
@@ -82,6 +82,14 @@ const Tracking: React.FC = () => {
   // Folder Editing State
   const [editingFolder, setEditingFolder] = useState<any>(null);
   const [folderFormData, setFolderFormData] = useState({ name: '', description: '', tags_str: '' });
+
+  // Initialize all folders as collapsed
+  useEffect(() => {
+    if (foldersData?.folders && foldersData.folders.length > 0) {
+      const allFolderIds = new Set(foldersData.folders.map((f: any) => f.id));
+      setCollapsedFolders(allFolderIds);
+    }
+  }, [foldersData]);
 
   const handleOpenEditFolder = (folder: any) => {
     setEditingFolder(folder);

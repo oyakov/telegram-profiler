@@ -26,8 +26,6 @@ const Sidebar: React.FC = () => {
   const { data: projectsData } = useSWR('/api/projects', fetcher);
 
   const navItems = [
-    { name: 'Профиль', path: '/', icon: <User size={20} /> },
-    { name: 'Папки', path: '/tracking', icon: <Folder size={20} /> },
     { name: 'Данные', path: '/monitoring', icon: <Activity size={20} /> },
     { name: 'Аудит', path: '/audit', icon: <ClipboardList size={20} /> },
     { name: 'Поиск и AI', path: '/search', icon: <Search size={20} /> },

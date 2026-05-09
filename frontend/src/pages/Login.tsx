@@ -43,16 +43,14 @@ const Login: React.FC = () => {
         phone_code_hash: phoneCodeHash,
       });
       if (response.data.status === 'success') {
-        if (response.data.requires_2fa) {
-          setStep('2fa');
-        } else {
-          window.location.reload();
-        }
+        window.location.reload();
+      } else if (response.data.status === 'requires_2fa') {
+        setStep('2fa');
       } else {
-        setError(response.data.error || 'Failed to verify code');
+        setError(response.data.message || response.data.error || 'Failed to verify code');
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.response?.data?.error || 'Failed to verify code');
+      setError(err.response?.data?.detail || err.response?.data?.message || err.response?.data?.error || 'Failed to verify code');
     } finally {
       setLoading(false);
     }

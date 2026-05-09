@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import useSWR from 'swr';
-import { 
-  Database, 
-  LogOut, 
-  ChevronRight, 
-  Phone, 
-  Key, 
+import {
+  Database,
+  User,
+  Folder,
+  LogOut,
+  ChevronRight,
+  Phone,
+  Key,
   Lock,
   Loader2
 } from 'lucide-react';
@@ -114,9 +116,17 @@ const TopBar: React.FC = () => {
   return (
     <header className="top-bar">
       <div className="top-bar-left">
+        <NavLink to="/" className="top-nav-link">
+          <User size={18} />
+          <span>Профиль</span>
+        </NavLink>
         <NavLink to="/projects" className="top-nav-link">
           <Database size={18} />
           <span>Проекты</span>
+        </NavLink>
+        <NavLink to="/tracking" className="top-nav-link">
+          <Folder size={18} />
+          <span>Папки</span>
         </NavLink>
       </div>
 

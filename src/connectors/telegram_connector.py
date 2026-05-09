@@ -639,64 +639,91 @@ class TelegramConnector(BaseConnector):
         from telethon.tl.functions.messages import GetDialogFiltersRequest
         from telethon.tl.types import DialogFilter
         from telethon.utils import get_peer_id
-        client = self._get_client()
-        await client.connect()
-        try:
-            if not await client.is_user_authorized():
-                return []
-            res = await client(GetDialogFiltersRequest())
-            filters = res.filters if hasattr(res, 'filters') else res
-            result = []
-            for f in filters:
-                if not isinstance(f, DialogFilter):
+        import sqlite3
+
+        max_retries = 3
+        retry_delay = 0.5
+
+        for attempt in range(max_retries):
+            try:
+                client = self._get_client()
+                async with client:
+                    if not await client.is_user_authorized():
+                        return []
+                    res = await client(GetDialogFiltersRequest())
+                    filters = res.filters if hasattr(res, 'filters') else res
+                    result = []
+                    for f in filters:
+                        if not isinstance(f, DialogFilter):
+                            continue
+                        title = f.title
+                        if hasattr(title, 'text'):
+                            title = title.text
+                        peer_ids = []
+                        for peer in f.include_peers:
+                            try:
+                                peer_ids.append(str(abs(get_peer_id(peer))))
+                            except Exception:
+                                pass
+                        result.append({"name": title, "id": f.id, "channel_count": len(peer_ids), "peer_ids": peer_ids})
+                    return result
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (2 ** attempt))
                     continue
-                title = f.title
-                if hasattr(title, 'text'):
-                    title = title.text
-                peer_ids = []
-                for peer in f.include_peers:
-                    try:
-                        peer_ids.append(str(abs(get_peer_id(peer))))
-                    except Exception:
-                        pass
-                result.append({"name": title, "id": f.id, "channel_count": len(peer_ids), "peer_ids": peer_ids})
-            return result
-        finally:
-            await client.disconnect()
+                raise
 
     async def import_folder_channels(self, peer_ids: list[str]) -> list[dict]:
         """Resolve peer IDs to channel info (title, username, type)."""
         from telethon.tl.types import Channel, Chat
-        client = self._get_client()
-        await client.connect()
-        try:
-            if not await client.is_user_authorized():
-                return []
-            channels = []
-            for pid in peer_ids:
-                try:
-                    # Try as negative channel id first
-                    entity = await client.get_entity(int(f"-100{pid}"))
-                except Exception:
-                    try:
-                        entity = await client.get_entity(-int(pid))
-                    except Exception:
+        import sqlite3
+
+        max_retries = 3
+        retry_delay = 0.5
+
+        for attempt in range(max_retries):
+            try:
+                client = self._get_client()
+                async with client:
+                    if not await client.is_user_authorized():
+                        return []
+                    channels = []
+                    for pid in peer_ids:
+                        entity = None
                         try:
-                            entity = await client.get_entity(int(pid))
-                        except Exception:
+                            # Try as negative channel id first
+                            entity = await client.get_entity(int(f"-100{pid}"))
+                        except Exception as e1:
+                            try:
+                                entity = await client.get_entity(-int(pid))
+                            except Exception as e2:
+                                try:
+                                    entity = await client.get_entity(int(pid))
+                                except Exception as e3:
+                                    logger.warning("import_folder_channels failed for peer_id", peer_id=pid, error=str(e3))
+                                    continue
+
+                        if entity is None:
+                            logger.warning("import_folder_channels entity is None", peer_id=pid)
                             continue
-                if not isinstance(entity, (Channel, Chat)):
+
+                        if not isinstance(entity, (Channel, Chat)):
+                            logger.warning("import_folder_channels entity is not Channel or Chat",
+                                         peer_id=pid, entity_type=type(entity).__name__)
+                            continue
+                        is_channel = isinstance(entity, Channel) and entity.broadcast
+                        channels.append({
+                            "telegram_id": str(entity.id),
+                            "title": getattr(entity, "title", "Unknown"),
+                            "username": getattr(entity, "username", None),
+                            "entity_type": "channel" if is_channel else "group",
+                        })
+                    return channels
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (2 ** attempt))
                     continue
-                is_channel = isinstance(entity, Channel) and entity.broadcast
-                channels.append({
-                    "telegram_id": str(entity.id),
-                    "title": getattr(entity, "title", "Unknown"),
-                    "username": getattr(entity, "username", None),
-                    "entity_type": "channel" if is_channel else "group",
-                })
-            return channels
-        finally:
-            await client.disconnect()
+                raise
 
     async def reorganize_all_tracked(self, folder_name=None) -> dict:
         folder_name = folder_name or os.getenv("TARGET_FOLDER", "BG Intel")

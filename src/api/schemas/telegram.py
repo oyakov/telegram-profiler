@@ -9,6 +9,8 @@ class TelegramVerifyCode(BaseModel):
     phone_code_hash: str
 
 class TelegramTwoFA(BaseModel):
+    phone: str
+    phone_code_hash: str
     password: str
 
 class DeepSyncRequest(BaseModel):
