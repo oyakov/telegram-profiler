@@ -131,27 +131,66 @@ async def get_audit_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
     }
 
 @router.get("/celery-tasks")
-async def get_celery_tasks():
-    """Get Celery task audit - running, completed, and queued tasks."""
+async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
+    """Get Celery task audit with rich human context."""
     from src.pipeline.celery_app import celery_app
-    from datetime import datetime
+    from src.db.models import TrackedChannel, ChannelSyncState
+    from sqlalchemy import select
+    from sqlalchemy.orm import joinedload
+    import ast
 
     try:
-        # Get task inspect instance
         inspect = celery_app.control.inspect()
+        active_tasks_map = inspect.active() or {}
+        
+        # 1. Fetch channel info for context enrichment
+        channels_res = await db.execute(
+            select(TrackedChannel).options(joinedload(TrackedChannel.sync_state))
+        )
+        channels_map = {str(c.telegram_id): c for c in channels_res.scalars().all()}
+        # Also map by internal UUID for some tasks
+        uuid_map = {str(c.id): c for c in channels_map.values()}
 
-        # Active tasks (currently running)
-        active_tasks = inspect.active() or {}
         running_tasks = []
-        for worker_name, tasks_list in active_tasks.items():
+        for worker_name, tasks_list in active_tasks_map.items():
             for task in tasks_list:
+                name = task.get("name", "unknown")
+                args_str = task.get("args", "()")
+                kwargs = task.get("kwargs", {})
+                
+                # Try to extract channel context
+                context = "Фоновая задача"
+                progress = None
+                
+                try:
+                    # Parse args like "('1528034935', 'uuid...')"
+                    parsed_args = ast.literal_eval(args_str)
+                    target_id = None
+                    if "sync_channel_batch" in name or "scan_channel_metadata" in name:
+                        target_id = str(parsed_args[0]) if parsed_args else None
+                    elif "deep_track_chunk" in name:
+                        target_id = str(parsed_args[0]) if parsed_args else None
+                    
+                    if target_id and target_id in channels_map:
+                        ch = channels_map[target_id]
+                        context = f"Канал: {ch.title}"
+                        if ch.sync_state:
+                            progress = round(ch.sync_state.progress_percent, 1)
+                    elif target_id and target_id in uuid_map:
+                        ch = uuid_map[target_id]
+                        context = f"Канал: {ch.title}"
+                        if ch.sync_state:
+                            progress = round(ch.sync_state.progress_percent, 1)
+                except: pass
+
                 running_tasks.append({
                     "id": task.get("id"),
-                    "name": task.get("name"),
-                    "args": str(task.get("args", []))[:100],
-                    "kwargs": str(task.get("kwargs", {}))[:100],
+                    "name": name,
                     "worker": worker_name,
                     "status": "running",
+                    "context": context,
+                    "progress": progress,
+                    "queue": task.get("delivery_info", {}).get("routing_key", "unknown"),
                     "timestamp": task.get("time_start"),
                 })
 
