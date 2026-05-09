@@ -1,19 +1,37 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { Search } from 'lucide-react';
+import { Search, RefreshCw } from 'lucide-react';
 import './Dashboard.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [syncing, setSyncing] = useState(false);
 
-  const { data: stats, error: statsError, isLoading: statsLoading } = useSWR('/api/stats', fetcher);
-  const { data: tracking } = useSWR('/api/tracking/channels', fetcher);
-  const { data: foldersData } = useSWR('/api/tracking/folders', fetcher);
-  const { data: contacts } = useSWR('/api/contacts', fetcher);
+  const { data: stats, error: statsError, isLoading: statsLoading, mutate: mutateStats } = useSWR('/api/stats', fetcher);
+  const { data: tracking, mutate: mutateTracking } = useSWR('/api/tracking/channels', fetcher);
+  const { data: foldersData, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
+  const { data: contacts, mutate: mutateContacts } = useSWR('/api/contacts', fetcher);
   const { data: user } = useSWR('/api/telegram/user', fetcher);
+
+  const handleManualSync = async () => {
+    setSyncing(true);
+    try {
+      await api.post('/api/sync/manual');
+      setTimeout(() => {
+        mutateStats();
+        mutateTracking();
+        mutateFolders();
+        mutateContacts();
+      }, 2000);
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const folders = foldersData?.folders || [];
 
@@ -51,6 +69,14 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
+        <button
+          className="sync-btn"
+          onClick={handleManualSync}
+          disabled={syncing}
+          title="Синхронизировать папки и контакты"
+        >
+          <RefreshCw size={18} className={syncing ? 'spinning' : ''} />
+        </button>
       </div>
 
       <div className="tables-section">

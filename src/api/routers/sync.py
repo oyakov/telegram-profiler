@@ -5,10 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
+import asyncio
 
 from src.db.database import get_db
 from src.db.models import ChannelSyncState, SyncBatchLog, TrackedChannel, TrackedFolder
 from src.pipeline.telegram_sync_tasks import scan_channel_metadata, sync_channel_batch, reconcile_channel_sync
+from src.pipeline.sync_orchestrator import SyncOrchestrator
 
 router = APIRouter(prefix="/sync", tags=["Sync"])
 
@@ -264,3 +266,18 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
         "channels_queued": queued_count,
         "total_channels": len(folder.channels)
     }
+
+
+@router.post("/manual")
+async def trigger_manual_sync(db: AsyncSession = Depends(get_db)):
+    """Trigger manual sync of folders and personal contacts."""
+    try:
+        orchestrator = SyncOrchestrator()
+        await orchestrator.run()
+
+        return {
+            "status": "synced",
+            "message": "Folders and personal contacts synchronized"
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Sync failed: {str(e)}")

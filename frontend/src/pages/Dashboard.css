@@ -7,6 +7,7 @@
 .profile-section {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 2rem;
   padding: 2rem;
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
@@ -285,4 +286,34 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.sync-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.sync-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sync-btn .spinning {
+  animation: spin 1s linear infinite;
 }
