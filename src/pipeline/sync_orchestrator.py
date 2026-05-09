@@ -79,29 +79,40 @@ class SyncOrchestrator:
         logger.info("sync_folders_start")
 
         try:
-            # Get list of Telegram folders
+            # Get list of Telegram folders (returns folder with peer_ids)
             tg_folders = await self.connector.list_telegram_folders()
 
             for tg_folder in tg_folders:
+                folder_id = tg_folder.get("id")
+                folder_name = tg_folder.get("name", f"Folder {folder_id}")
+
                 # Get or create DB folder
                 result = await session.execute(
                     select(TrackedFolder).where(
-                        TrackedFolder.telegram_folder_id == str(tg_folder.get("id"))
+                        TrackedFolder.telegram_folder_id == str(folder_id)
                     )
                 )
                 db_folder = result.scalar_one_or_none()
 
                 if not db_folder:
                     db_folder = TrackedFolder(
-                        name=tg_folder.get("title", f"Folder {tg_folder.get('id')}"),
-                        telegram_folder_id=str(tg_folder.get("id")),
+                        name=folder_name,
+                        telegram_folder_id=str(folder_id),
                         description=f"Auto-imported from Telegram"
                     )
                     session.add(db_folder)
-                    logger.info("new_folder_detected", folder=tg_folder.get("title"))
+                    await session.flush()
+                    logger.info("new_folder_detected", folder=folder_name)
 
-                # Cache current channel list
-                current_channels = set(str(ch.get("id")) for ch in tg_folder.get("channels", []))
+                # Get full channel info from peer_ids
+                peer_ids = tg_folder.get("peer_ids", [])
+                if peer_ids:
+                    tg_channels = await self.connector.import_folder_channels(peer_ids)
+                else:
+                    tg_channels = []
+
+                # Cache current channel list (by telegram_id)
+                current_channels = set(str(ch.get("telegram_id")) for ch in tg_channels)
                 cached_channels = set(db_folder.cached_channels or [])
 
                 # Check for new/removed channels
@@ -115,6 +126,29 @@ class SyncOrchestrator:
                         new=len(new_channels),
                         removed=len(removed_channels)
                     )
+
+                # Create TrackedChannel records for new channels
+                for tg_channel in tg_channels:
+                    channel_id = str(tg_channel.get("telegram_id"))
+                    if channel_id in new_channels:
+                        # Check if channel already exists
+                        result = await session.execute(
+                            select(TrackedChannel).where(
+                                TrackedChannel.telegram_id == channel_id
+                            )
+                        )
+                        existing = result.scalar_one_or_none()
+
+                        if not existing:
+                            tracked_channel = TrackedChannel(
+                                folder_id=db_folder.id,
+                                telegram_id=channel_id,
+                                title=tg_channel.get("title", f"Channel {channel_id}"),
+                                username=tg_channel.get("username"),
+                                entity_type=tg_channel.get("entity_type", "channel")
+                            )
+                            session.add(tracked_channel)
+                            logger.info("new_channel_created", channel=tracked_channel.title, folder=db_folder.name)
 
                 # Update cache
                 db_folder.cached_channels = list(current_channels)
@@ -130,12 +164,15 @@ class SyncOrchestrator:
         """
         Detect channels without sync_state and queue them for sync.
         """
+        from sqlalchemy.orm import selectinload
         logger.info("queue_new_channels_start")
 
         try:
-            # Get all channels
-            result = await session.execute(select(TrackedChannel))
-            all_channels = result.scalars().all()
+            # Get all channels with eager loading of sync_state
+            result = await session.execute(
+                select(TrackedChannel).options(selectinload(TrackedChannel.sync_state))
+            )
+            all_channels = result.unique().scalars().all()
 
             queued_count = 0
 
