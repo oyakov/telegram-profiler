@@ -58,6 +58,150 @@ class TelegramConnector(BaseConnector):
         await self.pg_session.delete_session()
         logger.info("telegram_session_deleted_from_postgres")
 
+    async def send_code_request(self, phone: str) -> str:
+        client = await self._get_client()
+        try:
+            await client.connect()
+            if not client.is_connected():
+                logger.warning("telegram_connection_failed", phone=phone)
+                raise Exception("Failed to connect to Telegram servers")
+
+            result = await client.send_code_request(phone)
+            await self._save_session()  # Save session after successful request
+            return result.phone_code_hash
+        except Exception as e:
+            logger.error("send_code_request_error", phone=phone, error=str(e))
+            raise
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+    async def sign_in(self, phone: str, code: str, phone_code_hash: str) -> dict:
+        from telethon.errors import SessionPasswordNeededError
+        client = await self._get_client()
+        try:
+            await client.connect()
+            if not client.is_connected():
+                logger.warning("telegram_connection_failed", phone=phone)
+                return {"status": "error", "message": "Failed to connect to Telegram servers"}
+
+            await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+
+            # Get user ID and save session
+            me = await client.get_me()
+            await self._save_session(user_id=str(me.id))
+
+            # Sync user profile on successful login
+            await self._update_user_profile(client)
+            # Trigger project setup and auto-sync in background
+            asyncio.create_task(self._post_login_setup())
+            return {"status": "success"}
+        except SessionPasswordNeededError:
+            return {"status": "requires_2fa"}
+        except Exception as e:
+            logger.error("sign_in_error", phone=phone, error=str(e))
+            return {"status": "error", "message": str(e)}
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+    async def sign_in_2fa(self, password: str) -> dict:
+        client = await self._get_client()
+        try:
+            await client.connect()
+            if not client.is_connected():
+                logger.warning("telegram_connection_failed_2fa")
+                return {"status": "error", "message": "Failed to connect to Telegram servers"}
+
+            await client.sign_in(password=password)
+
+            # Get user ID and save session
+            me = await client.get_me()
+            await self._save_session(user_id=str(me.id))
+
+            # Sync user profile on successful login
+            await self._update_user_profile(client)
+            # Trigger project setup and auto-sync in background
+            asyncio.create_task(self._post_login_setup())
+            return {"status": "success"}
+        except Exception as e:
+            logger.error("sign_in_2fa_error", error=str(e))
+            return {"status": "error", "message": str(e)}
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+    async def _update_user_profile(self, client):
+        """Fetch current user info and update UserProfile in master DB."""
+        from src.db.models import UserProfile
+        from src.db.database import get_session
+        try:
+            me = await client.get_me()
+            if not me:
+                return
+
+            async with get_session(db_name="crm") as session:
+                res = await session.execute(
+                    select(UserProfile).where(UserProfile.telegram_id == str(me.id))
+                )
+                profile = res.scalar_one_or_none()
+                
+                if not profile:
+                    profile = UserProfile(telegram_id=str(me.id))
+                    session.add(profile)
+                
+                profile.first_name = me.first_name
+                profile.last_name = me.last_name
+                profile.username = me.username
+                profile.phone = me.phone
+                
+                # Fetch full user for bio
+                try:
+                    from telethon.tl.functions.users import GetFullUserRequest
+                    full = await client(GetFullUserRequest(id=me))
+                    profile.bio = full.full_user.about
+                except Exception:
+                    pass
+                
+                # Download photo
+                photo_path = await self._download_photo(client, me)
+                if photo_path:
+                    profile.profile_photo_path = photo_path
+                
+                await session.commit()
+                logger.info("user_profile_updated", telegram_id=me.id)
+        except Exception as e:
+            logger.error("user_profile_update_failed", error=str(e))
+
+    async def _download_photo(self, client, entity) -> str | None:
+        """Download profile photo and return local path."""
+        try:
+            output_dir = Path("uploads/avatars")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{entity.id}.jpg"
+            file_path = output_dir / filename
+            path = await client.download_profile_photo(entity, file=str(file_path))
+            if path: return f"uploads/avatars/{filename}"
+            return None
+        except Exception as e:
+            logger.warning("telegram_photo_download_error", entity_id=entity.id, error=str(e))
+            return None
+
+    async def logout(self):
+        client = await self._get_client()
+        await client.connect()
+        try:
+            await client.log_out()
+            await self._cleanup_stale_session()
+        finally:
+            await client.disconnect()
+
     async def is_authorized(self) -> bool:
         client = await self._get_client()
         await client.connect()
