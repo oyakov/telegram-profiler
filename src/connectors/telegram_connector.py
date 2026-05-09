@@ -30,11 +30,12 @@ class TelegramConnector(BaseConnector):
 
     name = "telegram"
 
-    def __init__(self, enable_transcription: bool = False, db_name: str | None = None):
+    def __init__(self, enable_transcription: bool = False, db_name: str | None = None, project_id: str | None = None):
         self.settings = get_settings()
         self.whisper = WhisperClient()
         self.enable_transcription = enable_transcription
         self.db_name = db_name or os.getenv('POSTGRES_DB', 'crm')
+        self.project_id = project_id  # Will be set to default if None
 
     def _get_client(self):
         """Create a new Telethon client instance."""
@@ -79,8 +80,8 @@ class TelegramConnector(BaseConnector):
             # Sync user profile on successful login
             await self._update_user_profile(client)
             await client.disconnect()
-            # Trigger auto-sync in background or sequentially
-            asyncio.create_task(self.auto_sync_on_login())
+            # Trigger project setup and auto-sync in background
+            asyncio.create_task(self._post_login_setup())
             return {"status": "success"}
         except SessionPasswordNeededError:
             return {"status": "requires_2fa"}
@@ -97,8 +98,8 @@ class TelegramConnector(BaseConnector):
             # Sync user profile on successful login
             await self._update_user_profile(client)
             await client.disconnect()
-            # Trigger auto-sync in background
-            asyncio.create_task(self.auto_sync_on_login())
+            # Trigger project setup and auto-sync in background
+            asyncio.create_task(self._post_login_setup())
             return {"status": "success"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -153,6 +154,57 @@ class TelegramConnector(BaseConnector):
             await client.log_out()
         finally:
             await client.disconnect()
+
+    async def _ensure_project_id(self) -> str:
+        """Ensure a default project exists and return its ID."""
+        if self.project_id:
+            return self.project_id
+
+        from src.db.models import SystemProject
+
+        async with get_session(db_name=self.db_name) as session:
+            # Try to get default project
+            res = await session.execute(select(SystemProject).where(SystemProject.name == "Default"))
+            project = res.scalar_one_or_none()
+
+            if not project:
+                # Create default project
+                project = SystemProject(name="Default", description="Default project")
+                session.add(project)
+                await session.commit()
+                await session.refresh(project)
+
+            self.project_id = str(project.id)
+            return self.project_id
+
+    async def _post_login_setup(self):
+        """Post-login setup: create projects, distribute messages, trigger indexing."""
+        from src.services.project_manager import (
+            ensure_projects_from_folders,
+            distribute_orphaned_messages,
+            assign_contacts_to_projects,
+        )
+
+        logger.info("post_login_setup_started")
+        try:
+            async with get_session(db_name=self.db_name) as session:
+                # 1. Ensure projects exist
+                result = await ensure_projects_from_folders(session)
+                logger.info("post_login_setup_projects", result=result)
+
+                # 2. Distribute orphaned messages
+                dist_result = await distribute_orphaned_messages(session)
+                logger.info("post_login_setup_distribute_messages", result=dist_result)
+
+                # 3. Assign contacts to projects
+                contact_result = await assign_contacts_to_projects(session)
+                logger.info("post_login_setup_assign_contacts", result=contact_result)
+
+            # 4. Start auto-sync
+            await self.auto_sync_on_login(force=True)
+
+        except Exception as e:
+            logger.error("post_login_setup_failed", error=str(e))
 
     async def auto_sync_on_login(self, force: bool = False):
         """Automatically sync folders and contacts after login.
@@ -440,9 +492,18 @@ class TelegramConnector(BaseConnector):
             sender_entity = msg.sender or entity if not is_channel else entity
             contact = await self._get_or_create_contact(session, sender_entity, is_channel=is_channel)
             content = msg.text or ""
-            message = Message(contact_id=contact.id, source="telegram", source_message_id=f"{entity.id}_{msg.id}",
-                            direction="outgoing" if msg.out else "incoming", content=content, group_id=str(entity.id),
-                            group_name=getattr(entity, "title", "Unknown"), timestamp=msg.date)
+            project_id = await self._ensure_project_id()
+            message = Message(
+                project_id=project_id,
+                contact_id=contact.id,
+                source="telegram",
+                source_message_id=f"{entity.id}_{msg.id}",
+                direction="outgoing" if msg.out else "incoming",
+                content=content,
+                group_id=str(entity.id),
+                group_name=getattr(entity, "title", "Unknown"),
+                timestamp=msg.date
+            )
             session.add(message)
             session.add(MessageContact(message=message, contact=contact, role="sender"))
             messages_synced += 1
@@ -826,12 +887,14 @@ class TelegramConnector(BaseConnector):
                         elif hasattr(entity, "first_name"):
                             group_name = f"{getattr(entity, 'first_name', '')} {getattr(entity, 'last_name', '')}".strip() or "Private Chat"
 
+                        project_id = await self._ensure_project_id()
                         message = Message(
-                            contact_id=contact.id, 
-                            source="telegram", 
+                            project_id=project_id,
+                            contact_id=contact.id,
+                            source="telegram",
                             source_message_id=source_msg_id,
-                            direction="outgoing" if msg.out else "incoming", 
-                            content=content, 
+                            direction="outgoing" if msg.out else "incoming",
+                            content=content,
                             group_id=str(entity.id),
                             group_name=group_name,
                             timestamp=msg.date
