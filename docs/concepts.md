@@ -36,3 +36,39 @@ The system uses Telethon sessions stored in the `sessions/` directory. Each data
 2. **Detection**: LLMs analyze message content to identify contacts or leads.
 3. **Deduplication**: The system searches for existing contacts by Telegram ID, Username, Email, or Name before creating new ones.
 4. **Embedding**: Both contacts and messages are vectorized using `pgvector` to enable semantic search.
+
+## 5. Folder Import (Telegram Dialog Filters)
+
+### What are Telegram Folders?
+Telegram's "folders" (internally called "dialog filters") are user-created collections that organize chats. Users can group channels and groups thematically (e.g., "Crypto", "Belgrade News", "Work").
+
+### How Import Works
+1. **List Folders**: System calls `list_telegram_folders()` to fetch user's Telegram folders and peer IDs
+2. **Import Channels**: When user selects a Telegram folder, system calls `import_folder_channels(peer_ids)` 
+3. **Resolve Entities**: For each peer_id, system calls Telethon's `get_entity()` to retrieve Channel/Chat object
+4. **Deduplicate**: Check if channel already tracked; if so, update folder assignment
+5. **Save to Database**: Insert new TrackedChannel records linked to user's selected folder
+
+### Retry Logic
+The import process uses **exponential backoff retry** (0.5s → 1s → 2s) to handle `sqlite3.OperationalError: database is locked` when multiple Celery workers access the Telethon session database simultaneously.
+
+### Why Some Channels Fail to Import
+Not all peer_ids successfully resolve to importable channels:
+- **Archived channels**: User archived the channel; Telethon cannot access
+- **Removed access**: User left the channel or was removed by admin
+- **Type mismatches**: Entity is not a Channel or Chat (e.g., Bot communities)
+- **Network failures**: Transient Telegram API errors
+- **Permission denied**: Telethon session lacks permissions to access
+
+The system logs which peer_ids fail and why, allowing users to retry or manually add channels.
+
+### UUID Type Safety
+The API endpoint accepts `folder_id` as a string UUID from the frontend and converts it to Python UUID object before database queries:
+```python
+from uuid import UUID
+if isinstance(folder_id, str):
+    folder_id = UUID(folder_id)  # Validates format and converts type
+```
+This prevents `sqlalchemy.exc.ProgrammingError: operator does not exist: uuid = integer` errors.
+
+For detailed implementation, see [Telegram Folder Import Feature](./features/telegram-folder-import.md).

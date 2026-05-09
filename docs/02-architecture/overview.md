@@ -100,11 +100,16 @@
 **Библиотека**: Telethon
 
 Функционал:
-- Аутентификация пользователя
-- Синхронизация сообщений
-- Мониторинг каналов
-- Управление сессиями (в `sessions/`)
-- Автоматическое вступление в каналы
+- Аутентификация пользователя через OAuth2
+- Синхронизация сообщений из отслеживаемых каналов
+- Мониторинг каналов с поддержкой deep history sync
+- Управление сессиями (в `sessions/`) с поддержкой multi-database
+- Автоматическое вступление в релевантные каналы
+- **Folder Import**: Импорт каналов из папок Telegram с retry logic
+  - Список папок из Telegram dialog filters
+  - Разрешение peer_ids в Channel/Chat объекты
+  - Exponential backoff retry (0.5s → 1s → 2s) для обработки database locks
+  - Дедупликация каналов по telegram_id
 
 ### AI Integration
 **Провайдеры**: Google Gemini + OpenAI API или LM Studio
@@ -138,6 +143,26 @@
 5. Создает или обновляет record в contacts
 6. Запускает embedding generation
 7. Вычисляет lead score
+```
+
+### Процесс импорта папок Telegram
+
+```
+1. User открывает Folder Management → нажимает "Import"
+2. Frontend запрашивает GET /api/telegram/folders
+3. TelegramConnector.list_telegram_folders()
+   ├─ Подключается к Telegram через Telethon
+   ├─ Загружает user's dialog filters (папки)
+   └─ Возвращает peer_ids для каждой папки
+4. User выбирает папку → Frontend отправляет POST /api/telegram/folders/import
+5. API вызывает TelegramConnector.import_folder_channels(peer_ids)
+   ├─ Retry logic: пытается 3 раза с exponential backoff
+   ├─ Для каждого peer_id вызывает get_entity()
+   ├─ Проверяет тип (Channel vs Chat vs другое)
+   ├─ Логирует ошибки для неудачных peer_ids
+   └─ Возвращает список успешно разрешенных каналов
+6. API сохраняет в TrackedChannel таблицу (с дедупликацией)
+7. Frontend показывает результат (added, moved, total)
 ```
 
 ### Семантический поиск

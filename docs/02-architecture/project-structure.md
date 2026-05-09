@@ -96,14 +96,21 @@ telegram-profiler/
 | `channels.py` | Управление каналами и папками |
 | `leads.py` | Lead management и scoring |
 | `statistics.py` | Аналитика и дашборд данные |
+| `telegram.py` | Telegram integration endpoints (auth, folders, import) |
 
 ### Connectors (`src/connectors/`)
 
 | Компонент | Назначение |
 |-----------|-----------|
-| `telegram/` | Интеграция с Telegram через Telethon |
+| `telegram_connector.py` | Интеграция с Telegram через Telethon: auth, sync, folder import с retry logic |
 | `excel/` | Импорт контактов из Excel файлов |
 | `base.py` | Базовый класс для всех connectors |
+
+**Telegram Connector особенности**:
+- `list_telegram_folders()` — загрузка список папок и их peer_ids
+- `import_folder_channels(peer_ids)` — импорт каналов с exponential backoff retry
+- Persistent sessions для multi-database поддержки
+- Автоматическое разрешение peer_ids в Channel/Chat объекты
 
 ### AI & Processing (`src/ai/`)
 
