@@ -438,112 +438,68 @@ async def get_workers_status():
 
 @router.get("/tree")
 async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
-    """Get hierarchical tree of data (Project > Folder > Channel) with stats."""
-    from src.db.models import SystemProject, TrackedFolder, TrackedChannel, Message
+    """Get hierarchical tree of data (Folder > Channel) with stats."""
+    from src.db.models import TrackedFolder, TrackedChannel, Message
 
-    # 1. Get all projects
-    projects_res = await db.execute(select(SystemProject).order_by(SystemProject.name))
-    projects = projects_res.scalars().all()
+    # Get all folders
+    folders_res = await db.execute(
+        select(TrackedFolder).order_by(TrackedFolder.created_at)
+    )
+    folders = folders_res.scalars().all()
+
+    # Get message counts by folder
+    msg_counts_res = await db.execute(
+        select(Message.folder_id, func.count(Message.id))
+        .where(Message.folder_id.isnot(None))
+        .group_by(Message.folder_id)
+    )
+    msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
 
     tree = []
+    total_files = sum(msg_counts.values())
 
-    for proj in projects:
-        proj_node = {
-            "id": str(proj.id),
-            "name": proj.name,
-            "type": "project",
-            "children": [],
-            "files": 0,
-            "percentage": 0,
-            "status": "active" if proj.is_active else "inactive"
-        }
+    try:
+        # Build folder tree
+        folder_nodes = {}
+        for f in folders:
+            f_node = {
+                "id": str(f.id),
+                "name": f.name,
+                "type": "folder",
+                "children": [],
+                "files": msg_counts.get(str(f.id), 0),
+                "percentage": 0,
+                "last_change": f.updated_at.isoformat() if f.updated_at else None
+            }
+            folder_nodes[str(f.id)] = f_node
+            tree.append(f_node)
 
-        try:
-            # Get folders for this project
-            folders_res = await db.execute(
-                select(TrackedFolder).where(TrackedFolder.project_id == proj.id)
-            )
-            folders = folders_res.scalars().all()
+        # Get all channels and add to folders
+        channels_res = await db.execute(select(TrackedChannel))
+        channels = channels_res.scalars().all()
 
-            # Get message counts for this project
-            msg_counts_res = await db.execute(
-                select(Message.folder_id, func.count(Message.id))
-                .where(Message.project_id == proj.id)
-                .where(Message.folder_id.isnot(None))
-                .group_by(Message.folder_id)
-            )
-            msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
-
-            # Count messages without folder assignment
-            unattached_count = (await db.execute(
-                select(func.count(Message.id))
-                .where(Message.project_id == proj.id)
-                .where(Message.folder_id.is_(None))
-            )).scalar() or 0
-
-            proj_total_files = sum(msg_counts.values()) + unattached_count
-            proj_node["files"] = proj_total_files
-
-            # Build folder tree
-            folder_nodes = {}
-            for f in folders:
-                f_node = {
-                    "id": str(f.id),
-                    "name": f.name,
-                    "type": "folder",
-                    "children": [],
-                    "files": msg_counts.get(str(f.id), 0),
+        for ch in channels:
+            if ch.folder_id:
+                ch_files = msg_counts.get(str(ch.folder_id), 0)
+                ch_node = {
+                    "id": str(ch.id),
+                    "name": ch.title or ch.telegram_id,
+                    "type": "channel",
+                    "username": ch.username,
+                    "files": ch_files,
                     "percentage": 0,
-                    "last_change": f.updated_at.isoformat() if f.updated_at else None
+                    "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
                 }
-                folder_nodes[str(f.id)] = f_node
-                proj_node["children"].append(f_node)
+                if str(ch.folder_id) in folder_nodes:
+                    folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
 
-            # Get channels for this project and add to folders
-            channels_res = await db.execute(
-                select(TrackedChannel)
-                .where(TrackedChannel.folder_id.in_([f.id for f in folders]))
-            )
-            channels = channels_res.scalars().all()
+        # Calculate percentages
+        for fn in tree:
+            if total_files > 0:
+                fn["percentage"] = round((fn["files"] / total_files) * 100, 1)
 
-            for ch in channels:
-                if ch.folder_id:
-                    ch_files = msg_counts.get(str(ch.folder_id), 0)
-                    ch_node = {
-                        "id": str(ch.id),
-                        "name": ch.title or ch.telegram_id,
-                        "type": "channel",
-                        "username": ch.username,
-                        "files": ch_files,
-                        "percentage": 0,
-                        "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
-                    }
-                    if str(ch.folder_id) in folder_nodes:
-                        folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
-
-            # Add unattached messages node if any exist
-            if unattached_count > 0:
-                unattached_node = {
-                    "id": f"{proj.id}_unattached",
-                    "name": "Unattached Messages",
-                    "type": "folder",
-                    "children": [],
-                    "files": unattached_count,
-                    "percentage": 0,
-                    "last_change": None
-                }
-                proj_node["children"].append(unattached_node)
-
-            # Calculate percentages
-            for fn in proj_node["children"]:
-                if proj_total_files > 0:
-                    fn["percentage"] = round((fn["files"] / proj_total_files) * 100, 1)
-
-        except Exception as e:
-            proj_node["error"] = str(e)
-            proj_node["status"] = "error"
-
-        tree.append(proj_node)
+    except Exception as e:
+        logger.error("hierarchical_tree_error", error=str(e))
 
     return {"tree": tree}
 
@@ -552,43 +508,26 @@ async def get_prometheus_metrics(range_str: str = "1h", db: AsyncSession = Depen
     """Get Prometheus metrics and real-time throughput for all system containers."""
     import random
     from datetime import datetime, timedelta, timezone
-    from src.db.models import SystemProject, Message, MessageEmbedding, ExtractionLog
-    from src.db.database import get_session
+    from src.db.models import Message, MessageEmbedding, ExtractionLog
 
-    # 1. Calculate real throughput across ALL databases
+    # 1. Calculate real throughput for current database
     now = datetime.now(timezone.utc)
     one_min_ago = now - timedelta(minutes=1)
-    
-    # Get all projects
-    projects_res = await db.execute(select(SystemProject).where(SystemProject.is_active == True))
-    projects = projects_res.scalars().all()
-    
-    total_ingestion = 0  # msg/min
-    total_extraction = 0 # tasks/min
-    total_embeddings = 0 # vectors/min
 
-    for proj in projects:
-        try:
-            async with get_session(db_name=proj.db_name) as proj_session:
-                # Count recent messages
-                m_count = (await proj_session.execute(
-                    select(func.count(Message.id)).where(Message.created_at >= one_min_ago)
-                )).scalar() or 0
-                total_ingestion += m_count
+    # Count recent messages
+    total_ingestion = (await db.execute(
+        select(func.count(Message.id)).where(Message.created_at >= one_min_ago)
+    )).scalar() or 0
 
-                # Count recent extractions
-                e_count = (await proj_session.execute(
-                    select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= one_min_ago)
-                )).scalar() or 0
-                total_extraction += e_count
+    # Count recent extractions
+    total_extraction = (await db.execute(
+        select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= one_min_ago)
+    )).scalar() or 0
 
-                # Count recent embeddings
-                v_count = (await proj_session.execute(
-                    select(func.count(MessageEmbedding.id)).where(MessageEmbedding.created_at >= one_min_ago)
-                )).scalar() or 0
-                total_embeddings += v_count
-        except Exception:
-            continue
+    # Count recent embeddings
+    total_embeddings = (await db.execute(
+        select(func.count(MessageEmbedding.id)).where(MessageEmbedding.created_at >= one_min_ago)
+    )).scalar() or 0
 
     # 2. Mock some system metrics (CPU/MEM) but use real throughput
     def generate_metric_data(base_value: float, variation: float, count: int = 10) -> list:
@@ -628,7 +567,7 @@ async def get_prometheus_metrics(range_str: str = "1h", db: AsyncSession = Depen
 @router.get("/data-quality")
 async def get_data_quality_metrics(db: AsyncSession = Depends(get_db)):
     """Get data quality metrics."""
-    from src.db.models import Message, Contact, SystemProject
+    from src.db.models import Message, Contact
 
     total_messages = (await db.execute(select(func.count(Message.id)))).scalar() or 0
     messages_null_group = (await db.execute(

@@ -12,9 +12,7 @@ import Leads from './pages/Leads';
 import Contacts from './pages/Contacts';
 import PersonalContacts from './pages/PersonalContacts';
 import Settings from './pages/Settings';
-import Projects from './pages/Projects';
 import Audit from './pages/Audit';
-import Campaigns from './pages/Campaigns';
 import './App.css';
 
 const App: React.FC = () => {
@@ -54,7 +52,6 @@ const App: React.FC = () => {
             <div className="scroll-area">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/projects" element={<Projects />} />
                 <Route path="/tracking" element={<Tracking />} />
                 <Route path="/monitoring" element={<Monitoring />} />
                 <Route path="/audit" element={<Audit />} />
@@ -62,7 +59,6 @@ const App: React.FC = () => {
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/contacts" element={<Contacts />} />
                 <Route path="/personal-contacts" element={<PersonalContacts />} />
-                <Route path="/campaigns" element={<Campaigns />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </div>

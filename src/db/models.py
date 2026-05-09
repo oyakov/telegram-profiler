@@ -27,30 +27,6 @@ class Base(DeclarativeBase):
     pass
 
 
-class SystemProject(Base):
-    """Project — represents a folder/category of messages and contacts."""
-    __tablename__ = "system_projects"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    telegram_folder_id = Column(String(100), nullable=True)  # Telegram folder ID if auto-created
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    # Relationships
-    folders = relationship("TrackedFolder", back_populates="project")
-    campaigns = relationship("Campaign", back_populates="project", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        Index("idx_project_telegram_folder_id", "telegram_folder_id"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<SystemProject {self.name}>"
-
-
 class UserProfile(Base):
     """The profile of the currently logged-in Telegram user."""
     __tablename__ = "user_profiles"
@@ -72,11 +48,10 @@ class UserProfile(Base):
 
 
 class TrackedFolder(Base):
-    """A Telegram folder/label within a project."""
+    """A Telegram folder/label."""
     __tablename__ = "tracked_folders"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=False)
     telegram_folder_id = Column(String(100), nullable=True)  # Telegram folder ID
     name = Column(String(255), nullable=False)  # e.g., "BG Intel" or "Crypto"
     description = Column(Text, nullable=True)
@@ -91,11 +66,9 @@ class TrackedFolder(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    project = relationship("SystemProject", back_populates="folders")
     channels = relationship("TrackedChannel", back_populates="folder", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index("idx_folder_project_id", "project_id"),
         Index("idx_folder_telegram_folder_id", "telegram_folder_id"),
     )
 
@@ -141,7 +114,6 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=True)
     first_name = Column(String(255))
     last_name = Column(String(255))
     company = Column(String(255))
@@ -194,7 +166,6 @@ class Contact(Base):
     associated_messages = relationship("MessageContact", back_populates="contact", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index("idx_contacts_project_id", "project_id"),
         Index("idx_contacts_source", "source"),
         Index("idx_contacts_embedding_dirty", "embedding_dirty"),
         Index("idx_contacts_last_interaction", "last_interaction"),
@@ -208,7 +179,6 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=True)
     folder_id = Column(UUID(as_uuid=True), ForeignKey("tracked_folders.id", ondelete="SET NULL"), nullable=True)
     contact_id = Column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False)
     source = Column(String(50), nullable=False)  # telegram|crm|social
@@ -228,7 +198,6 @@ class Message(Base):
     associated_contacts = relationship("MessageContact", back_populates="message", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index("idx_messages_project_id", "project_id"),
         Index("idx_messages_folder_id", "folder_id"),
         Index("idx_messages_contact_id", "contact_id"),
         Index("idx_messages_timestamp", "timestamp"),
@@ -293,7 +262,6 @@ class VoiceNote(Base):
     __tablename__ = "voice_notes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=True)
     contact_id = Column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=True)
     file_path = Column(String(500), nullable=False)
     duration_seconds = Column(Float, nullable=True)
@@ -306,7 +274,6 @@ class VoiceNote(Base):
     contact = relationship("Contact", back_populates="voice_notes")
 
     __table_args__ = (
-        Index("idx_voice_notes_project_id", "project_id"),
         Index("idx_voice_notes_contact_id", "contact_id"),
         Index("idx_voice_notes_processed", "processed"),
     )
@@ -480,61 +447,3 @@ class LeadSearch(Base):
         return f"<LeadSearch {self.name}>"
 
 
-class Campaign(Base):
-    """Campaign for bulk messaging to multiple contacts."""
-    __tablename__ = "campaigns"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("system_projects.id", ondelete="CASCADE"), nullable=False)
-    name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    message = Column(Text, nullable=False)  # Message template with {first_name}, {email}, etc.
-    status = Column(String(50), default="draft")  # draft|scheduled|sending|completed|failed
-    total_contacts = Column(Integer, default=0)
-    sent_count = Column(Integer, default=0)
-    failed_count = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    started_at = Column(DateTime(timezone=True), nullable=True)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-
-    # Relationships
-    project = relationship("SystemProject", back_populates="campaigns")
-    messages = relationship("CampaignMessage", back_populates="campaign", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        Index("idx_campaigns_project_id", "project_id"),
-        Index("idx_campaigns_status", "status"),
-        Index("idx_campaigns_created", "created_at"),
-        sa.UniqueConstraint("project_id", "name", name="uq_campaign_project_name"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<Campaign {self.name}>"
-
-
-class CampaignMessage(Base):
-    """Individual message status in a campaign (one per contact)."""
-    __tablename__ = "campaign_messages"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
-    contact_id = Column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False)
-    status = Column(String(50), default="pending")  # pending|sent|failed
-    error_message = Column(Text, nullable=True)
-    sent_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # Relationships
-    campaign = relationship("Campaign", back_populates="messages")
-    contact = relationship("Contact")
-
-    __table_args__ = (
-        Index("idx_campaign_messages_campaign_id", "campaign_id"),
-        Index("idx_campaign_messages_contact_id", "contact_id"),
-        Index("idx_campaign_messages_status", "status"),
-        sa.UniqueConstraint("campaign_id", "contact_id", name="uq_campaign_contact"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<CampaignMessage campaign={self.campaign_id} contact={self.contact_id}>"
