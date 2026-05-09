@@ -258,7 +258,7 @@ def deep_track_orchestrator():
     from src.db.models import TrackedChannel, Contact, TrackedFolder
     from sqlalchemy import select, or_
     from scripts.migrate_all import get_all_crm_databases
-    
+
     async def _do():
         databases = await get_all_crm_databases()
         for db in databases:
@@ -272,7 +272,7 @@ def deep_track_orchestrator():
                 )
                 for row in res.all():
                     deep_track_chunk.delay(telegram_id=str(row[0]), entity_type="channel", db_name=db)
-                
+
                 # 2. Tracked Contacts
                 res = await session.execute(
                     select(Contact.telegram_id).where(Contact.is_tracked == True)
@@ -280,7 +280,128 @@ def deep_track_orchestrator():
                 for row in res.all():
                     if row[0]:
                         deep_track_chunk.delay(telegram_id=str(row[0]), entity_type="user", db_name=db)
-        
+
         return {"status": "dispatched", "databases": databases}
-    
+
+    return _run_async(_do())
+
+
+# ========== Campaign Tasks ==========
+
+@celery_app.task(name="src.pipeline.tasks.send_campaign", queue="connectors")
+def send_campaign(campaign_id: str, project_id: str, db_name: str | None = None):
+    """Send campaign messages to all contacts."""
+    from src.db.models import Campaign, CampaignMessage, Contact
+    from src.connectors.telegram_connector import TelegramConnector
+    from sqlalchemy import select
+    from datetime import datetime
+    from time import sleep
+
+    async def _do():
+        from src.db.database import get_session
+        async with get_session(db_name=db_name) as session:
+            campaign = await session.get(Campaign, campaign_id)
+            if not campaign:
+                logger.error("campaign_not_found", campaign_id=campaign_id)
+                return {"status": "error", "reason": "campaign not found"}
+
+            # Get all pending messages
+            msg_result = await session.execute(
+                select(CampaignMessage).where(
+                    (CampaignMessage.campaign_id == campaign_id) &
+                    (CampaignMessage.status == "pending")
+                )
+            )
+            messages = msg_result.scalars().all()
+
+            if not messages:
+                logger.info("no_pending_messages", campaign_id=campaign_id)
+                campaign.status = "completed"
+                campaign.completed_at = datetime.utcnow()
+                await session.commit()
+                return {"status": "completed", "sent": 0}
+
+            # Initialize Telegram connector
+            try:
+                connector = TelegramConnector(db_name=db_name)
+                await connector.init_client()
+            except Exception as e:
+                logger.error("telegram_init_error", error=str(e), campaign_id=campaign_id)
+                campaign.status = "failed"
+                await session.commit()
+                return {"status": "error", "reason": "telegram init failed"}
+
+            sent_count = 0
+            failed_count = 0
+
+            # Send messages with rate limiting (1 message per 500ms = 120/min)
+            for msg in messages:
+                contact = await session.get(Contact, msg.contact_id)
+                if not contact:
+                    msg.status = "failed"
+                    msg.error_message = "contact not found"
+                    failed_count += 1
+                    continue
+
+                try:
+                    # Render message with contact variables
+                    rendered_message = campaign.message.format(
+                        first_name=contact.first_name or "",
+                        last_name=contact.last_name or "",
+                        email=contact.email or "",
+                        phone=contact.phone or "",
+                        company=contact.company or "",
+                        position=contact.position or "",
+                    )
+
+                    # Send via Telegram (via Telethon)
+                    if contact.telegram_id:
+                        try:
+                            await connector.client.send_message(
+                                int(contact.telegram_id),
+                                rendered_message
+                            )
+                            msg.status = "sent"
+                            msg.sent_at = datetime.utcnow()
+                            sent_count += 1
+                        except Exception as e:
+                            msg.status = "failed"
+                            msg.error_message = str(e)[:255]
+                            failed_count += 1
+                    else:
+                        msg.status = "failed"
+                        msg.error_message = "no telegram_id"
+                        failed_count += 1
+
+                except Exception as e:
+                    msg.status = "failed"
+                    msg.error_message = str(e)[:255]
+                    failed_count += 1
+
+                # Rate limiting: wait 500ms between messages
+                sleep(0.5)
+
+            # Update campaign status
+            campaign.sent_count = sent_count
+            campaign.failed_count = failed_count
+            campaign.status = "completed" if failed_count == 0 else "completed"
+            campaign.completed_at = datetime.utcnow()
+
+            await session.commit()
+
+            logger.info(
+                "campaign_sent",
+                campaign_id=campaign_id,
+                sent=sent_count,
+                failed=failed_count,
+                total=len(messages)
+            )
+
+            return {
+                "status": "completed",
+                "sent": sent_count,
+                "failed": failed_count,
+                "total": len(messages)
+            }
+
     return _run_async(_do())
