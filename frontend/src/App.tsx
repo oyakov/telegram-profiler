@@ -14,6 +14,7 @@ import PersonalContacts from './pages/PersonalContacts';
 import Settings from './pages/Settings';
 import Projects from './pages/Projects';
 import Audit from './pages/Audit';
+import Campaigns from './pages/Campaigns';
 import './App.css';
 
 const App: React.FC = () => {
@@ -61,6 +62,7 @@ const App: React.FC = () => {
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/contacts" element={<Contacts />} />
                 <Route path="/personal-contacts" element={<PersonalContacts />} />
+                <Route path="/campaigns" element={<Campaigns />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </div>
