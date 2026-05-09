@@ -65,8 +65,8 @@ class TelegramConnector(BaseConnector):
     async def send_code_request(self, phone: str) -> str:
         client = self._get_client()
         try:
-            connected = await client.connect()
-            if not connected:
+            await client.connect()
+            if not client.is_connected():
                 logger.warning("telegram_connection_failed", phone=phone)
                 raise Exception("Failed to connect to Telegram servers")
 
@@ -85,8 +85,8 @@ class TelegramConnector(BaseConnector):
         from telethon.errors import SessionPasswordNeededError
         client = self._get_client()
         try:
-            connected = await client.connect()
-            if not connected:
+            await client.connect()
+            if not client.is_connected():
                 logger.warning("telegram_connection_failed", phone=phone)
                 return {"status": "error", "message": "Failed to connect to Telegram servers"}
 
@@ -110,8 +110,8 @@ class TelegramConnector(BaseConnector):
     async def sign_in_2fa(self, password: str) -> dict:
         client = self._get_client()
         try:
-            connected = await client.connect()
-            if not connected:
+            await client.connect()
+            if not client.is_connected():
                 logger.warning("telegram_connection_failed_2fa")
                 return {"status": "error", "message": "Failed to connect to Telegram servers"}
 

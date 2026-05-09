@@ -18,8 +18,9 @@ const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const TopBar: React.FC = () => {
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showSavedPhones, setShowSavedPhones] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
   // Telegram Auth State
   const [telegramPhone, setTelegramPhone] = useState('');
   const [telegramCode, setTelegramCode] = useState('');
@@ -27,20 +28,45 @@ const TopBar: React.FC = () => {
   const [telegramStep, setTelegramStep] = useState<'phone' | 'code' | 'password'>('phone');
   const [telegramPhoneHash, setTelegramPhoneHash] = useState('');
   const [telegramLoading, setTelegramLoading] = useState(false);
+  const [savedPhones, setSavedPhones] = useState<string[]>([]);
   
   const { data: telegramStatus, mutate: mutateStatus } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 5000 });
   const { data: telegramUser } = useSWR(telegramStatus?.authorized ? '/api/telegram/user' : null, fetcher);
+
+  // Load saved phones from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('saved_telegram_phones');
+    if (saved) {
+      try {
+        setSavedPhones(JSON.parse(saved));
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setProfileOpen(false);
+        setShowSavedPhones(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const savePhoneToHistory = (phone: string) => {
+    const updated = [phone, ...savedPhones.filter(p => p !== phone)].slice(0, 5);
+    setSavedPhones(updated);
+    localStorage.setItem('saved_telegram_phones', JSON.stringify(updated));
+  };
+
+  const selectSavedPhone = (phone: string) => {
+    setTelegramPhone(phone);
+    setShowSavedPhones(false);
+  };
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +74,9 @@ const TopBar: React.FC = () => {
     try {
       const res = await api.post('/api/telegram/auth/send_code', { phone: telegramPhone });
       setTelegramPhoneHash(res.data.phone_code_hash);
+      savePhoneToHistory(telegramPhone);
       setTelegramStep('code');
+      setShowSavedPhones(false);
     } catch (err: any) {
       alert('Error: ' + (err.response?.data?.detail || 'Failed to send code'));
     } finally {
@@ -83,7 +111,11 @@ const TopBar: React.FC = () => {
     e.preventDefault();
     setTelegramLoading(true);
     try {
-      await api.post('/api/telegram/auth/2fa', { password: telegramPassword });
+      await api.post('/api/telegram/auth/2fa', {
+        phone: telegramPhone,
+        phone_code_hash: telegramPhoneHash,
+        password: telegramPassword
+      });
       await mutateStatus();
       setTelegramPhone('');
       setTelegramCode('');
@@ -183,13 +215,59 @@ const TopBar: React.FC = () => {
                       {telegramStep === 'phone' && (
                         <div className="auth-input-group">
                           <label><Phone size={14} /> Номер телефона</label>
-                          <input 
-                            type="tel" 
-                            placeholder="+7..." 
-                            value={telegramPhone}
-                            onChange={e => setTelegramPhone(e.target.value)}
-                            autoFocus
-                          />
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="tel"
+                              placeholder="+7..."
+                              value={telegramPhone}
+                              onChange={e => setTelegramPhone(e.target.value)}
+                              onFocus={() => setShowSavedPhones(true)}
+                              autoFocus
+                            />
+                            {showSavedPhones && savedPhones.length > 0 && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                background: 'rgba(15, 23, 42, 0.95)',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                borderRadius: '8px',
+                                marginTop: '4px',
+                                zIndex: 1000,
+                                maxHeight: '200px',
+                                overflowY: 'auto'
+                              }}>
+                                {savedPhones.map((phone, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => selectSavedPhone(phone)}
+                                    style={{
+                                      display: 'block',
+                                      width: '100%',
+                                      padding: '8px 12px',
+                                      textAlign: 'left',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#cbd5e1',
+                                      cursor: 'pointer',
+                                      borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                                      fontSize: '0.9rem'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      (e.target as HTMLElement).style.background = 'rgba(16, 185, 129, 0.1)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      (e.target as HTMLElement).style.background = 'transparent';
+                                    }}
+                                  >
+                                    {phone}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                       {telegramStep === 'code' && (
@@ -218,8 +296,9 @@ const TopBar: React.FC = () => {
                       )}
                       
                       <button type="submit" className="auth-submit-btn" disabled={telegramLoading}>
-                        {telegramLoading ? <Loader2 size={16} className="spin" /> : 'Продолжить'}
-                        <ChevronRight size={16} />
+                        <Loader2 size={16} className={telegramLoading ? "spin" : ""} style={{opacity: telegramLoading ? 1 : 0}} />
+                        <span>{telegramLoading ? 'Проверяется...' : 'Продолжить'}</span>
+                        <ChevronRight size={16} style={{opacity: telegramLoading ? 0 : 1}} />
                       </button>
                     </form>
                   </div>

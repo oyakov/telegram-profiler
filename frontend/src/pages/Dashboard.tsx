@@ -9,24 +9,31 @@ const fetcher = (url: string) => api.get(url).then(res => res.data);
 const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const { data: stats, error: statsError, isLoading: statsLoading, mutate: mutateStats } = useSWR('/api/stats', fetcher);
   const { data: tracking, mutate: mutateTracking } = useSWR('/api/tracking/channels', fetcher);
   const { data: foldersData, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
-  const { data: contacts, mutate: mutateContacts } = useSWR('/api/contacts', fetcher);
+  const { data: contactsData, mutate: mutateContacts } = useSWR('/api/tracking/contacts', fetcher);
   const { data: user } = useSWR('/api/telegram/user', fetcher);
 
   const handleManualSync = async () => {
     setSyncing(true);
+    setSyncStatus('idle');
     try {
-      await api.post('/api/sync/manual');
+      const syncResult = await api.post('/api/sync/manual');
+      console.log('Sync API response:', syncResult.data);
       setTimeout(() => {
+        console.log('Setting sync status to success');
         mutateStats();
         mutateTracking();
         mutateFolders();
         mutateContacts();
-      }, 2000);
-    } catch (err) {
+        setSyncStatus('success');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      }, 1000);
+    } catch (err: any) {
+      setSyncStatus('error');
       console.error('Sync failed:', err);
     } finally {
       setSyncing(false);
@@ -34,6 +41,7 @@ const Dashboard: React.FC = () => {
   };
 
   const folders = foldersData?.folders || [];
+  const contacts = contactsData?.contacts || [];
 
   const isLoading = statsLoading || !stats || !tracking;
   if (statsError) {
@@ -69,14 +77,18 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
-        <button
-          className="sync-btn"
-          onClick={handleManualSync}
-          disabled={syncing}
-          title="Синхронизировать папки и контакты"
-        >
-          <RefreshCw size={18} className={syncing ? 'spinning' : ''} />
-        </button>
+        <div className="sync-controls">
+          <button
+            className="sync-btn"
+            onClick={handleManualSync}
+            disabled={syncing}
+            title="Синхронизировать папки и контакты"
+          >
+            <RefreshCw size={18} className={syncing ? 'spinning' : ''} />
+          </button>
+          {syncStatus === 'success' && <span style={{fontSize: '0.85rem', color: '#10b981'}}>✓ Готово</span>}
+          {syncStatus === 'error' && <span style={{fontSize: '0.85rem', color: '#ef4444'}}>✗ Ошибка</span>}
+        </div>
       </div>
 
       <div className="tables-section">
