@@ -11,14 +11,14 @@ const AuditPage: React.FC = () => {
   const tabs = [
     { id: 'tasks', label: 'Мониторинг задач', icon: Activity },
     { id: 'metrics', label: 'Метрики Прометеуса', icon: TrendingUp },
-    { id: 'audit', label: 'Логи событий', icon: ClipboardList },
+    { id: 'audit', label: 'Аудит Celery', icon: ClipboardList },
   ];
 
   return (
     <div className="audit-page">
       <div className="page-header">
         <h1 className="text-gradient">Аудит</h1>
-        <p className="text-secondary">Логирование событий системы и активности ИИ</p>
+        <p className="text-secondary">Мониторинг задач Celery, метрики системы и аудит событий</p>
       </div>
 
       <div className="audit-tabs-container">

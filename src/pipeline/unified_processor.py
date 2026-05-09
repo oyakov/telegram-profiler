@@ -306,20 +306,38 @@ async def maintenance_index_messages(batch_size: int = 100, session: Optional[As
 
 
 async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: int) -> dict:
-    stats = {"processed": 0, "errors": 0}
+    from datetime import datetime, timezone
+    import redis as redis_lib
+    from src.core.config import get_settings
+
+    stats = {"processed": 0, "errors": 0, "tokens": 0}
     processed_ids = select(MessageEmbedding.message_id)
     query = (
-        select(Message)
+        select(Message.id, Message.content, Message.timestamp, Message.group_id, Message.group_name)
         .where(Message.id.not_in(processed_ids))
         .where(Message.content.isnot(None))
         .where(func.length(Message.content) > 10)
         .limit(batch_size)
     )
     result = await session.execute(query)
-    messages = result.scalars().all()
-    if not messages:
+    rows = result.all()
+    if not rows:
         logger.info("no_messages_to_embed")
         return stats
+
+    # Convert rows to objects for easier access
+    messages = [type('Msg', (), {'id': r[0], 'content': r[1], 'timestamp': r[2], 'group_id': r[3], 'group_name': r[4]})() for r in rows]
+
+    # Setup Redis for metrics tracking
+    try:
+        settings = get_settings()
+        r = redis_lib.from_url(settings.redis_url, socket_timeout=2)
+        minute_key = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        tokens_key = f"embeddings:tokens:{minute_key}"
+        requests_key = f"embeddings:requests:{minute_key}"
+    except Exception as e:
+        logger.warning("redis_tracking_unavailable", error=str(e))
+        r = None
 
     for msg in messages:
         try:
@@ -329,14 +347,28 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
             emb = MessageEmbedding(message_id=msg.id, embedding=vector, chunk_text=text[:1000])
             session.add(emb)
             stats["processed"] += 1
+
+            # Estimate tokens (approximate: ~4 chars per token)
+            estimated_tokens = max(1, len(text) // 4)
+            stats["tokens"] += estimated_tokens
+
+            # Track metrics in Redis
+            if r:
+                try:
+                    r.incr(tokens_key, estimated_tokens)
+                    r.incr(requests_key, 1)
+                    r.expire(tokens_key, 3600)  # Expire after 1 hour
+                    r.expire(requests_key, 3600)
+                except Exception as track_err:
+                    logger.debug("redis_metric_tracking_error", error=str(track_err))
         except Exception as e:
             logger.error("message_embedding_error", message_id=str(msg.id), error=str(e))
             stats["errors"] += 1
 
-    logger.info("embeddings_before_commit", processed=stats["processed"], errors=stats["errors"])
+    logger.info("embeddings_before_commit", processed=stats["processed"], errors=stats["errors"], tokens=stats["tokens"])
     try:
         await session.commit()
-        logger.info("embeddings_commit_success", processed=stats["processed"])
+        logger.info("embeddings_commit_success", processed=stats["processed"], tokens=stats["tokens"])
     except Exception as e:
         logger.error("embeddings_commit_failed", error=str(e), processed=stats["processed"])
         raise

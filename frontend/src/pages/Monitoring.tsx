@@ -90,7 +90,6 @@ const Monitoring: React.FC = () => {
   const { data: dataQualityData } = useSWR('/api/stats/data-quality', fetcher, { refreshInterval: 10000 });
   const { data: syncHealthData } = useSWR('/api/stats/sync-health', fetcher, { refreshInterval: 10000 });
   const { data: businessMetricsData } = useSWR('/api/stats/business-metrics', fetcher, { refreshInterval: 10000 });
-  const { data: realTimeAlertsData } = useSWR('/api/stats/real-time-alerts', fetcher, { refreshInterval: 5000 });
 
   return (
     <div className="monitoring-page animate-fade-in">

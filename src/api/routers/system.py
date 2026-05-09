@@ -130,6 +130,186 @@ async def get_audit_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
         ]
     }
 
+@router.get("/celery-tasks")
+async def get_celery_tasks():
+    """Get Celery task audit - running, completed, and queued tasks."""
+    from src.pipeline.celery_app import celery_app
+    from datetime import datetime
+
+    try:
+        # Get task inspect instance
+        inspect = celery_app.control.inspect()
+
+        # Active tasks (currently running)
+        active_tasks = inspect.active() or {}
+        running_tasks = []
+        for worker_name, tasks_list in active_tasks.items():
+            for task in tasks_list:
+                running_tasks.append({
+                    "id": task.get("id"),
+                    "name": task.get("name"),
+                    "args": str(task.get("args", []))[:100],
+                    "kwargs": str(task.get("kwargs", {}))[:100],
+                    "worker": worker_name,
+                    "status": "running",
+                    "timestamp": task.get("time_start"),
+                })
+
+        # Registered tasks
+        registered = inspect.registered() or {}
+        all_registered = set()
+        for worker_name, task_list in registered.items():
+            all_registered.update(task_list)
+
+        # Get task stats
+        stats = inspect.stats() or {}
+        worker_stats = {
+            name: {
+                "pool": stat.get("pool", {}).get("implementation", "unknown"),
+                "max_concurrency": stat.get("pool", {}).get("max-concurrency", 0),
+                "active": len(active_tasks.get(name, [])),
+            }
+            for name, stat in stats.items()
+        }
+
+        # Get queued tasks from Redis
+        import redis as redis_lib
+        from src.core.config import get_settings
+        settings = get_settings()
+
+        queued_tasks = []
+        try:
+            r = redis_lib.from_url(settings.redis_url, socket_timeout=2)
+            # Get tasks from all queues
+            queue_names = ["connectors", "processing", "celery"]
+            for queue_name in queue_names:
+                queue_key = f"celery/queue/{queue_name}" if queue_name != "celery" else "celery"
+                queue_len = r.llen(queue_key)
+                if queue_len > 0:
+                    # Try to peek at some tasks (limited to 10 per queue)
+                    for i in range(min(10, queue_len)):
+                        task_data = r.lindex(queue_key, i)
+                        if task_data:
+                            import json
+                            try:
+                                task_obj = json.loads(task_data)
+                                # Celery v5 format: headers and properties
+                                headers = task_obj.get("headers", {})
+                                properties = task_obj.get("properties", {})
+                                task_id = headers.get("id") or properties.get("reply_to")
+                                task_name = headers.get("task") or task_obj.get("task", "unknown")
+                                # Get timestamp when task was sent/enqueued
+                                timestamp = None
+                                if "sent_time" in headers:
+                                    timestamp = headers.get("sent_time")
+                                elif "timestamp" in properties:
+                                    timestamp = properties.get("timestamp")
+                                queued_tasks.append({
+                                    "id": task_id,
+                                    "name": task_name,
+                                    "queue": queue_name,
+                                    "status": "queued",
+                                    "position": i + 1,
+                                    "timestamp": timestamp,
+                                })
+                            except Exception as parse_err:
+                                logger.debug("Could not parse queue task", error=str(parse_err))
+        except Exception as e:
+            logger.warning("Could not fetch queued tasks", error=str(e))
+
+        return {
+            "running": running_tasks,
+            "queued": queued_tasks,
+            "workers": worker_stats,
+            "registered_tasks": list(all_registered)[:50],  # Limit to 50 for display
+            "summary": {
+                "total_running": len(running_tasks),
+                "total_queued": len(queued_tasks),
+                "total_workers": len(worker_stats),
+            }
+        }
+
+    except Exception as e:
+        logger.error("celery_tasks_error", error=str(e))
+        return {
+            "error": str(e),
+            "running": [],
+            "queued": [],
+            "workers": {},
+            "summary": {"total_running": 0, "total_queued": 0}
+        }
+
+@router.get("/embeddings-metrics")
+async def get_embeddings_metrics(db: AsyncSession = Depends(get_db)):
+    """Get embeddings processing metrics - tokens/min and requests/min."""
+    from datetime import datetime, timedelta, timezone
+    import redis as redis_lib
+    from src.core.config import get_settings
+
+    try:
+        settings = get_settings()
+
+        # Get metrics from Redis (for real-time processing)
+        r = redis_lib.from_url(settings.redis_url, socket_timeout=2)
+
+        # Get current minute counters
+        now = datetime.now(timezone.utc)
+        minute_key = now.strftime("%Y-%m-%d %H:%M")
+        tokens_key = f"embeddings:tokens:{minute_key}"
+        requests_key = f"embeddings:requests:{minute_key}"
+
+        tokens_processed = int(r.get(tokens_key) or 0)
+        requests_processed = int(r.get(requests_key) or 0)
+
+        # Also get last minute for comparison
+        last_minute = now - timedelta(minutes=1)
+        last_minute_key = last_minute.strftime("%Y-%m-%d %H:%M")
+        last_tokens_key = f"embeddings:tokens:{last_minute_key}"
+        last_requests_key = f"embeddings:requests:{last_minute_key}"
+
+        last_tokens = int(r.get(last_tokens_key) or 0)
+        last_requests = int(r.get(last_requests_key) or 0)
+
+        # Calculate trend
+        tokens_trend = ((tokens_processed - last_tokens) / (last_tokens + 1) * 100) if last_tokens else 0
+        requests_trend = ((requests_processed - last_requests) / (last_requests + 1) * 100) if last_requests else 0
+
+        # Get total embeddings from DB
+        total_embeddings = (await db.execute(select(func.count(MessageEmbedding.id)))).scalar() or 0
+        embeddings_last_hour = (await db.execute(
+            select(func.count(MessageEmbedding.id))
+            .where(MessageEmbedding.created_at >= datetime.now(timezone.utc) - timedelta(hours=1))
+        )).scalar() or 0
+
+        return {
+            "current_minute": {
+                "tokens_processed": tokens_processed,
+                "requests_processed": requests_processed,
+                "minute": minute_key,
+            },
+            "last_minute": {
+                "tokens_processed": last_tokens,
+                "requests_processed": last_requests,
+            },
+            "trends": {
+                "tokens_trend_percent": round(tokens_trend, 2),
+                "requests_trend_percent": round(requests_trend, 2),
+            },
+            "totals": {
+                "total_embeddings": total_embeddings,
+                "embeddings_last_hour": embeddings_last_hour,
+            }
+        }
+    except Exception as e:
+        logger.error("embeddings_metrics_error", error=str(e))
+        return {
+            "current_minute": {"tokens_processed": 0, "requests_processed": 0},
+            "last_minute": {"tokens_processed": 0, "requests_processed": 0},
+            "trends": {"tokens_trend_percent": 0, "requests_trend_percent": 0},
+            "totals": {"total_embeddings": 0, "embeddings_last_hour": 0},
+            "error": str(e)
+        }
+
 @router.get("/stats/distribution")
 async def get_distribution_stats(db: AsyncSession = Depends(get_db)):
     """Detailed distribution stats."""

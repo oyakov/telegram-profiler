@@ -16,13 +16,6 @@ import Projects from './pages/Projects';
 import Audit from './pages/Audit';
 import './App.css';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; isAuthenticated: boolean }> = ({
-  children,
-  isAuthenticated,
-}) => {
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
-};
-
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);

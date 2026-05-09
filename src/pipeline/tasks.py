@@ -151,7 +151,7 @@ def orchestrate_multi_db_cleanup(days: int = 30):
 
 # ========== Unified Processing Tasks ==========
 
-@celery_app.task(name="src.pipeline.tasks.process_unified_messages")
+@celery_app.task(name="src.pipeline.tasks.process_unified_messages", queue="processing")
 def process_unified_messages(limit: int = 50, db_name: str | None = None):
     """Run extraction and lead-detection on unprocessed messages."""
     from src.pipeline.unified_processor import process_unprocessed_messages
@@ -174,7 +174,7 @@ def orchestrate_multi_db_message_processing(limit: int = 50):
     return _run_async(_do())
 
 
-@celery_app.task(name="src.pipeline.tasks.process_message_embeddings")
+@celery_app.task(name="src.pipeline.tasks.process_message_embeddings", queue="processing")
 def process_message_embeddings(limit: int = 100, db_name: str | None = None):
     """Generate embeddings for messages that don't have them."""
     from src.pipeline.unified_processor import maintenance_index_messages
@@ -183,7 +183,7 @@ def process_message_embeddings(limit: int = 100, db_name: str | None = None):
     return _run_async(_do())
 
 
-@celery_app.task(name="src.pipeline.tasks.reindex_dirty_contacts")
+@celery_app.task(name="src.pipeline.tasks.reindex_dirty_contacts", queue="processing")
 def reindex_dirty_contacts(limit: int = 50, db_name: str | None = None):
     """Update embeddings for contacts marked as dirty."""
     from src.pipeline.unified_processor import maintenance_reindex_dirty
