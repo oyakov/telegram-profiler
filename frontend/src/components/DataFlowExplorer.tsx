@@ -32,7 +32,7 @@ const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: str
   const hasChildren = node.children && node.children.length > 0;
 
   // Determine if node is currently syncing based on local state OR backend status
-  const isSyncing = isLocalSyncing || node.status === 'syncing' || node.status === 'metadata';
+  const isSyncing = isLocalSyncing || node.status === 'syncing' || node.status === 'metadata' || node.status === 'reconciling';
 
   const getIcon = () => {
     switch (node.type) {
