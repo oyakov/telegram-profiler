@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import useSWR from 'swr';
-import { Play, Pause, RotateCw, ChevronDown, ChevronUp, AlertCircle, CheckCircle } from 'lucide-react';
+import { Play, RotateCw, ChevronDown, ChevronUp, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react';
 import api from '../services/api';
 import './SyncStatusPanel.css';
 
@@ -146,7 +146,7 @@ const BatchLogModal: React.FC<{
   channelId: string;
   onClose: () => void
 }> = ({ channelId, onClose }) => {
-  const { data, error } = useSWR(
+  const { data } = useSWR(
     `/api/sync/channel/${channelId}/status`,
     fetcher,
     { refreshInterval: 2000 }

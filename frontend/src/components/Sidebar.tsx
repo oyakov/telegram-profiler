@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import useSWR from 'swr';
 import {
-  User,
-  Folder,
   Activity,
   Search,
   Users,

@@ -46,11 +46,10 @@ const Campaigns: React.FC = () => {
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [loadedContacts, setLoadedContacts] = useState<Contact[]>([]);
   const [fileContacts, setFileContacts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [databasePage, setDatabasePage] = useState(1);
+  const [databasePage] = useState(1);
 
   // Fetch campaigns
   const { data: campaignsData, mutate: mutateCampaigns } = useSWR(
@@ -118,7 +117,7 @@ const Campaigns: React.FC = () => {
     if (selectedContacts.size === databaseContacts.length) {
       setSelectedContacts(new Set());
     } else {
-      setSelectedContacts(new Set(databaseContacts.map(c => c.id)));
+      setSelectedContacts(new Set(databaseContacts.map((c: Contact) => c.id)));
     }
   };
 
@@ -417,7 +416,7 @@ const Campaigns: React.FC = () => {
                   </div>
 
                   <div className="contacts-list">
-                    {databaseContacts.map((contact) => (
+                    {databaseContacts.map((contact: Contact) => (
                       <div key={contact.id} className="contact-item">
                         <input
                           type="checkbox"
@@ -471,7 +470,7 @@ const Campaigns: React.FC = () => {
                         );
                       }
 
-                      const contact = databaseContacts.find(c => c.id === contactId);
+                      const contact = databaseContacts.find((c: Contact) => c.id === contactId);
                       if (!contact) return null;
 
                       return (

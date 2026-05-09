@@ -86,7 +86,7 @@ const Tracking: React.FC = () => {
   // Initialize all folders as collapsed
   useEffect(() => {
     if (foldersData?.folders && foldersData.folders.length > 0) {
-      const allFolderIds = new Set(foldersData.folders.map((f: any) => f.id));
+      const allFolderIds = new Set<string>(foldersData.folders.map((f: any) => f.id));
       setCollapsedFolders(allFolderIds);
     }
   }, [foldersData]);
