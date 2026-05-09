@@ -97,7 +97,7 @@ const Monitoring: React.FC = () => {
       <div style={{ marginBottom: '32px' }}>
         <h2 style={{ fontSize: '1.25rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Zap size={20} className="text-venom" />
-          Поток данных (Data Pipeline)
+          Data Pipeline
         </h2>
         <SystemFlow metrics={metricsData} />
       </div>
@@ -105,7 +105,7 @@ const Monitoring: React.FC = () => {
       <div style={{ marginBottom: '32px' }}>
         <h2 style={{ fontSize: '1.25rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Database size={20} className="text-blue" />
-          Data Explorer (WinDirStat Style)
+          Data Explorer
         </h2>
         {treeData ? (
           <DataFlowTree tree={treeData.tree} />
