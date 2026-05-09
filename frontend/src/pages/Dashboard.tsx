@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { CheckCircle2, AlertCircle, Search } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Search, Activity } from 'lucide-react';
 import './Dashboard.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
@@ -32,17 +32,21 @@ const Dashboard: React.FC = () => {
   const { data: timelineData } = useSWR('/api/stats/timeline', fetcher);
   const { data: folders } = useSWR('/api/tracking/folders', fetcher);
   const { data: contacts } = useSWR('/api/contacts', fetcher);
+  const { data: user } = useSWR('/api/telegram/user', fetcher);
 
   const isLoading = statsLoading || !stats || !tracking;
   if (statsError) return <div className="error">Failed to load dashboard data</div>;
   if (isLoading) return <div className="loading">Loading intelligence...</div>;
 
+  const userName = user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'User';
+  const userInitial = userName.charAt(0).toUpperCase();
+
   return (
     <div className="dashboard-page">
       <div className="profile-section serpent-card">
-        <div className="profile-avatar">W</div>
+        <div className="profile-avatar">{userInitial}</div>
         <div className="profile-info">
-          <h2 className="profile-workspace">Workspace</h2>
+          <h2 className="profile-workspace">{userName}</h2>
           <div className="profile-stats">
             <div className="profile-stat">
               <span className="stat-label">Контактов</span>
