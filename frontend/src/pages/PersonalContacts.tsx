@@ -18,7 +18,7 @@ const PersonalContacts: React.FC = () => {
   const queryParams = new URLSearchParams();
   queryParams.append('page', page.toString());
   queryParams.append('page_size', '50');
-  queryParams.append('source', 'telegram');
+  queryParams.append('is_personal', 'true');
   if (searchQuery) {
     queryParams.append('search', searchQuery);
   }

@@ -171,6 +171,10 @@ class Contact(Base):
     oldest_message_id = Column(String(255), nullable=True)
     oldest_message_date = Column(DateTime(timezone=True), nullable=True)
 
+    # Personal Contact Management
+    is_personal = Column(Boolean, default=False, index=True)  # User-saved personal contact
+    saved_at = Column(DateTime(timezone=True), nullable=True)  # When marked as personal
+
     embedding = Column(Vector(1024), nullable=True)
     embedding_dirty = Column(Boolean, default=True)
     last_interaction = Column(DateTime(timezone=True), nullable=True)

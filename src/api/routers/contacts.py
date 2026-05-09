@@ -38,6 +38,8 @@ def _contact_to_response(c: Contact) -> dict:
         "our_channel_ratio": float(c.our_channel_ratio or 0.0),
         "lead_context": dict(c.lead_context or {}),
         "is_tracked": bool(c.is_tracked),
+        "is_personal": bool(c.is_personal),
+        "saved_at": c.saved_at.isoformat() if c.saved_at else None,
         "total_synced": int(c.total_messages_synced or 0),
         "oldest_msg_date": c.oldest_message_date.isoformat() if c.oldest_message_date else None,
         "last_interaction": c.last_interaction.isoformat() if c.last_interaction else None,
@@ -50,6 +52,7 @@ async def list_contacts(
     db: AsyncSession = Depends(get_db),
     source: Optional[str] = None,
     search: Optional[str] = None,
+    is_personal: Optional[bool] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ):
@@ -57,6 +60,8 @@ async def list_contacts(
     query = select(Contact)
     if source:
         query = query.where(Contact.source == source)
+    if is_personal is not None:
+        query = query.where(Contact.is_personal == is_personal)
     if search:
         search_pattern = f"%{search}%"
         query = query.where(
