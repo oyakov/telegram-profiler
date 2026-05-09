@@ -114,6 +114,24 @@ def sync_crm(db_name: str | None = None):
     return _run_async(_do())
 
 
+@celery_app.task(name="src.pipeline.tasks.sync_telegram_contacts")
+def sync_telegram_contacts(db_name: str | None = None):
+    """Sync personal contacts from Telegram account."""
+    from src.connectors.telegram_connector import TelegramConnector
+
+    async def _do():
+        connector = TelegramConnector(db_name=db_name)
+        try:
+            result = await connector.sync_contacts()
+            logger.info("telegram_contacts_sync_task_complete", result=result, db=db_name)
+            return result
+        except Exception as e:
+            logger.error("telegram_contacts_sync_task_failed", error=str(e), db=db_name)
+            return {"status": "error", "error": str(e)}
+
+    return _run_async(_do())
+
+
 # ========== Maintenance Tasks ==========
 
 @celery_app.task(name="src.pipeline.tasks.cleanup_extraction_logs")
@@ -289,7 +307,7 @@ def deep_track_orchestrator():
 # ========== Campaign Tasks ==========
 
 @celery_app.task(name="src.pipeline.tasks.send_campaign", queue="connectors")
-def send_campaign(campaign_id: str, project_id: str, db_name: str | None = None):
+def send_campaign(campaign_id: str, db_name: str | None = None):
     """Send campaign messages to all contacts."""
     from src.db.models import Campaign, CampaignMessage, Contact
     from src.connectors.telegram_connector import TelegramConnector

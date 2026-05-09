@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 
-from src.db.models import Campaign, CampaignMessage, Contact, SystemProject
+from src.db.models import Campaign, CampaignMessage, Contact
 from src.db.database import get_db
 from src.api.schemas.campaigns import (
     CampaignCreate,
@@ -43,19 +43,9 @@ async def create_campaign(
     db: AsyncSession = Depends(get_db),
 ) -> Campaign:
     """Create a new campaign in draft status."""
-    project_result = await db.execute(select(SystemProject).limit(1))
-    project = project_result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="No project found")
-
-    # Check if campaign name already exists in this project
+    # Check if campaign name already exists
     existing = await db.execute(
-        select(Campaign).where(
-            and_(
-                Campaign.project_id == project.id,
-                Campaign.name == request.name,
-            )
-        )
+        select(Campaign).where(Campaign.name == request.name)
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Campaign with this name already exists")
@@ -71,7 +61,6 @@ async def create_campaign(
 
     # Create campaign
     campaign = Campaign(
-        project_id=project.id,
         name=request.name,
         description=request.description,
         message=request.message,
@@ -101,18 +90,13 @@ async def list_campaigns(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """List campaigns with pagination."""
-    project_result = await db.execute(select(SystemProject).limit(1))
-    project = project_result.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="No project found")
-
-    query = select(Campaign).where(Campaign.project_id == project.id)
+    query = select(Campaign)
     if status:
         query = query.where(Campaign.status == status)
 
     # Get total count
     count_result = await db.execute(
-        select(func.count(Campaign.id)).where(Campaign.project_id == project.id)
+        select(func.count(Campaign.id))
     )
     total = count_result.scalar()
 
@@ -214,7 +198,7 @@ async def send_campaign_messages(
     campaign.started_at = datetime.utcnow()
     await db.commit()
 
-    task = send_campaign.delay(str(campaign_id), str(campaign.project_id))
+    task = send_campaign.delay(str(campaign_id))
 
     return {
         "ok": True,

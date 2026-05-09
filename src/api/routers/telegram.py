@@ -283,11 +283,28 @@ async def telegram_manual_sync(request: Request):
 
 @router.post("/contacts/sync")
 async def telegram_sync_contacts(request: Request):
-    """Fetch and sync contacts from Telegram account."""
-    db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
-    result = await connector.sync_contacts()
-    if result["status"] == "error":
-        raise HTTPException(400, result.get("error", "Failed to sync contacts"))
-    return result
+    """Queue async task to sync contacts from Telegram account."""
+    from src.pipeline.tasks import sync_telegram_contacts
+    db_name = request.headers.get("X-Database") or "crm"
+
+    task = sync_telegram_contacts.delay(db_name=db_name)
+    return {
+        "status": "queued",
+        "task_id": task.id,
+        "message": "Contact sync started in background. You can check status with the task ID."
+    }
+
+
+@router.get("/contacts/sync/status/{task_id}")
+async def get_contact_sync_status(task_id: str):
+    """Get status of async contact sync task."""
+    from celery.result import AsyncResult
+    from src.pipeline.celery_app import celery_app
+
+    task = AsyncResult(task_id, app=celery_app)
+    return {
+        "task_id": task_id,
+        "status": task.status,
+        "result": task.result if task.ready() else None
+    }
 

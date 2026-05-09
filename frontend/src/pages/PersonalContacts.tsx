@@ -68,11 +68,39 @@ const PersonalContacts: React.FC = () => {
 
     try {
       const response = await api.post('/api/telegram/contacts/sync');
-      setStatusMessage(`✓ Синхронизировано: +${response.data.added} контактов, обновлено: ${response.data.updated}`);
-      // Refresh the contacts list
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
+      const taskId = response.data.task_id;
+
+      // Poll for task completion
+      let isComplete = false;
+      let attempts = 0;
+      const maxAttempts = 120; // 2 minutes with 1s intervals
+
+      while (!isComplete && attempts < maxAttempts) {
+        attempts++;
+
+        const statusResponse = await api.get(`/api/telegram/contacts/sync/status/${taskId}`);
+        const taskStatus = statusResponse.data.status;
+
+        if (taskStatus === 'SUCCESS') {
+          const result = statusResponse.data.result;
+          setStatusMessage(`✓ Синхронизировано: +${result.added} контактов, обновлено: ${result.updated}`);
+          isComplete = true;
+          // Refresh the contacts list
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        } else if (taskStatus === 'FAILURE') {
+          setStatusMessage('✗ Ошибка при синхронизации контактов');
+          isComplete = true;
+        } else if (taskStatus === 'PENDING' || taskStatus === 'RETRY') {
+          setStatusMessage('⏳ Синхронизация контактов... (' + attempts + 's)');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      if (!isComplete) {
+        setStatusMessage('✗ Таймаут синхронизации');
+      }
     } catch (err) {
       setStatusMessage('Ошибка при синхронизации контактов');
       console.error(err);

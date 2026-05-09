@@ -21,8 +21,33 @@ const Dashboard: React.FC = () => {
     setSyncing(true);
     setSyncStatus('idle');
     try {
+      // Sync folders and channels
       const syncResult = await api.post('/api/sync/manual');
-      console.log('Sync API response:', syncResult.data);
+      console.log('Folder/Channel sync response:', syncResult.data);
+
+      // Also sync contacts (asynchronously)
+      const contactsSyncResponse = await api.post('/api/telegram/contacts/sync');
+      const contactsTaskId = contactsSyncResponse.data.task_id;
+
+      // Poll for contacts sync completion
+      let contactsSyncComplete = false;
+      let pollAttempts = 0;
+      const maxAttempts = 60; // 1 minute
+
+      while (!contactsSyncComplete && pollAttempts < maxAttempts) {
+        pollAttempts++;
+        const statusResponse = await api.get(
+          `/api/telegram/contacts/sync/status/${contactsTaskId}`
+        );
+        const taskStatus = statusResponse.data.status;
+
+        if (taskStatus === 'SUCCESS' || taskStatus === 'FAILURE') {
+          contactsSyncComplete = true;
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
       setTimeout(() => {
         console.log('Setting sync status to success');
         mutateStats();

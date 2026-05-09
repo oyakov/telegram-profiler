@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { 
-  Database, Folder, MessageSquare, ChevronRight, ChevronDown, 
-  Cpu, HardDrive, Zap, Cloud, Activity
+import {
+  Database, Folder, MessageSquare, ChevronRight, ChevronDown,
+  Cpu, HardDrive, Zap, Cloud, Activity, Play
 } from 'lucide-react';
 
 interface TreeNode {
@@ -26,8 +26,9 @@ const Pacman: React.FC<{ size?: number; active?: boolean }> = ({ size = 16, acti
   );
 };
 
-const TreeRow: React.FC<{ node: TreeNode; level: number }> = ({ node, level }) => {
+const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: string) => Promise<void> }> = ({ node, level, onSync }) => {
   const [isOpen, setIsOpen] = useState(level < 1);
+  const [syncing, setSyncing] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
 
   const getIcon = () => {
@@ -39,9 +40,20 @@ const TreeRow: React.FC<{ node: TreeNode; level: number }> = ({ node, level }) =
     }
   };
 
+  const handleSyncClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onSync) return;
+    setSyncing(true);
+    try {
+      await onSync(node.id);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <>
-      <div className={`tree-row level-${level} ${node.type}`} onClick={() => hasChildren && setIsOpen(!isOpen)}>
+      <div className={`tree-row level-${level} ${node.type} ${syncing ? 'syncing' : ''}`} onClick={() => hasChildren && setIsOpen(!isOpen)}>
         <div className="tree-col name-col" style={{ paddingLeft: level * 20 + 8 }}>
           <div className="chevron-wrapper">
             {hasChildren && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
@@ -50,30 +62,68 @@ const TreeRow: React.FC<{ node: TreeNode; level: number }> = ({ node, level }) =
           <span className="node-name">{node.name}</span>
           {node.username && <span className="node-username">@{node.username}</span>}
         </div>
-        
+
         <div className="tree-col pct-col">
           <div className="pacman-track">
-            <Pacman active={node.percentage > 0} />
+            <Pacman active={syncing || node.percentage > 0} />
             <div className="progress-mini">
-              <div className="progress-mini-fill" style={{ width: `${node.percentage}%` }}></div>
+              <div className="progress-mini-fill" style={{ width: `${syncing ? 100 : node.percentage}%`, backgroundColor: syncing ? '#3b82f6' : undefined }}></div>
             </div>
-            <span className="pct-text">{node.percentage}%</span>
+            <span className="pct-text">{syncing ? '⧗' : `${node.percentage}%`}</span>
           </div>
         </div>
 
         <div className="tree-col files-col">
-          {node.files.toLocaleString()} msg
+          {syncing ? '⧗ синхронизация...' : `${node.files.toLocaleString()} msg`}
         </div>
 
         <div className="tree-col change-col">
-          {node.last_change ? new Date(node.last_change).toLocaleTimeString() : '—'}
+          {syncing ? '🔄 в процессе' : (node.last_change ? new Date(node.last_change).toLocaleTimeString() : '—')}
         </div>
+
+        {node.type === 'folder' && onSync && (
+          <button
+            className="sync-btn-tree"
+            onClick={handleSyncClick}
+            disabled={syncing}
+            title="Синхронизировать папку"
+            style={{
+              background: syncing ? '#3b82f6' : '#10b981',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              cursor: syncing ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 1,
+              transition: 'background-color 0.2s',
+              position: 'relative'
+            }}
+          >
+            {syncing ? (
+              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⧗</span>
+            ) : (
+              <Play size={14} color="white" />
+            )}
+          </button>
+        )}
       </div>
+
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .tree-row.syncing {
+          background: rgba(59, 130, 246, 0.1);
+        }
+      `}</style>
       
       {isOpen && hasChildren && (
         <div className="tree-children">
           {node.children!.map(child => (
-            <TreeRow key={child.id} node={child} level={level + 1} />
+            <TreeRow key={child.id} node={child} level={level + 1} onSync={onSync} />
           ))}
         </div>
       )}
@@ -81,7 +131,7 @@ const TreeRow: React.FC<{ node: TreeNode; level: number }> = ({ node, level }) =
   );
 };
 
-export const DataFlowTree: React.FC<{ tree: TreeNode[] }> = ({ tree }) => {
+export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: string) => Promise<void> }> = ({ tree, onSync }) => {
   return (
     <div className="data-flow-tree serpent-card">
       <div className="tree-header">
@@ -92,7 +142,7 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[] }> = ({ tree }) => {
       </div>
       <div className="tree-body">
         {tree.map(node => (
-          <TreeRow key={node.id} node={node} level={0} />
+          <TreeRow key={node.id} node={node} level={0} onSync={onSync} />
         ))}
       </div>
     </div>

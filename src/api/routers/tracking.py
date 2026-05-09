@@ -149,7 +149,7 @@ async def list_tracked_contacts(db: AsyncSession = Depends(get_db)):
     from src.db.models import Contact
     res = await db.execute(
         select(Contact)
-        .where(Contact.is_tracked == True)
+        .where(Contact.is_personal == True)
         .order_by(Contact.updated_at.desc())
     )
     contacts = res.scalars().all()

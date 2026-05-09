@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
-import { Play, RotateCw, ChevronDown, ChevronUp, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { RotateCw, ChevronDown, ChevronUp, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react';
 import api from '../services/api';
 import './SyncStatusPanel.css';
 
@@ -211,13 +211,6 @@ export const SyncStatusPanel: React.FC = () => {
     setExpandedFolders(newSet);
   };
 
-  const handleStartSync = async (folderId: string) => {
-    try {
-      await api.post(`/api/sync/folder/${folderId}/start`);
-    } catch (err) {
-      console.error('Failed to start sync:', err);
-    }
-  };
 
   if (isLoading) {
     return <div className="sync-panel loading">Загрузка статуса синхронизации...</div>;
@@ -269,14 +262,6 @@ export const SyncStatusPanel: React.FC = () => {
                 <div className="folder-progress">
                   <ProgressBar percent={folder.progress_percent} status="syncing" />
                 </div>
-
-                <button
-                  className="start-btn"
-                  onClick={() => handleStartSync(folder.id)}
-                  title="Начать синхронизацию папки"
-                >
-                  <Play size={16} />
-                </button>
               </div>
 
               {expandedFolders.has(folder.id) && (

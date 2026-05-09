@@ -447,6 +447,62 @@ class LeadSearch(Base):
         return f"<LeadSearch {self.name}>"
 
 
+class Campaign(Base):
+    """Campaign for bulk messaging to multiple contacts."""
+    __tablename__ = "campaigns"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    message = Column(Text, nullable=False)  # Message template with {first_name}, {email}, etc.
+    status = Column(String(50), default="draft")  # draft|scheduled|sending|completed|failed
+    total_contacts = Column(Integer, default=0)
+    sent_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    messages = relationship("CampaignMessage", back_populates="campaign", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_campaigns_status", "status"),
+        Index("idx_campaigns_created", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Campaign {self.name}>"
+
+
+class CampaignMessage(Base):
+    """Individual message status in a campaign (one per contact)."""
+    __tablename__ = "campaign_messages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    contact_id = Column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(50), default="pending")  # pending|sent|failed
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    campaign = relationship("Campaign", back_populates="messages")
+    contact = relationship("Contact")
+
+    __table_args__ = (
+        Index("idx_campaign_messages_campaign_id", "campaign_id"),
+        Index("idx_campaign_messages_contact_id", "contact_id"),
+        Index("idx_campaign_messages_status", "status"),
+        sa.UniqueConstraint("campaign_id", "contact_id", name="uq_campaign_contact"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CampaignMessage campaign={self.campaign_id} contact={self.contact_id}>"
+
+
 class TelegramSession(Base):
     """Telegram Telethon session stored in PostgreSQL instead of SQLite."""
     __tablename__ = "telegram_sessions"

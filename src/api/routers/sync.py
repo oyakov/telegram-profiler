@@ -2,10 +2,11 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from src.db.database import get_db
 from src.db.models import ChannelSyncState, SyncBatchLog, TrackedChannel, TrackedFolder
@@ -214,20 +215,25 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
     """Start sync for all channels in a folder."""
 
     result = await db.execute(
-        select(TrackedFolder).where(TrackedFolder.id == UUID(folder_id))
+        select(TrackedFolder).where(TrackedFolder.id == UUID(folder_id)).options(
+            selectinload(TrackedFolder.channels).selectinload(TrackedChannel.sync_state)
+        )
     )
     folder = result.scalar_one_or_none()
     if not folder:
         raise HTTPException(404, "Folder not found")
 
     queued_count = 0
+    loop = asyncio.get_event_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+
     for channel in folder.channels:
         if channel.sync_state and channel.sync_state.phase in ["metadata", "syncing"]:
             continue
 
         try:
-            metadata = scan_channel_metadata(channel.telegram_id)
-            metadata_result = metadata.get() if hasattr(metadata, 'get') else metadata
+            # Run the blocking scan_channel_metadata in a thread pool
+            metadata_result = await loop.run_in_executor(executor, scan_channel_metadata, channel.telegram_id)
 
             sync_state = ChannelSyncState(
                 channel_id=channel.id,
