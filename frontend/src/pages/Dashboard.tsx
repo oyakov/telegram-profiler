@@ -81,7 +81,7 @@ const Dashboard: React.FC = () => {
 
       <div className="tables-section">
         <div className="table-container">
-          <h3>Папки по проектам</h3>
+          <h3>Папки</h3>
           <table className="data-table">
             <thead>
               <tr>

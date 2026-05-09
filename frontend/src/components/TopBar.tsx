@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import useSWR from 'swr';
 import {
-  Database,
   User,
   Folder,
   LogOut,
@@ -119,10 +118,6 @@ const TopBar: React.FC = () => {
         <NavLink to="/" className="top-nav-link">
           <User size={18} />
           <span>Профиль</span>
-        </NavLink>
-        <NavLink to="/projects" className="top-nav-link">
-          <Database size={18} />
-          <span>Проекты</span>
         </NavLink>
         <NavLink to="/tracking" className="top-nav-link">
           <Folder size={18} />
