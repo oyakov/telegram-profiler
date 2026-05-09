@@ -81,6 +81,11 @@ class TrackedFolder(Base):
     description = Column(Text, nullable=True)
     tags = Column(ARRAY(String), default=list) # Keywords/tags
     is_active = Column(Boolean, default=True)
+
+    # Sync orchestration
+    cached_channels = Column(ARRAY(String), default=list)  # Cache of channel IDs for change detection
+    last_scan_at = Column(DateTime(timezone=True), nullable=True)  # Last time we scanned Telegram
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

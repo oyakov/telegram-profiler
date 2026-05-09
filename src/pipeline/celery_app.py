@@ -12,7 +12,11 @@ celery_app = Celery(
     "networking_brain",
     broker=redis_url,
     backend=redis_url,
-    include=["src.pipeline.tasks", "src.pipeline.telegram_sync_tasks"],
+    include=[
+        "src.pipeline.tasks",
+        "src.pipeline.telegram_sync_tasks",
+        "src.pipeline.sync_orchestrator"
+    ],
 )
 
 celery_app.conf.update(
@@ -33,6 +37,7 @@ celery_app.conf.update(
         "src.pipeline.telegram_sync_tasks.sync_channel_batch": {"queue": "connectors"},
         "src.pipeline.telegram_sync_tasks.scan_channel_metadata": {"queue": "connectors"},
         "src.pipeline.telegram_sync_tasks.reconcile_channel_sync": {"queue": "connectors"},
+        "sync_orchestrator": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_sync": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_maintenance": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_message_processing": {"queue": "processing"},
@@ -42,6 +47,10 @@ celery_app.conf.update(
         "src.pipeline.tasks.assign_orphaned_messages_to_projects": {"queue": "processing"},
     },
     beat_schedule={
+        "sync-orchestrator": {
+            "task": "sync_orchestrator",
+            "schedule": crontab(minute="*/5"),  # Every 5 minutes
+        },
         "multi-db-sync-orchestrator": {
             "task": "src.pipeline.tasks.orchestrate_multi_db_sync",
             "schedule": crontab(
