@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy import select, func, text, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.database import get_db
+from src.db.database import get_session
 from src.db.models import Contact, Message, VoiceNote, MessageEmbedding, ExtractionLog, SyncState, TrackedFolder, TrackedChannel, ChannelSyncState, SyncBatchLog
 from src.core.config import get_settings
 from datetime import datetime, timedelta, timezone
@@ -208,7 +208,7 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
 
         return {
             "running": running_tasks,
-            "queued": [], # Queue peeking omitted for brevity
+            "queued": [],
             "workers": worker_stats,
             "summary": {
                 "total_running": len(running_tasks),
@@ -235,18 +235,21 @@ async def purge_celery_tasks():
 
 @router.get("/tree")
 async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
-    """Get hierarchical tree of data (Folder > Channel) with stats."""
+    """Get hierarchical tree of data (Folder > Channel) with robust status logic."""
     from sqlalchemy.orm import selectinload
 
     try:
+        # 1. Fetch folders
         folders_res = await db.execute(select(TrackedFolder).order_by(TrackedFolder.created_at))
         folders = folders_res.scalars().all()
 
+        # 2. Fetch message counts grouped by group_id
         channel_counts_res = await db.execute(
             select(Message.group_id, func.count(Message.id)).group_by(Message.group_id)
         )
         channel_counts = {str(row[0]): row[1] for row in channel_counts_res.all()}
 
+        # 3. Fetch channels with their latest sync state
         channels_res = await db.execute(select(TrackedChannel).options(selectinload(TrackedChannel.sync_state)))
         channels = channels_res.scalars().all()
 
@@ -257,12 +260,14 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
             folder_nodes[str(f.id)] = f_node
             tree.append(f_node)
 
+        # 4. Map channels with robust logic
         for ch in channels:
             if not ch.folder_id or str(ch.folder_id) not in folder_nodes: continue
 
+            # Robust ID matching (handles 123, -123, -100123)
             raw_id = str(ch.telegram_id).replace("-100", "").lstrip("-")
-            id_variants = [raw_id, f"-100{raw_id}", f"-{raw_id}", str(ch.telegram_id)]
-            ch_msg_count = sum(channel_counts.get(vid, 0) for vid in set(id_variants))
+            id_variants = set([raw_id, f"-100{raw_id}", f"-{raw_id}", str(ch.telegram_id)])
+            ch_msg_count = sum(channel_counts.get(vid, 0) for vid in id_variants)
             
             progress = 0.0
             status = "idle"
@@ -275,15 +280,21 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
                 if est_total > 0:
                     db_progress = (ch_msg_count / est_total) * 100
                     progress = max(db_progress, state_progress)
-                else: progress = state_progress
+                else: 
+                    progress = state_progress
 
+                # Heuristics
                 if status == "metadata" and ch_msg_count > 0: status = "syncing"
                 if status == "complete": progress = 100.0
                 elif status == "reconciling": progress = max(99.0, progress)
                 if status in ["metadata", "syncing"] and progress < 0.1: progress = 0.1
             else:
-                if ch_msg_count > 0: status = "complete"; progress = 100.0
-                else: status = "idle"; progress = 0.0
+                if ch_msg_count > 0: 
+                    status = "complete"
+                    progress = 100.0
+                else: 
+                    status = "idle"
+                    progress = 0.0
             
             ch_node = {
                 "id": str(ch.id), "name": ch.title or str(ch.telegram_id), "type": "channel", "username": ch.username,
@@ -293,6 +304,7 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
             folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
             folder_nodes[str(ch.folder_id)]["files"] += ch_msg_count
 
+        # 5. Correct folder aggregate progress
         for f_node in tree:
             if f_node["children"]:
                 total_prog = sum(c["percentage"] for c in f_node["children"])
