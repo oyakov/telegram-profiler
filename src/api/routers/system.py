@@ -563,10 +563,16 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
             if not ch.folder_id or str(ch.folder_id) not in folder_nodes:
                 continue
 
-            ch_msg_count = channel_counts.get(str(ch.telegram_id), 0)
+            # Real count from messages table.
+            # Handle both possible ID formats in messages (e.g., "123" or "-100123")
+            tg_id = str(ch.telegram_id)
+            alt_tg_id = f"-100{tg_id}" if not tg_id.startswith("-") else tg_id.replace("-100", "")
             
+            ch_msg_count = channel_counts.get(tg_id, 0) + channel_counts.get(alt_tg_id, 0)
+            
+            # Real status from sync_state
             progress = 0
-            status = "pending"
+            status = "idle"
             if ch.sync_state:
                 progress = ch.sync_state.progress_percent
                 status = ch.sync_state.phase
