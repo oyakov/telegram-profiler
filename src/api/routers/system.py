@@ -135,52 +135,42 @@ async def get_audit_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
 
 @router.get("/celery-tasks")
 async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
-    """Get Celery task audit with rich human context."""
+    """Get Celery task audit with rich context and DB fallback."""
     from src.pipeline.celery_app import celery_app
-    from src.db.models import TrackedChannel, ChannelSyncState
-    from sqlalchemy import select
+    from src.db.models import TrackedChannel, ChannelSyncState, SyncBatchLog
+    from sqlalchemy import select, func, desc
     from sqlalchemy.orm import joinedload
+    from datetime import datetime, timedelta, timezone
     import ast
 
     try:
-        inspect = celery_app.control.inspect()
+        # 1. Increase timeout for Celery inspect (Docker can be slow)
+        inspect = celery_app.control.inspect(timeout=3.0)
         active_tasks_map = inspect.active() or {}
         
-        # 1. Fetch channel info for context enrichment
+        # 2. Fetch channel info for context enrichment
         channels_res = await db.execute(
             select(TrackedChannel).options(joinedload(TrackedChannel.sync_state))
         )
         channels_map = {str(c.telegram_id): c for c in channels_res.scalars().all()}
-        # Also map by internal UUID for some tasks
         uuid_map = {str(c.id): c for c in channels_map.values()}
 
         running_tasks = []
+        
+        # 3. Process Celery active tasks
         for worker_name, tasks_list in active_tasks_map.items():
             for task in tasks_list:
                 name = task.get("name", "unknown")
                 args_str = task.get("args", "()")
-                kwargs = task.get("kwargs", {})
                 
-                # Try to extract channel context
-                context = "Фоновая задача"
+                context = "Системная задача"
                 progress = None
                 
                 try:
-                    # Parse args like "('1528034935', 'uuid...')"
                     parsed_args = ast.literal_eval(args_str)
-                    target_id = None
-                    if "sync_channel_batch" in name or "scan_channel_metadata" in name:
-                        target_id = str(parsed_args[0]) if parsed_args else None
-                    elif "deep_track_chunk" in name:
-                        target_id = str(parsed_args[0]) if parsed_args else None
-                    
-                    if target_id and target_id in channels_map:
-                        ch = channels_map[target_id]
-                        context = f"Канал: {ch.title}"
-                        if ch.sync_state:
-                            progress = round(ch.sync_state.progress_percent, 1)
-                    elif target_id and target_id in uuid_map:
-                        ch = uuid_map[target_id]
+                    target_id = str(parsed_args[0]) if parsed_args else None
+                    ch = channels_map.get(target_id) or uuid_map.get(target_id)
+                    if ch:
                         context = f"Канал: {ch.title}"
                         if ch.sync_state:
                             progress = round(ch.sync_state.progress_percent, 1)
@@ -196,6 +186,32 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
                     "queue": task.get("delivery_info", {}).get("routing_key", "unknown"),
                     "timestamp": task.get("time_start"),
                 })
+
+        # 4. DB Fallback: If running_tasks is empty but we have active sync states, show them
+        if not running_tasks:
+            # Look for sync states in 'syncing' phase that were updated recently
+            active_syncs_res = await db.execute(
+                select(ChannelSyncState)
+                .options(joinedload(ChannelSyncState.channel))
+                .where(ChannelSyncState.phase.in_(["metadata", "syncing", "reconciling"]))
+                .where(ChannelSyncState.updated_at >= datetime.now(timezone.utc) - timedelta(minutes=5))
+                .order_by(desc(ChannelSyncState.updated_at))
+            )
+            active_syncs = active_syncs_res.scalars().all()
+            
+            for sync in active_syncs:
+                running_tasks.append({
+                    "id": f"db_{sync.id}",
+                    "name": f"SYNC_{sync.phase.upper()}",
+                    "worker": "worker-connectors",
+                    "status": "running",
+                    "context": f"Канал: {sync.channel.title if sync.channel else 'Unknown'}",
+                    "progress": round(sync.progress_percent, 1),
+                    "queue": "connectors",
+                    "timestamp": sync.updated_at.timestamp(),
+                })
+
+        # Summary and other stats remain...
 
         # Registered tasks
         registered = inspect.registered() or {}
