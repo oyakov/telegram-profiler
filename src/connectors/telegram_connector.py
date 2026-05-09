@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.connectors.base import BaseConnector, SyncResult
 from src.connectors.whisper_client import WhisperClient
+from src.connectors.telethon_postgres_session import PostgresTelegramSession
 from src.core.config import get_settings
 from src.db.database import get_session
 from src.db.models import Contact, Message, SyncState, VoiceNote, MessageContact
@@ -36,26 +37,33 @@ class TelegramConnector(BaseConnector):
         self.enable_transcription = enable_transcription
         self.db_name = db_name or os.getenv('POSTGRES_DB', 'crm')
         self.project_id = project_id  # Will be set to default if None
+        self.pg_session = PostgresTelegramSession(session_name=self.settings.telegram_session_name)
 
-    def _get_client(self):
-        """Create a new Telethon client instance."""
+    async def _get_client(self):
+        """Create a new Telethon client instance with PostgreSQL-backed session."""
         from telethon import TelegramClient
-        
-        # Determine the base session name
-        session_name = self.settings.telegram_session_name
-        
-        # Use the base session name for all databases to avoid re-authorization
-        session_name = self.settings.telegram_session_name
-        
-        docker_path = f"/app/sessions/{session_name}"
-        local_path = f"sessions/{session_name}"
-        session_path = docker_path if os.path.exists("/app") else local_path
-        os.makedirs(os.path.dirname(session_path), exist_ok=True)
-        return TelegramClient(session_path, int(self.settings.telegram_api_id), self.settings.telegram_api_hash)
+
+        # Get StringSession from PostgreSQL
+        string_session = await self.pg_session.get_string_session()
+
+        return TelegramClient(
+            string_session,
+            int(self.settings.telegram_api_id),
+            self.settings.telegram_api_hash
+        )
+
+    async def _save_session(self, user_id: Optional[str] = None):
+        """Save current session to PostgreSQL."""
+        await self.pg_session.save_session_data(user_id=user_id)
+
+    async def _cleanup_stale_session(self):
+        """Delete session from PostgreSQL."""
+        await self.pg_session.delete_session()
+        logger.info("telegram_session_deleted_from_postgres")
 
 
     async def is_authorized(self) -> bool:
-        client = self._get_client()
+        client = await self._get_client()
         await client.connect()
         try:
             return await client.is_user_authorized()
@@ -63,7 +71,7 @@ class TelegramConnector(BaseConnector):
             await client.disconnect()
 
     async def send_code_request(self, phone: str) -> str:
-        client = self._get_client()
+        client = await self._get_client()
         try:
             await client.connect()
             if not client.is_connected():
@@ -71,6 +79,7 @@ class TelegramConnector(BaseConnector):
                 raise Exception("Failed to connect to Telegram servers")
 
             result = await client.send_code_request(phone)
+            await self._save_session()  # Save session after successful request
             return result.phone_code_hash
         except Exception as e:
             logger.error("send_code_request_error", phone=phone, error=str(e))
@@ -83,7 +92,7 @@ class TelegramConnector(BaseConnector):
 
     async def sign_in(self, phone: str, code: str, phone_code_hash: str) -> dict:
         from telethon.errors import SessionPasswordNeededError
-        client = self._get_client()
+        client = await self._get_client()
         try:
             await client.connect()
             if not client.is_connected():
@@ -91,6 +100,11 @@ class TelegramConnector(BaseConnector):
                 return {"status": "error", "message": "Failed to connect to Telegram servers"}
 
             await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+
+            # Get user ID and save session
+            me = await client.get_me()
+            await self._save_session(user_id=str(me.id))
+
             # Sync user profile on successful login
             await self._update_user_profile(client)
             # Trigger project setup and auto-sync in background
@@ -108,7 +122,7 @@ class TelegramConnector(BaseConnector):
                 pass
 
     async def sign_in_2fa(self, password: str) -> dict:
-        client = self._get_client()
+        client = await self._get_client()
         try:
             await client.connect()
             if not client.is_connected():
@@ -116,6 +130,11 @@ class TelegramConnector(BaseConnector):
                 return {"status": "error", "message": "Failed to connect to Telegram servers"}
 
             await client.sign_in(password=password)
+
+            # Get user ID and save session
+            me = await client.get_me()
+            await self._save_session(user_id=str(me.id))
+
             # Sync user profile on successful login
             await self._update_user_profile(client)
             # Trigger project setup and auto-sync in background
@@ -172,10 +191,11 @@ class TelegramConnector(BaseConnector):
             logger.error("user_profile_update_failed", error=str(e))
 
     async def logout(self):
-        client = self._get_client()
+        client = await self._get_client()
         await client.connect()
         try:
             await client.log_out()
+            await self._cleanup_stale_session()
         finally:
             await client.disconnect()
 
@@ -288,7 +308,7 @@ class TelegramConnector(BaseConnector):
 
     async def sync(self, chat_ids: list[int] | None = None, limit: int = 100, offset_date: datetime | None = None, **kwargs) -> SyncResult:
         result = SyncResult(connector=self.name, started_at=datetime.now(timezone.utc))
-        client = self._get_client()
+        client = await self._get_client()
         try:
             async with client:
                 if not await client.is_user_authorized():
@@ -343,7 +363,7 @@ class TelegramConnector(BaseConnector):
         """Fetch historical messages from specific chats/channels concurrently."""
         result = SyncResult(connector=self.name, started_at=datetime.now(timezone.utc))
         min_date = datetime.now(timezone.utc) - timedelta(days=days)
-        client = self._get_client()
+        client = await self._get_client()
         try:
             async with client:
                 if not await client.is_user_authorized():
@@ -381,7 +401,7 @@ class TelegramConnector(BaseConnector):
             if not contact or not contact.telegram_id or contact.telegram_id == "system":
                 return False
 
-            client = self._get_client()
+            client = await self._get_client()
             try:
                 async with client:
                     # Resolve entity
@@ -509,7 +529,7 @@ class TelegramConnector(BaseConnector):
         from telethon.tl.functions.contacts import SearchRequest
         from telethon.tl.functions.channels import GetFullChannelRequest
         from telethon.tl.types import Channel, Chat
-        client = self._get_client()
+        client = await self._get_client()
         communities = []
         try:
             async with client:
@@ -537,7 +557,7 @@ class TelegramConnector(BaseConnector):
 
     async def join_community(self, chat_id, username=None, folder_name=None) -> tuple[bool, Any]:
         from telethon.tl.functions.channels import JoinChannelRequest
-        client = self._get_client()
+        client = await self._get_client()
         try:
             async with client:
                 identifier = username if username else chat_id
@@ -608,91 +628,77 @@ class TelegramConnector(BaseConnector):
         from telethon.tl.functions.messages import GetDialogFiltersRequest
         from telethon.tl.types import DialogFilter
         from telethon.utils import get_peer_id
-        import sqlite3
 
-        max_retries = 3
-        retry_delay = 0.5
-
-        for attempt in range(max_retries):
-            try:
-                client = self._get_client()
-                async with client:
-                    if not await client.is_user_authorized():
-                        return []
-                    res = await client(GetDialogFiltersRequest())
-                    filters = res.filters if hasattr(res, 'filters') else res
-                    result = []
-                    for f in filters:
-                        if not isinstance(f, DialogFilter):
-                            continue
-                        title = f.title
-                        if hasattr(title, 'text'):
-                            title = title.text
-                        peer_ids = []
-                        for peer in f.include_peers:
-                            try:
-                                peer_ids.append(str(abs(get_peer_id(peer))))
-                            except Exception:
-                                pass
-                        result.append({"name": title, "id": f.id, "channel_count": len(peer_ids), "peer_ids": peer_ids})
-                    return result
-            except sqlite3.OperationalError as e:
-                if "database is locked" in str(e) and attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay * (2 ** attempt))
-                    continue
-                raise
+        client = await self._get_client()
+        try:
+            async with client:
+                if not await client.is_user_authorized():
+                    return []
+                res = await client(GetDialogFiltersRequest())
+                filters = res.filters if hasattr(res, 'filters') else res
+                result = []
+                for f in filters:
+                    if not isinstance(f, DialogFilter):
+                        continue
+                    title = f.title
+                    if hasattr(title, 'text'):
+                        title = title.text
+                    peer_ids = []
+                    for peer in f.include_peers:
+                        try:
+                            peer_ids.append(str(abs(get_peer_id(peer))))
+                        except Exception:
+                            pass
+                    result.append({"name": title, "id": f.id, "channel_count": len(peer_ids), "peer_ids": peer_ids})
+                return result
+        except Exception as e:
+            logger.error("list_telegram_folders_error", error=str(e))
+            return []
 
     async def import_folder_channels(self, peer_ids: list[str]) -> list[dict]:
         """Resolve peer IDs to channel info (title, username, type)."""
         from telethon.tl.types import Channel, Chat
-        import sqlite3
 
-        max_retries = 3
-        retry_delay = 0.5
-
-        for attempt in range(max_retries):
-            try:
-                client = self._get_client()
-                async with client:
-                    if not await client.is_user_authorized():
-                        return []
-                    channels = []
-                    for pid in peer_ids:
-                        entity = None
+        client = await self._get_client()
+        try:
+            async with client:
+                if not await client.is_user_authorized():
+                    return []
+                channels = []
+                for pid in peer_ids:
+                    entity = None
+                    try:
+                        # Try as negative channel id first
+                        entity = await client.get_entity(int(f"-100{pid}"))
+                    except Exception as e1:
                         try:
-                            # Try as negative channel id first
-                            entity = await client.get_entity(int(f"-100{pid}"))
-                        except Exception as e1:
+                            entity = await client.get_entity(-int(pid))
+                        except Exception as e2:
                             try:
-                                entity = await client.get_entity(-int(pid))
-                            except Exception as e2:
-                                try:
-                                    entity = await client.get_entity(int(pid))
-                                except Exception as e3:
-                                    logger.warning("import_folder_channels failed for peer_id", peer_id=pid, error=str(e3))
-                                    continue
+                                entity = await client.get_entity(int(pid))
+                            except Exception as e3:
+                                logger.warning("import_folder_channels failed for peer_id", peer_id=pid, error=str(e3))
+                                continue
 
-                        if entity is None:
-                            logger.warning("import_folder_channels entity is None", peer_id=pid)
-                            continue
+                    if entity is None:
+                        logger.warning("import_folder_channels entity is None", peer_id=pid)
+                        continue
 
-                        if not isinstance(entity, (Channel, Chat)):
-                            logger.warning("import_folder_channels entity is not Channel or Chat",
-                                         peer_id=pid, entity_type=type(entity).__name__)
-                            continue
-                        is_channel = isinstance(entity, Channel) and entity.broadcast
-                        channels.append({
-                            "telegram_id": str(entity.id),
-                            "title": getattr(entity, "title", "Unknown"),
-                            "username": getattr(entity, "username", None),
-                            "entity_type": "channel" if is_channel else "group",
-                        })
-                    return channels
-            except sqlite3.OperationalError as e:
-                if "database is locked" in str(e) and attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay * (2 ** attempt))
-                    continue
-                raise
+                    if not isinstance(entity, (Channel, Chat)):
+                        logger.warning("import_folder_channels entity is not Channel or Chat",
+                                     peer_id=pid, entity_type=type(entity).__name__)
+                        continue
+                    is_channel = isinstance(entity, Channel) and entity.broadcast
+                    channels.append({
+                        "telegram_id": str(entity.id),
+                        "title": getattr(entity, "title", "Unknown"),
+                        "username": getattr(entity, "username", None),
+                        "entity_type": "channel" if is_channel else "group",
+                    })
+                return channels
+        except Exception as e:
+            logger.error("import_folder_channels_error", error=str(e))
+            return []
 
     async def reorganize_all_tracked(self, folder_name=None) -> dict:
         folder_name = folder_name or os.getenv("TARGET_FOLDER", "BG Intel")
@@ -704,7 +710,7 @@ class TelegramConnector(BaseConnector):
             svc = SettingsService(session)
             ids = list(set(await svc.get("telegram_channel_whitelist", []) + await svc.get("telegram_chat_whitelist", [])))
         if not ids: return stats
-        client = self._get_client()
+        client = await self._get_client()
         try:
             async with client:
                 if not await client.is_user_authorized(): return {"error": "Not authorized"}
@@ -757,14 +763,17 @@ class TelegramConnector(BaseConnector):
 
     async def test_connection(self) -> bool:
         try:
-            async with self._get_client() as client: return (await client.get_me()) is not None
-        except Exception: return False
+            client = await self._get_client()
+            async with client:
+                return (await client.get_me()) is not None
+        except Exception:
+            return False
 
     async def sync_contacts(self) -> dict:
         """Fetch and sync contacts from Telegram account."""
         from telethon.tl.functions.contacts import GetContactsRequest
 
-        client = self._get_client()
+        client = await self._get_client()
         await client.connect()
         try:
             # Fetch contacts using GetContactsRequest
@@ -826,8 +835,8 @@ class TelegramConnector(BaseConnector):
     async def sync_deep_history_chunk(self, telegram_id: str, entity_type: str, limit: int = 100) -> int:
         """Fetch historical messages BEFORE the current oldest_message_id."""
         from src.db.models import TrackedChannel, Contact, Message, MessageContact
-        
-        client = self._get_client()
+
+        client = await self._get_client()
         async with client:
             if not await client.is_user_authorized():
                 logger.warning("telegram_deep_sync_unauthorized", db=self.db_name)

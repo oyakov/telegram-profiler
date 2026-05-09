@@ -263,6 +263,14 @@ async def telegram_logout(request: Request):
     except Exception as e:
         raise HTTPException(400, f"Logout failed: {str(e)}")
 
+@router.post("/auth/reset-session")
+async def telegram_reset_session(request: Request):
+    """Reset Telegram session to fix database lock issues."""
+    db_name = request.headers.get("X-Database")
+    connector = TelegramConnector(db_name=db_name)
+    await connector._cleanup_stale_session()
+    return {"status": "success", "message": "Session cleaned. Please try again."}
+
 @router.post("/auth/sync")
 async def telegram_manual_sync(request: Request):
     """Manually trigger the folder and contact sync."""

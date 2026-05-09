@@ -447,3 +447,25 @@ class LeadSearch(Base):
         return f"<LeadSearch {self.name}>"
 
 
+class TelegramSession(Base):
+    """Telegram Telethon session stored in PostgreSQL instead of SQLite."""
+    __tablename__ = "telegram_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_name = Column(String(255), unique=True, nullable=False)  # e.g., "telethon_session"
+    session_data = Column(Text, nullable=False)  # Serialized StringSession data
+    auth_key = Column(Text, nullable=True)  # Raw auth key for session
+    user_id = Column(String(100), nullable=True)  # Telegram user ID when authorized
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_telegram_session_name", "session_name"),
+        Index("idx_telegram_session_active", "is_active"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<TelegramSession {self.session_name} user={self.user_id}>"
+
+
