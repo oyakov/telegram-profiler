@@ -62,6 +62,7 @@ def sync_channel_batch(
                 batch_log = SyncBatchLog(
                     sync_state_id=UUID(sync_state_id),
                     batch_number=batch_number,
+                    requested_offset=offset,
                     status="running",
                     started_at=datetime.now(timezone.utc)
                 )
