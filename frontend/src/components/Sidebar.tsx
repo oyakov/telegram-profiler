@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import useSWR from 'swr';
-import { 
-  User, 
-  Folder, 
-  Activity, 
-  Search, 
-  Users, 
-  Settings, 
+import {
+  User,
+  Folder,
+  Activity,
+  Search,
+  Users,
+  Settings,
   Database,
   BrainCircuit,
   ChevronUp,
   Check,
-  ClipboardList
+  ClipboardList,
+  Mail
 } from 'lucide-react';
 import { getDatabase, setDatabase } from '../services/api';
 import api from '../services/api';
@@ -32,6 +33,7 @@ const Sidebar: React.FC = () => {
     { name: 'Лиды', path: '/leads', icon: <BrainCircuit size={20} /> },
     { name: 'Контакты', path: '/contacts', icon: <Users size={20} /> },
     { name: 'Личные Контакты', path: '/personal-contacts', icon: <Users size={20} /> },
+    { name: 'Кампании', path: '/campaigns', icon: <Mail size={20} /> },
     { name: 'Настройки', path: '/settings', icon: <Settings size={20} /> },
   ];
 
