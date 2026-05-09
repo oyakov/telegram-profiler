@@ -219,6 +219,39 @@ def deep_track_chunk(telegram_id: str, entity_type: str, limit: int = 100, db_na
     return _run_async(_do())
 
 
+@celery_app.task(name="src.pipeline.tasks.assign_orphaned_messages_to_projects")
+def assign_orphaned_messages_to_projects(db_name: str | None = None):
+    """Automatically assign messages without project_id to a default project."""
+    from src.db.models import Message, SystemProject
+    from sqlalchemy import select, update
+
+    async def _do():
+        async with get_session(db_name=db_name) as session:
+            # Get the first project (Personal or similar)
+            proj_res = await session.execute(
+                select(SystemProject).order_by(SystemProject.created_at).limit(1)
+            )
+            project = proj_res.scalars().first()
+
+            if not project:
+                return {"status": "skipped", "reason": "no_projects"}
+
+            # Update orphaned messages
+            result = await session.execute(
+                update(Message).where(Message.project_id.is_(None)).values(project_id=project.id)
+            )
+            await session.commit()
+
+            return {
+                "status": "success",
+                "assigned": result.rowcount,
+                "project_id": str(project.id),
+                "project_name": project.name
+            }
+
+    return _run_async(_do())
+
+
 @celery_app.task(name="src.pipeline.tasks.deep_track_orchestrator")
 def deep_track_orchestrator():
     """Find all active tracking targets and queue chunk tasks for them."""

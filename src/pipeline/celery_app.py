@@ -36,6 +36,7 @@ celery_app.conf.update(
         "src.pipeline.tasks.process_contact_batch": {"queue": "processing"},
         "src.pipeline.tasks.process_message_embeddings": {"queue": "processing"},
         "src.pipeline.tasks.reindex_embeddings": {"queue": "processing"},
+        "src.pipeline.tasks.assign_orphaned_messages_to_projects": {"queue": "processing"},
     },
     beat_schedule={
         "multi-db-sync-orchestrator": {
@@ -55,6 +56,10 @@ celery_app.conf.update(
         "process-messages": {
             "task": "src.pipeline.tasks.orchestrate_multi_db_message_processing",
             "schedule": crontab(minute="*"), # Every minute
+        },
+        "assign-orphaned-messages": {
+            "task": "src.pipeline.tasks.assign_orphaned_messages_to_projects",
+            "schedule": crontab(minute="*/10"), # Every 10 minutes
         },
     },
 )
