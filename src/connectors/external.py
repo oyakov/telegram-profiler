@@ -26,10 +26,12 @@ class ExternalConnector(BaseConnector):
         self,
         connector_type: Literal["crm", "social"] = "crm",
         db_name: str | None = None,
+        project_id: str | None = None,
     ):
         self.connector_type = connector_type
         self.name = connector_type
         self.db_name = db_name or os.getenv("POSTGRES_DB", "crm")
+        self.project_id = project_id
 
     async def sync(self, **kwargs) -> SyncResult:
         """Sync data from external source."""

@@ -56,8 +56,9 @@ class ExcelConnector(BaseConnector):
 
     name = "excel"
 
-    def __init__(self, db_name: str | None = None):
+    def __init__(self, db_name: str | None = None, project_id: str | None = None):
         self.db_name = db_name or os.getenv('POSTGRES_DB', 'crm')
+        self.project_id = project_id
 
     async def sync(self, file_path: str | Path | None = None, **kwargs) -> SyncResult:
         """Import contacts from a file.
