@@ -469,3 +469,22 @@ class TelegramConnector(BaseConnector):
                 target.last_sync_at = datetime.now(timezone.utc)
                 await session.commit()
                 return messages_synced
+
+    async def get_status(self) -> dict[str, Any]:
+        """Implement abstract method from BaseConnector."""
+        async with get_session(db_name=self.db_name) as session:
+            state = await self._get_sync_state(session)
+            return {
+                "connector": self.name,
+                "status": state.status,
+                "last_sync_at": state.last_sync_at.isoformat() if state.last_sync_at else None,
+            }
+
+    async def test_connection(self) -> bool:
+        """Implement abstract method from BaseConnector."""
+        try:
+            client = await self._get_client()
+            async with client:
+                return (await client.get_me()) is not None
+        except Exception:
+            return False
