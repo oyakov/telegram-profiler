@@ -7,6 +7,7 @@ const Login: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [twoFa, setTwoFa] = useState('');
+  const [phoneCodeHash, setPhoneCodeHash] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -16,15 +17,16 @@ const Login: React.FC = () => {
     setError('');
     try {
       const response = await api.post('/api/telegram/auth/send_code', {
-        phone_number: phone,
+        phone: phone,
       });
-      if (response.data.success) {
+      if (response.data.status === 'success') {
+        setPhoneCodeHash(response.data.phone_code_hash);
         setStep('code');
       } else {
         setError(response.data.error || 'Failed to send code');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to send code');
+      setError(err.response?.data?.detail || err.response?.data?.error || 'Failed to send code');
     } finally {
       setLoading(false);
     }
@@ -36,10 +38,11 @@ const Login: React.FC = () => {
     setError('');
     try {
       const response = await api.post('/api/telegram/auth/verify', {
-        phone_number: phone,
+        phone: phone,
         code: code,
+        phone_code_hash: phoneCodeHash,
       });
-      if (response.data.success) {
+      if (response.data.status === 'success') {
         if (response.data.requires_2fa) {
           setStep('2fa');
         } else {
@@ -49,7 +52,7 @@ const Login: React.FC = () => {
         setError(response.data.error || 'Failed to verify code');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to verify code');
+      setError(err.response?.data?.detail || err.response?.data?.error || 'Failed to verify code');
     } finally {
       setLoading(false);
     }
@@ -61,16 +64,15 @@ const Login: React.FC = () => {
     setError('');
     try {
       const response = await api.post('/api/telegram/auth/2fa', {
-        phone_number: phone,
         password: twoFa,
       });
-      if (response.data.success) {
+      if (response.data.status === 'success') {
         window.location.reload();
       } else {
         setError(response.data.error || 'Failed to verify 2FA');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to verify 2FA');
+      setError(err.response?.data?.detail || err.response?.data?.error || 'Failed to verify 2FA');
     } finally {
       setLoading(false);
     }
@@ -127,6 +129,7 @@ const Login: React.FC = () => {
                 setStep('phone');
                 setPhone('');
                 setCode('');
+                setPhoneCodeHash('');
               }}
               className="back-button"
             >
