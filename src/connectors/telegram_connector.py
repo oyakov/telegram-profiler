@@ -821,20 +821,24 @@ class TelegramConnector(BaseConnector):
                     username = getattr(contact, 'username', None)
 
                     if existing:
-                        # Update existing contact
+                        # Update existing contact and mark as personal
                         existing.first_name = first_name or existing.first_name
                         existing.last_name = last_name or existing.last_name
                         existing.telegram_username = username or existing.telegram_username
+                        existing.is_personal = True
+                        existing.saved_at = datetime.now(timezone.utc)
                         existing.updated_at = datetime.now(timezone.utc)
                         updated += 1
                     else:
-                        # Create new contact
+                        # Create new contact and mark as personal
                         new_contact = Contact(
                             telegram_id=tg_id,
                             first_name=first_name,
                             last_name=last_name,
                             telegram_username=username,
                             source="telegram",
+                            is_personal=True,
+                            saved_at=datetime.now(timezone.utc),
                         )
                         session.add(new_contact)
                         added += 1
