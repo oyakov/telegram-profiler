@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { Cpu, Clock, Terminal, Play, ListTodo, Zap } from 'lucide-react';
+import { Cpu, Clock, Terminal, Play, ListTodo, Zap, Trash2, RefreshCw } from 'lucide-react';
 import './AuditLog.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
@@ -30,8 +30,24 @@ interface CeleryTasksResponse {
 }
 
 const AuditLog: React.FC = () => {
-  const { data, error } = useSWR('/api/stats/celery-tasks', fetcher, { refreshInterval: 3000 });
+  const { data, error, mutate } = useSWR('/api/stats/celery-tasks', fetcher, { refreshInterval: 3000 });
   const { data: metricsData } = useSWR('/api/stats/embeddings-metrics', fetcher, { refreshInterval: 5000 });
+  const [isPurging, setIsPurging] = useState(false);
+
+  const handlePurge = async () => {
+    if (!window.confirm('Вы уверены, что хотите очистить все очереди задач? Это удалит все ожидающие задачи.')) return;
+    
+    setIsPurging(true);
+    try {
+      await api.post('/api/stats/celery-tasks/purge');
+      await mutate();
+    } catch (err) {
+      console.error('Failed to purge tasks:', err);
+      alert('Ошибка при очистке очередей');
+    } finally {
+      setIsPurging(false);
+    }
+  };
 
   if (error) return <div className="audit-error">Failed to load celery tasks</div>;
   if (!data) return <div className="audit-loading">Loading celery tasks...</div>;
@@ -67,9 +83,27 @@ const AuditLog: React.FC = () => {
 
   return (
     <div className="audit-log-container serpent-card">
-      <div className="audit-header">
-        <Terminal size={18} className="text-accent" />
-        <h3>Аудит задач Celery</h3>
+      <div className="audit-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Terminal size={18} className="text-accent" />
+          <h3>Аудит задач Celery</h3>
+        </div>
+
+        <button 
+          className="btn-venom" 
+          onClick={handlePurge}
+          disabled={isPurging || !celeryData.summary.total_queued}
+          style={{ 
+            padding: '4px 12px', 
+            fontSize: '0.75rem', 
+            opacity: celeryData.summary.total_queued ? 1 : 0.5,
+            borderColor: '#ef4444',
+            color: '#ef4444'
+          }}
+        >
+          {isPurging ? <RefreshCw size={14} className="spin" /> : <Trash2 size={14} />}
+          {isPurging ? 'Очистка...' : 'Очистить очереди'}
+        </button>
       </div>
 
       {/* Summary stats */}

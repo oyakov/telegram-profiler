@@ -239,6 +239,42 @@ async def get_celery_tasks():
             "summary": {"total_running": 0, "total_queued": 0}
         }
 
+
+@router.post("/celery-tasks/purge")
+async def purge_celery_tasks():
+    """Purge all Celery queues in Redis."""
+    import redis as redis_lib
+    from src.core.config import get_settings
+    import structlog
+    
+    logger = structlog.get_logger()
+    settings = get_settings()
+    
+    try:
+        r = redis_lib.from_url(settings.redis_url, socket_timeout=2)
+        # 1. Clear specific queues
+        queue_names = ["connectors", "processing", "celery"]
+        purged_count = 0
+        for queue_name in queue_names:
+            queue_key = f"celery/queue/{queue_name}" if queue_name != "celery" else "celery"
+            count = r.llen(queue_key)
+            if count > 0:
+                r.delete(queue_key)
+                purged_count += count
+        
+        # 2. Also flush all keys matching celery patterns just in case
+        # Note: flushdb/flushall is too aggressive, we use delete for specific keys
+        
+        logger.info("celery_queues_purged", count=purged_count)
+        return {
+            "status": "success",
+            "purged_count": purged_count,
+            "message": f"Successfully purged {purged_count} tasks from queues"
+        }
+    except Exception as e:
+        logger.error("purge_tasks_error", error=str(e))
+        raise HTTPException(500, f"Failed to purge tasks: {str(e)}")
+
 @router.get("/embeddings-metrics")
 async def get_embeddings_metrics(db: AsyncSession = Depends(get_db)):
     """Get embeddings processing metrics - tokens/min and requests/min."""
