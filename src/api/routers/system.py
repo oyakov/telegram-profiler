@@ -6,6 +6,7 @@ from src.db.models import Contact, Message, VoiceNote, MessageEmbedding, Extract
 from src.core.config import get_settings
 from datetime import datetime, timedelta, timezone
 import redis
+import psutil
 
 router = APIRouter(prefix="/stats", tags=["System"])
 
@@ -443,3 +444,192 @@ async def get_prometheus_metrics(range_str: str = "1h", db: AsyncSession = Depen
     }
 
     return metrics
+
+@router.get("/data-quality")
+async def get_data_quality_metrics(db: AsyncSession = Depends(get_db)):
+    """Get data quality metrics."""
+    from src.db.models import Message, Contact, SystemProject
+
+    total_messages = (await db.execute(select(func.count(Message.id)))).scalar() or 0
+    messages_null_group = (await db.execute(
+        select(func.count(Message.id)).where(Message.group_id.is_(None))
+    )).scalar() or 0
+    messages_null_contact = (await db.execute(
+        select(func.count(Message.id)).where(Message.contact_id.is_(None))
+    )).scalar() or 0
+
+    total_contacts = (await db.execute(select(func.count(Contact.id)))).scalar() or 0
+
+    return {
+        "total_messages": total_messages,
+        "null_group_id": messages_null_group,
+        "null_contact_id": messages_null_contact,
+        "total_contacts": total_contacts,
+        "completeness_score": round((1 - (messages_null_contact / total_messages * 100)) if total_messages > 0 else 0, 1),
+        "quality_metrics": {
+            "null_fields_percent": round((messages_null_contact + messages_null_group) / (total_messages * 2) * 100 if total_messages > 0 else 0, 1),
+            "valid_messages_percent": round((total_messages - messages_null_contact) / total_messages * 100 if total_messages > 0 else 0, 1)
+        }
+    }
+
+@router.get("/sync-health")
+async def get_sync_health(db: AsyncSession = Depends(get_db)):
+    """Get sync and connector health metrics."""
+    from src.db.models import TrackedChannel, Message
+    from datetime import datetime, timezone, timedelta
+
+    channels = (await db.execute(select(TrackedChannel))).scalars().all()
+    now = datetime.now(timezone.utc)
+
+    sync_health = []
+    for ch in channels:
+        last_sync = ch.last_sync_at
+        if last_sync:
+            sync_lag = (now - last_sync).total_seconds() / 3600  # hours
+            status = "healthy" if sync_lag < 24 else "stale" if sync_lag < 72 else "critical"
+        else:
+            sync_lag = float('inf')
+            status = "never_synced"
+
+        msg_count = (await db.execute(
+            select(func.count(Message.id)).where(Message.group_id == ch.telegram_id)
+        )).scalar() or 0
+
+        sync_health.append({
+            "channel": ch.title,
+            "last_sync_hours_ago": round(sync_lag, 1) if sync_lag != float('inf') else None,
+            "status": status,
+            "message_count": msg_count
+        })
+
+    healthy_count = sum(1 for s in sync_health if s['status'] == 'healthy')
+    return {
+        "total_channels": len(channels),
+        "healthy": healthy_count,
+        "stale": sum(1 for s in sync_health if s['status'] == 'stale'),
+        "critical": sum(1 for s in sync_health if s['status'] == 'critical'),
+        "never_synced": sum(1 for s in sync_health if s['status'] == 'never_synced'),
+        "sync_health_score": round((healthy_count / len(channels) * 100) if channels else 0, 1),
+        "details": sync_health
+    }
+
+@router.get("/user-metrics")
+async def get_user_metrics(db: AsyncSession = Depends(get_db)):
+    """Get user and session metrics."""
+    from src.db.models import Contact
+
+    contacts_by_source = await db.execute(
+        select(Contact.source, func.count(Contact.id)).group_by(Contact.source)
+    )
+
+    return {
+        "contacts_by_source": {row[0]: row[1] for row in contacts_by_source},
+        "total_users": (await db.execute(select(func.count(Contact.id)))).scalar() or 0,
+        "active_last_7days": (await db.execute(
+            select(func.count(Contact.id)).where(Contact.updated_at >= datetime.now(timezone.utc) - timedelta(days=7))
+        )).scalar() or 0
+    }
+
+@router.get("/business-metrics")
+async def get_business_metrics(db: AsyncSession = Depends(get_db)):
+    """Get business-relevant metrics."""
+    from src.db.models import Contact, Message, ExtractionLog
+
+    leads_count = (await db.execute(
+        select(func.count(Contact.id)).where(Contact.is_lead == True)
+    )).scalar() or 0
+    total_contacts = (await db.execute(select(func.count(Contact.id)))).scalar() or 0
+    total_messages = (await db.execute(select(func.count(Message.id)))).scalar() or 0
+
+    extraction_runs = (await db.execute(select(func.count(ExtractionLog.id)))).scalar() or 0
+    successful_extractions = (await db.execute(
+        select(func.count(ExtractionLog.id)).where(ExtractionLog.success == True)
+    )).scalar() or 0
+
+    return {
+        "lead_quality": {
+            "total_leads": leads_count,
+            "lead_ratio": round((leads_count / total_contacts * 100) if total_contacts > 0 else 0, 1),
+            "quality_score": min(100, round((leads_count / (total_messages / 100)) if total_messages > 0 else 0, 1))
+        },
+        "extraction_metrics": {
+            "total_runs": extraction_runs,
+            "success_count": successful_extractions,
+            "accuracy": round((successful_extractions / extraction_runs * 100) if extraction_runs > 0 else 0, 1)
+        },
+        "cost_metrics": {
+            "cost_per_message_usd": round(0.00001, 5),  # Mock value
+            "monthly_estimate_usd": round(0.00001 * total_messages, 2)
+        }
+    }
+
+@router.get("/resource-metrics")
+async def get_resource_metrics(db: AsyncSession = Depends(get_db)):
+    """Get resource usage and database metrics."""
+    import psutil
+
+    try:
+        # Get database size
+        result = await db.execute(text("""
+            SELECT pg_size_pretty(pg_database_size(current_database()))
+        """))
+        db_size = result.scalar()
+    except:
+        db_size = "unknown"
+
+    return {
+        "database": {
+            "size": db_size,
+            "connection_count": 5  # Mock
+        },
+        "system": {
+            "cpu_percent": psutil.cpu_percent(interval=1),
+            "memory_percent": psutil.virtual_memory().percent,
+            "disk_percent": psutil.disk_usage('/').percent
+        }
+    }
+
+@router.get("/real-time-alerts")
+async def get_real_time_alerts(db: AsyncSession = Depends(get_db)):
+    """Get active system alerts."""
+    alerts = []
+
+    # Check embeddings progress
+    total_messages = (await db.execute(select(func.count(Message.id)))).scalar() or 0
+    messages_with_embeddings = (await db.execute(
+        select(func.count(func.distinct(MessageEmbedding.message_id)))
+    )).scalar() or 0
+    embedding_percent = (messages_with_embeddings / total_messages * 100) if total_messages > 0 else 0
+
+    if embedding_percent < 50:
+        alerts.append({
+            "type": "WARNING",
+            "severity": "medium",
+            "message": f"Embedding progress low: {embedding_percent:.1f}%",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+
+    # Check for stale syncs
+    from src.db.models import TrackedChannel
+    from datetime import timedelta
+
+    stale_channels = await db.execute(
+        select(func.count(TrackedChannel.id)).where(
+            TrackedChannel.last_sync_at < datetime.now(timezone.utc) - timedelta(hours=72)
+        )
+    )
+    stale_count = stale_channels.scalar() or 0
+
+    if stale_count > 0:
+        alerts.append({
+            "type": "WARNING",
+            "severity": "medium",
+            "message": f"{stale_count} channels not synced in 72+ hours",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+
+    return {
+        "active_alerts": len(alerts),
+        "alerts": alerts,
+        "status": "healthy" if len(alerts) == 0 else "needs_attention"
+    }
