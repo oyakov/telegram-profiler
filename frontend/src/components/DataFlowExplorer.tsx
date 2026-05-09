@@ -162,26 +162,43 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: stri
 };
 
 export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
-  const throughput = metrics?.throughput || { ingestion: 0, extraction: 0, embeddings: 0 };
+  // Persistence logic to prevent flickering during SWR refreshes
+  const lastValidMetrics = React.useRef<any>(null);
+  
+  const currentMetrics = React.useMemo(() => {
+    if (metrics && metrics.throughput) {
+      lastValidMetrics.current = metrics;
+      return metrics;
+    }
+    return lastValidMetrics.current || {};
+  }, [metrics]);
+
+  const throughput = currentMetrics?.throughput || { ingestion: 0, extraction: 0, embeddings: 0 };
   
   const getMetric = (name: string, type: 'cpu' | 'memory') => {
-    const data = metrics?.[name]?.[type];
+    const data = currentMetrics?.[name]?.[type];
     if (!data || data.length === 0) return '—';
     const val = data[data.length - 1].value;
     return type === 'cpu' ? `${val}%` : `${Math.round(val)}MB`;
   };
 
-  const Connector = ({ value, unit, label, reverse }: any) => {
+  const Connector = ({ value, unit, label, reverse, highlight }: any) => {
     // Calculate animation speed: more throughput = faster particles
     const speed = value > 0 ? Math.max(0.4, 2 - (value / 500)) : 0;
-    const opacity = value > 0 ? 1 : 0.2;
+    const opacity = value > 0 ? 1 : 0.4; // Increased base opacity to avoid ghosting
 
     return (
-      <div className="flow-connector vertical-align" style={{ opacity }}>
-        <div className="connector-label-top">{value} {unit}</div>
+      <div className={`flow-connector vertical-align ${highlight ? 'highlight' : ''}`} style={{ opacity }}>
+        <div className="connector-label-top" style={{ color: highlight ? '#3b82f6' : undefined }}>
+          {value.toLocaleString()} {unit}
+        </div>
         <div 
           className={`flow-particles ${reverse ? 'reverse' : ''}`} 
-          style={{ animationDuration: `${speed}s`, display: value > 0 ? 'block' : 'none' }}
+          style={{ 
+            animationDuration: `${speed}s`, 
+            display: value > 0 ? 'block' : 'none',
+            background: highlight ? 'rgba(59, 130, 246, 0.2)' : undefined
+          }}
         ></div>
         <div className="connector-label-bottom">{label}</div>
       </div>
@@ -215,8 +232,9 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
 
         <Connector 
           value={throughput.ingestion} 
-          unit="msg/m" 
-          label="Ingestion" 
+          unit="msg/min" 
+          label="Поток данных" 
+          highlight={true}
         />
 
         {/* Backend / Conductor */}
@@ -264,6 +282,20 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
           </div>
         </div>
       </div>
+      
+      <style>{`
+        .flow-connector.highlight .connector-label-top {
+          background: rgba(59, 130, 246, 0.2);
+          border-color: rgba(59, 130, 246, 0.4);
+          font-size: 11px;
+          padding: 3px 8px;
+          box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+        }
+        .flow-connector.highlight .flow-particles::after {
+          background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+          box-shadow: 0 0 10px #3b82f6;
+        }
+      `}</style>
 
       <div className="flow-description">
         <div className="flow-info">

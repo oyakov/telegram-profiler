@@ -528,24 +528,27 @@ async def get_prometheus_metrics(range_str: str = "1h", db: AsyncSession = Depen
     from datetime import datetime, timedelta, timezone
     from src.db.models import Message, MessageEmbedding, ExtractionLog
 
-    # 1. Calculate real throughput for current database
+    # 1. Calculate real throughput for current database (5-minute sliding window for smoothness)
     now = datetime.now(timezone.utc)
-    one_min_ago = now - timedelta(minutes=1)
+    five_min_ago = now - timedelta(minutes=5)
 
-    # Count recent messages
-    total_ingestion = (await db.execute(
-        select(func.count(Message.id)).where(Message.created_at >= one_min_ago)
+    # Count recent messages and average per minute
+    total_ingestion_raw = (await db.execute(
+        select(func.count(Message.id)).where(Message.created_at >= five_min_ago)
     )).scalar() or 0
+    total_ingestion = round(total_ingestion_raw / 5, 1)
 
-    # Count recent extractions
-    total_extraction = (await db.execute(
-        select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= one_min_ago)
+    # Count recent extractions and average per minute
+    total_extraction_raw = (await db.execute(
+        select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= five_min_ago)
     )).scalar() or 0
+    total_extraction = round(total_extraction_raw / 5, 1)
 
-    # Count recent embeddings
-    total_embeddings = (await db.execute(
-        select(func.count(MessageEmbedding.id)).where(MessageEmbedding.created_at >= one_min_ago)
+    # Count recent embeddings and average per minute
+    total_embeddings_raw = (await db.execute(
+        select(func.count(MessageEmbedding.id)).where(MessageEmbedding.created_at >= five_min_ago)
     )).scalar() or 0
+    total_embeddings = round(total_embeddings_raw / 5, 1)
 
     # 2. Mock some system metrics (CPU/MEM) but use real throughput
     def generate_metric_data(base_value: float, variation: float, count: int = 10) -> list:
