@@ -259,8 +259,6 @@ async def get_workers_status():
 async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
     """Get hierarchical tree of data (Project > Folder > Channel) with stats."""
     from src.db.models import SystemProject, TrackedFolder, TrackedChannel, Message
-    from src.db.database import get_session
-    import os
 
     # 1. Get all projects from master DB
     projects_res = await db.execute(select(SystemProject).order_by(SystemProject.name))
@@ -281,86 +279,85 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
         }
         
         try:
-            # 2. Connect to project-specific DB
-            async with get_session(db_name=proj.db_name) as proj_session:
-                # Get folders
-                folders_res = await proj_session.execute(select(TrackedFolder).order_by(TrackedFolder.name))
-                folders = folders_res.scalars().all()
-                
-                # Get channels
-                channels_res = await proj_session.execute(select(TrackedChannel).order_by(TrackedChannel.title))
-                channels = channels_res.scalars().all()
-                
-                # Get message counts per channel (excluding NULL group_ids = direct messages)
-                msg_counts_res = await proj_session.execute(
-                    select(Message.group_id, func.count(Message.id))
-                    .where(Message.group_id.isnot(None))
-                    .group_by(Message.group_id)
-                )
-                msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
-                
-                # Count unattached messages (NULL group_id)
-                unattached_count = (await proj_session.execute(
-                    select(func.count(Message.id)).where(Message.group_id.is_(None))
-                )).scalar() or 0
+            # Query from MASTER DB (not project-specific DB) - all data is in master
+            # Get folders from master DB
+            folders_res = await db.execute(select(TrackedFolder).order_by(TrackedFolder.name))
+            folders = folders_res.scalars().all()
 
-                proj_total_files = sum(msg_counts.values()) + unattached_count
-                proj_node["files"] = proj_total_files
-                
-                # Organize into tree
-                folder_nodes = {}
-                for f in folders:
-                    f_node = {
-                        "id": str(f.id),
-                        "name": f.name,
-                        "type": "folder",
-                        "children": [],
-                        "files": 0,
-                        "percentage": 0,
-                        "last_change": f.updated_at.isoformat() if f.updated_at else None
-                    }
-                    folder_nodes[str(f.id)] = f_node
-                    proj_node["children"].append(f_node)
-                
-                for ch in channels:
-                    ch_files = msg_counts.get(ch.telegram_id, 0)
-                    ch_node = {
-                        "id": str(ch.id),
-                        "name": ch.title,
-                        "type": "channel",
-                        "username": ch.username,
-                        "files": ch_files,
-                        "percentage": 0,
-                        "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
-                    }
-                    
-                    if str(ch.folder_id) in folder_nodes:
-                        folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
-                        folder_nodes[str(ch.folder_id)]["files"] += ch_files
-                    else:
-                        proj_node["children"].append(ch_node)
-                
-                # Add unattached messages node if any exist
-                if unattached_count > 0:
-                    unattached_node = {
-                        "id": f"{proj.id}_unattached",
-                        "name": "Unattached Messages",
-                        "type": "folder",
-                        "children": [],
-                        "files": unattached_count,
-                        "percentage": 0,
-                        "last_change": None
-                    }
-                    proj_node["children"].append(unattached_node)
+            # Get channels from master DB
+            channels_res = await db.execute(select(TrackedChannel).order_by(TrackedChannel.title))
+            channels = channels_res.scalars().all()
 
-                # Calculate percentages relative to project
-                for fn in proj_node["children"]:
-                    if proj_total_files > 0:
-                        fn["percentage"] = round((fn["files"] / proj_total_files) * 100, 1)
-                        if "children" in fn:
-                            for cn in fn["children"]:
-                                if fn["files"] > 0:
-                                    cn["percentage"] = round((cn["files"] / fn["files"]) * 100, 1)
+            # Get message counts per channel (excluding NULL group_ids = direct messages)
+            msg_counts_res = await db.execute(
+                select(Message.group_id, func.count(Message.id))
+                .where(Message.group_id.isnot(None))
+                .group_by(Message.group_id)
+            )
+            msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
+
+            # Count unattached messages (NULL group_id)
+            unattached_count = (await db.execute(
+                select(func.count(Message.id)).where(Message.group_id.is_(None))
+            )).scalar() or 0
+
+            proj_total_files = sum(msg_counts.values()) + unattached_count
+            proj_node["files"] = proj_total_files
+
+            # Organize into tree
+            folder_nodes = {}
+            for f in folders:
+                f_node = {
+                    "id": str(f.id),
+                    "name": f.name,
+                    "type": "folder",
+                    "children": [],
+                    "files": 0,
+                    "percentage": 0,
+                    "last_change": f.updated_at.isoformat() if f.updated_at else None
+                }
+                folder_nodes[str(f.id)] = f_node
+                proj_node["children"].append(f_node)
+
+            for ch in channels:
+                ch_files = msg_counts.get(ch.telegram_id, 0)
+                ch_node = {
+                    "id": str(ch.id),
+                    "name": ch.title,
+                    "type": "channel",
+                    "username": ch.username,
+                    "files": ch_files,
+                    "percentage": 0,
+                    "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
+                }
+
+                if str(ch.folder_id) in folder_nodes:
+                    folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
+                    folder_nodes[str(ch.folder_id)]["files"] += ch_files
+                else:
+                    proj_node["children"].append(ch_node)
+
+            # Add unattached messages node if any exist
+            if unattached_count > 0:
+                unattached_node = {
+                    "id": f"{proj.id}_unattached",
+                    "name": "Unattached Messages",
+                    "type": "folder",
+                    "children": [],
+                    "files": unattached_count,
+                    "percentage": 0,
+                    "last_change": None
+                }
+                proj_node["children"].append(unattached_node)
+
+            # Calculate percentages relative to project
+            for fn in proj_node["children"]:
+                if proj_total_files > 0:
+                    fn["percentage"] = round((fn["files"] / proj_total_files) * 100, 1)
+                    if "children" in fn:
+                        for cn in fn["children"]:
+                            if fn["files"] > 0:
+                                cn["percentage"] = round((cn["files"] / fn["files"]) * 100, 1)
         
         except Exception as e:
             proj_node["error"] = str(e)
