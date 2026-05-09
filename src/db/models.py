@@ -109,17 +109,18 @@ class TrackedChannel(Base):
     entity_type = Column(String(50), nullable=False)  # channel|group
     is_active = Column(Boolean, default=True)
     last_sync_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Tracking Stats
     total_messages_synced = Column(Integer, default=0)
     oldest_message_id = Column(String(255), nullable=True)
     oldest_message_date = Column(DateTime(timezone=True), nullable=True)
-    
+
     metadata_json = Column(JSONB, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     folder = relationship("TrackedFolder", back_populates="channels")
+    sync_state = relationship("ChannelSyncState", back_populates="channel", uselist=False, cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_tracked_channels_telegram_id", "telegram_id"),
@@ -360,6 +361,94 @@ class SyncState(Base):
     error_message = Column(Text, nullable=True)
     metadata_json = Column(JSONB, default=dict)  # connector-specific state
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ChannelSyncState(Base):
+    """Track sync progress for each channel."""
+    __tablename__ = "channel_sync_state"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel_id = Column(UUID(as_uuid=True), ForeignKey("tracked_channels.id", ondelete="CASCADE"), nullable=False)
+
+    # Phase tracking
+    phase = Column(String(50), default="pending")  # pending|metadata|syncing|reconciling|complete|error
+
+    # Metadata from first scan
+    earliest_message_date = Column(DateTime(timezone=True), nullable=True)  # Oldest message Telegram has
+    estimated_total_messages = Column(Integer, nullable=True)
+
+    # Current progress
+    messages_synced = Column(Integer, default=0)
+    last_message_id = Column(String(255), nullable=True)  # Offset for next batch
+    last_message_date = Column(DateTime(timezone=True), nullable=True)
+    progress_percent = Column(Float, default=0.0)
+
+    # Timing
+    eta_minutes = Column(Integer, nullable=True)
+    estimated_completion = Column(DateTime(timezone=True), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Reliability
+    last_batch_id = Column(UUID(as_uuid=True), nullable=True)
+    retry_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    channel = relationship("TrackedChannel", back_populates="sync_state")
+    batches = relationship("SyncBatchLog", back_populates="sync_state", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_channel_sync_channel_id", "channel_id"),
+        Index("idx_channel_sync_phase", "phase"),
+        Index("idx_channel_sync_updated", "updated_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ChannelSyncState {self.channel_id} phase={self.phase}>"
+
+
+class SyncBatchLog(Base):
+    """Audit trail for each batch download."""
+    __tablename__ = "sync_batch_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sync_state_id = Column(UUID(as_uuid=True), ForeignKey("channel_sync_state.id", ondelete="CASCADE"), nullable=False)
+    batch_number = Column(Integer, nullable=False)
+
+    # Batch details
+    requested_offset = Column(Integer, nullable=False)
+    messages_in_batch = Column(Integer, default=0)
+    oldest_message_id = Column(String(255), nullable=True)
+    newest_message_id = Column(String(255), nullable=True)
+
+    # Timing
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    # Status
+    status = Column(String(50), default="pending")  # pending|processing|success|failed
+    error_message = Column(Text, nullable=True)
+    retry_attempt = Column(Integer, default=0)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    sync_state = relationship("ChannelSyncState", back_populates="batches")
+
+    __table_args__ = (
+        Index("idx_batch_sync_state_id", "sync_state_id"),
+        Index("idx_batch_status", "status"),
+        Index("idx_batch_number", "sync_state_id", "batch_number"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<SyncBatchLog batch={self.batch_number} status={self.status}>"
 
 
 class LeadSearch(Base):

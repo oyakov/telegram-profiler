@@ -12,7 +12,7 @@ celery_app = Celery(
     "networking_brain",
     broker=redis_url,
     backend=redis_url,
-    include=["src.pipeline.tasks"],
+    include=["src.pipeline.tasks", "src.pipeline.telegram_sync_tasks"],
 )
 
 celery_app.conf.update(
@@ -30,6 +30,9 @@ celery_app.conf.update(
         "src.pipeline.tasks.import_excel": {"queue": "connectors"},
         "src.pipeline.tasks.sync_crm": {"queue": "connectors"},
         "src.pipeline.tasks.scrape_social": {"queue": "connectors"},
+        "src.pipeline.telegram_sync_tasks.sync_channel_batch": {"queue": "connectors"},
+        "src.pipeline.telegram_sync_tasks.scan_channel_metadata": {"queue": "connectors"},
+        "src.pipeline.telegram_sync_tasks.reconcile_channel_sync": {"queue": "connectors"},
         "src.pipeline.tasks.orchestrate_multi_db_sync": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_maintenance": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_message_processing": {"queue": "processing"},
