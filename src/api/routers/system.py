@@ -439,69 +439,87 @@ async def get_workers_status():
 @router.get("/tree")
 async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
     """Get hierarchical tree of data (Folder > Channel) with stats."""
-    from src.db.models import TrackedFolder, TrackedChannel, Message
-
-    # Get all folders
-    folders_res = await db.execute(
-        select(TrackedFolder).order_by(TrackedFolder.created_at)
-    )
-    folders = folders_res.scalars().all()
-
-    # Get message counts by folder
-    msg_counts_res = await db.execute(
-        select(Message.folder_id, func.count(Message.id))
-        .where(Message.folder_id.isnot(None))
-        .group_by(Message.folder_id)
-    )
-    msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
-
-    tree = []
-    total_files = sum(msg_counts.values())
+    from src.db.models import TrackedFolder, TrackedChannel, Message, ChannelSyncState
+    from sqlalchemy.orm import selectinload
 
     try:
-        # Build folder tree
+        # Get all folders
+        folders_res = await db.execute(
+            select(TrackedFolder).order_by(TrackedFolder.created_at)
+        )
+        folders = folders_res.scalars().all()
+
+        # Get message counts by channel (group_id is telegram_id)
+        channel_counts_res = await db.execute(
+            select(Message.group_id, func.count(Message.id))
+            .where(Message.group_id.isnot(None))
+            .group_by(Message.group_id)
+        )
+        channel_counts = {str(row[0]): row[1] for row in channel_counts_res.all()}
+
+        # Get all channels with their sync states
+        channels_res = await db.execute(
+            select(TrackedChannel).options(selectinload(TrackedChannel.sync_state))
+        )
+        channels = channels_res.scalars().all()
+
+        tree = []
         folder_nodes = {}
+
+        # Build folder tree
         for f in folders:
             f_node = {
                 "id": str(f.id),
                 "name": f.name,
                 "type": "folder",
                 "children": [],
-                "files": msg_counts.get(str(f.id), 0),
+                "files": 0,
                 "percentage": 0,
                 "last_change": f.updated_at.isoformat() if f.updated_at else None
             }
             folder_nodes[str(f.id)] = f_node
             tree.append(f_node)
 
-        # Get all channels and add to folders
-        channels_res = await db.execute(select(TrackedChannel))
-        channels = channels_res.scalars().all()
-
+        # Map channels to folders
         for ch in channels:
-            if ch.folder_id:
-                ch_files = msg_counts.get(str(ch.folder_id), 0)
-                ch_node = {
-                    "id": str(ch.id),
-                    "name": ch.title or ch.telegram_id,
-                    "type": "channel",
-                    "username": ch.username,
-                    "files": ch_files,
-                    "percentage": 0,
-                    "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
-                }
-                if str(ch.folder_id) in folder_nodes:
-                    folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
+            if not ch.folder_id or str(ch.folder_id) not in folder_nodes:
+                continue
 
-        # Calculate percentages
-        for fn in tree:
-            if total_files > 0:
-                fn["percentage"] = round((fn["files"] / total_files) * 100, 1)
+            ch_msg_count = channel_counts.get(str(ch.telegram_id), 0)
+            
+            progress = 0
+            status = "pending"
+            if ch.sync_state:
+                progress = ch.sync_state.progress_percent
+                status = ch.sync_state.phase
+            
+            ch_node = {
+                "id": str(ch.id),
+                "name": ch.title or str(ch.telegram_id),
+                "type": "channel",
+                "username": ch.username,
+                "files": ch_msg_count,
+                "percentage": round(progress, 1),
+                "status": status,
+                "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
+            }
+            
+            folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
+            folder_nodes[str(ch.folder_id)]["files"] += ch_msg_count
+
+        # Calculate folder average progress
+        for f_node in tree:
+            if f_node["children"]:
+                total_progress = sum(c["percentage"] for c in f_node["children"])
+                f_node["percentage"] = round(total_progress / len(f_node["children"]), 1)
+
+        return {"tree": tree}
 
     except Exception as e:
-        logger.error("hierarchical_tree_error", error=str(e))
-
-    return {"tree": tree}
+        import structlog
+        logger = structlog.get_logger()
+        logger.error("hierarchical_tree_error", error=str(e), exc_info=True)
+        return {"tree": [], "error": str(e)}
 
 @router.get("/prometheus")
 async def get_prometheus_metrics(range_str: str = "1h", db: AsyncSession = Depends(get_db)):

@@ -5,8 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 from src.db.database import get_db
 from src.db.models import ChannelSyncState, SyncBatchLog, TrackedChannel, TrackedFolder
@@ -91,9 +90,8 @@ async def get_sync_status(db: AsyncSession = Depends(get_db)):
 async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)):
     """
     Start sync for a channel:
-    1. Scan metadata
-    2. Create sync state
-    3. Queue batch tasks
+    1. Create sync state in 'metadata' phase
+    2. Queue metadata scan task which will later queue batches
     """
 
     # Get channel
@@ -108,47 +106,27 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
     if channel.sync_state and channel.sync_state.phase in ["metadata", "syncing"]:
         raise HTTPException(400, "Sync already in progress for this channel")
 
-    # Scan metadata
-    try:
-        metadata = scan_channel_metadata(channel.telegram_id)
-        metadata_result = metadata.get() if hasattr(metadata, 'get') else metadata
-    except Exception as e:
-        raise HTTPException(400, f"Failed to scan metadata: {str(e)}")
-
-    # Create sync state
+    # Create new sync state
     sync_state = ChannelSyncState(
         channel_id=UUID(channel_id),
-        phase="syncing",
-        earliest_message_date=metadata_result.get("earliest_date"),
-        estimated_total_messages=metadata_result.get("total_messages"),
-        eta_minutes=int(metadata_result.get("eta_seconds", 0) / 60) if metadata_result.get("eta_seconds") else None
+        phase="metadata",
+        started_at=datetime.now(timezone.utc)
     )
     db.add(sync_state)
     await db.flush()
 
-    # Queue batch tasks
-    batch_count = metadata_result.get("batch_count", 0)
-    for batch_num in range(batch_count):
-        offset = batch_num * BATCH_SIZE
-
-        sync_channel_batch.apply_async(
-            kwargs={
-                "channel_id": channel.telegram_id,
-                "sync_state_id": str(sync_state.id),
-                "batch_number": batch_num,
-                "offset": offset,
-                "limit": BATCH_SIZE
-            },
-            countdown=batch_num * 1  # 1 second delay between batches
-        )
+    # Queue metadata scan task
+    scan_channel_metadata.apply_async(
+        args=[channel.telegram_id, str(sync_state.id)],
+        task_id=f"metadata_{sync_state.id}"
+    )
 
     await db.commit()
 
     return {
         "status": "queued",
         "sync_state_id": str(sync_state.id),
-        "estimated_batches": batch_count,
-        "eta_minutes": sync_state.eta_minutes
+        "phase": "metadata"
     }
 
 
@@ -213,6 +191,9 @@ async def get_channel_sync_status(channel_id: str, db: AsyncSession = Depends(ge
 @router.post("/folder/{folder_id}/start")
 async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
     """Start sync for all channels in a folder."""
+    import structlog
+    logger = structlog.get_logger()
+    logger.info("start_folder_sync_request", folder_id=folder_id)
 
     result = await db.execute(
         select(TrackedFolder).where(TrackedFolder.id == UUID(folder_id)).options(
@@ -221,50 +202,43 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
     )
     folder = result.scalar_one_or_none()
     if not folder:
+        logger.warning("folder_not_found", folder_id=folder_id)
         raise HTTPException(404, "Folder not found")
 
+    logger.info("folder_found", folder_name=folder.name, channels_count=len(folder.channels))
     queued_count = 0
-    loop = asyncio.get_event_loop()
-    executor = ThreadPoolExecutor(max_workers=1)
 
     for channel in folder.channels:
         if channel.sync_state and channel.sync_state.phase in ["metadata", "syncing"]:
+            logger.info("skipping_channel_already_syncing", channel_id=str(channel.id), phase=channel.sync_state.phase)
             continue
 
         try:
-            # Run the blocking scan_channel_metadata in a thread pool
-            metadata_result = await loop.run_in_executor(executor, scan_channel_metadata, channel.telegram_id)
-
+            # Create new sync state
             sync_state = ChannelSyncState(
                 channel_id=channel.id,
-                phase="syncing",
-                earliest_message_date=metadata_result.get("earliest_date"),
-                estimated_total_messages=metadata_result.get("total_messages"),
-                eta_minutes=int(metadata_result.get("eta_seconds", 0) / 60) if metadata_result.get("eta_seconds") else None
+                phase="metadata",
+                progress_percent=0.1, # Set small progress so UI immediately reacts
+                started_at=datetime.now(timezone.utc)
             )
             db.add(sync_state)
             await db.flush()
 
-            batch_count = metadata_result.get("batch_count", 0)
-            for batch_num in range(batch_count):
-                offset = batch_num * BATCH_SIZE
-                sync_channel_batch.apply_async(
-                    kwargs={
-                        "channel_id": channel.telegram_id,
-                        "sync_state_id": str(sync_state.id),
-                        "batch_number": batch_num,
-                        "offset": offset,
-                        "limit": BATCH_SIZE
-                    },
-                    countdown=batch_num * 1
-                )
+            # Queue metadata scan task
+            logger.info("queuing_metadata_scan", channel_id=str(channel.id), telegram_id=channel.telegram_id, sync_state_id=str(sync_state.id))
+            scan_channel_metadata.apply_async(
+                args=[channel.telegram_id, str(sync_state.id)],
+                task_id=f"metadata_{sync_state.id}",
+                queue="connectors"
+            )
 
             queued_count += 1
 
         except Exception as e:
-            print(f"Error queuing sync for channel {channel.id}: {e}")
+            logger.error("queue_folder_channel_error", channel_id=str(channel.id), error=str(e))
 
     await db.commit()
+    logger.info("start_folder_sync_committed", folder_id=folder_id, queued_count=queued_count)
 
     return {
         "status": "queued",

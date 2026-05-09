@@ -28,8 +28,11 @@ const Pacman: React.FC<{ size?: number; active?: boolean }> = ({ size = 16, acti
 
 const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: string) => Promise<void> }> = ({ node, level, onSync }) => {
   const [isOpen, setIsOpen] = useState(level < 1);
-  const [syncing, setSyncing] = useState(false);
+  const [isLocalSyncing, setIsLocalSyncing] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
+
+  // Determine if node is currently syncing based on local state OR backend status
+  const isSyncing = isLocalSyncing || node.status === 'syncing' || node.status === 'metadata';
 
   const getIcon = () => {
     switch (node.type) {
@@ -43,17 +46,17 @@ const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: str
   const handleSyncClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!onSync) return;
-    setSyncing(true);
+    setIsLocalSyncing(true);
     try {
       await onSync(node.id);
     } finally {
-      setSyncing(false);
+      setIsLocalSyncing(false);
     }
   };
 
   return (
     <>
-      <div className={`tree-row level-${level} ${node.type} ${syncing ? 'syncing' : ''}`} onClick={() => hasChildren && setIsOpen(!isOpen)}>
+      <div className={`tree-row level-${level} ${node.type} ${isSyncing ? 'syncing' : ''}`} onClick={() => hasChildren && setIsOpen(!isOpen)}>
         <div className="tree-col name-col" style={{ paddingLeft: level * 20 + 8 }}>
           <div className="chevron-wrapper">
             {hasChildren && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
@@ -65,34 +68,43 @@ const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: str
 
         <div className="tree-col pct-col">
           <div className="pacman-track">
-            <Pacman active={syncing || node.percentage > 0} />
+            <Pacman active={isSyncing || node.percentage > 0} />
             <div className="progress-mini">
-              <div className="progress-mini-fill" style={{ width: `${syncing ? 100 : node.percentage}%`, backgroundColor: syncing ? '#3b82f6' : undefined }}></div>
+              <div className="progress-mini-fill" style={{ 
+                width: `${node.percentage}%`, 
+                backgroundColor: isSyncing ? '#3b82f6' : undefined,
+                transition: 'width 0.5s ease-out'
+              }}></div>
             </div>
-            <span className="pct-text">{syncing ? '⧗' : `${node.percentage}%`}</span>
+            <span className="pct-text">{isSyncing && node.percentage === 0 ? '⧗' : `${node.percentage}%`}</span>
           </div>
         </div>
 
         <div className="tree-col files-col">
-          {syncing ? '⧗ синхронизация...' : `${node.files.toLocaleString()} msg`}
+          {isSyncing ? (
+            <span className="text-blue" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Activity size={12} className="spin" />
+              {node.status === 'metadata' ? 'подготовка...' : 'синхронизация...'}
+            </span>
+          ) : `${node.files.toLocaleString()} msg`}
         </div>
 
         <div className="tree-col change-col">
-          {syncing ? '🔄 в процессе' : (node.last_change ? new Date(node.last_change).toLocaleTimeString() : '—')}
+          {isSyncing ? '🔄 в процессе' : (node.last_change ? new Date(node.last_change).toLocaleTimeString() : '—')}
         </div>
 
         {node.type === 'folder' && onSync && (
           <button
             className="sync-btn-tree"
             onClick={handleSyncClick}
-            disabled={syncing}
+            disabled={isSyncing}
             title="Синхронизировать папку"
             style={{
-              background: syncing ? '#3b82f6' : '#10b981',
+              background: isSyncing ? '#3b82f6' : '#10b981',
               border: 'none',
               borderRadius: '6px',
               padding: '6px 12px',
-              cursor: syncing ? 'not-allowed' : 'pointer',
+              cursor: isSyncing ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -101,8 +113,8 @@ const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: str
               position: 'relative'
             }}
           >
-            {syncing ? (
-              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⧗</span>
+            {isSyncing ? (
+              <Activity size={14} color="white" className="spin" />
             ) : (
               <Play size={14} color="white" />
             )}

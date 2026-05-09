@@ -201,7 +201,7 @@ class SyncOrchestrator:
                     # Queue metadata scan task
                     logger.info("queuing_metadata_scan", channel=channel.title)
                     scan_channel_metadata.apply_async(
-                        args=[channel.telegram_id],
+                        args=[channel.telegram_id, str(sync_state.id)],
                         task_id=f"metadata_{sync_state.id}"
                     )
 
