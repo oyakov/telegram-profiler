@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { Cpu, Clock, Terminal, Play, ListTodo, Zap, Trash2, RefreshCw, Activity } from 'lucide-react';
+import { Cpu, Clock, Terminal, ListTodo, Zap, Trash2, RefreshCw, Activity } from 'lucide-react';
 import './AuditLog.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
