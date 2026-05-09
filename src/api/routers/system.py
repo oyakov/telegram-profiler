@@ -7,6 +7,9 @@ from src.core.config import get_settings
 from datetime import datetime, timedelta, timezone
 import redis
 import psutil
+import structlog
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/stats", tags=["System"])
 
