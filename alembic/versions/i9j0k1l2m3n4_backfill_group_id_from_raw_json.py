@@ -33,9 +33,9 @@ def upgrade() -> None:
         SET group_id = COALESCE(
             raw_json->>'peer_id',
             raw_json->'peer'->>'_',
-            raw_json->'peer'->'channel_id',
-            raw_json->'peer'->'chat_id'
-        )::text
+            (raw_json->'peer'->'channel_id')::text,
+            (raw_json->'peer'->'chat_id')::text
+        )
         WHERE group_id IS NULL
         AND raw_json IS NOT NULL
         AND (
@@ -46,12 +46,11 @@ def upgrade() -> None:
 
     try:
         connection.execute(update_query)
-        connection.commit()
     except Exception as e:
         # If the query fails (missing peer info), that's okay -
         # messages with NULL group_id are likely direct messages
         print(f"Note: Could not fully backfill group_id: {e}")
-        connection.rollback()
+        # Don't rollback - let the migration schema changes remain
 
 
 def downgrade() -> None:
