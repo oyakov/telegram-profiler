@@ -62,6 +62,8 @@ const Login: React.FC = () => {
     setError('');
     try {
       const response = await api.post('/api/telegram/auth/2fa', {
+        phone: phone,
+        phone_code_hash: phoneCodeHash,
         password: twoFa,
       });
       if (response.data.status === 'success') {
