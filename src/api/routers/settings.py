@@ -26,6 +26,10 @@ _KNOWN: dict[str, dict] = {
     "whisper_url":         {"category": "whisper",    "type": "string", "description": "Whisper STT service URL",                       "env_attr": "whisper_url"},
     "whisper_model":       {"category": "whisper",    "type": "string", "description": "Whisper model size (tiny/base/small/medium/large)", "env_attr": "whisper_model"},
     "whisper_language":    {"category": "whisper",    "type": "string", "description": "Transcription language code or 'auto'",         "env_attr": "whisper_language"},
+    # Telegram
+    "telegram_sync_enabled":        {"category": "telegram",   "type": "bool",   "description": "Enable background Telegram sync",              "env_attr": "telegram_sync_enabled"},
+    "telegram_auto_sync_on_login":  {"category": "telegram",   "type": "bool",   "description": "Sync contacts/folders automatically on login", "env_attr": "telegram_auto_sync_on_login"},
+    "telegram_auto_create_projects":{"category": "telegram",   "type": "bool",   "description": "Auto-create projects for each Telegram folder", "env_attr": "telegram_auto_create_projects"},
     # System
     "log_level":           {"category": "system",     "type": "string", "description": "Log level (DEBUG/INFO/WARNING/ERROR)",          "env_attr": "log_level"},
     "enable_metrics":      {"category": "system",     "type": "bool",   "description": "Enable Prometheus metrics collection",          "env_attr": "enable_metrics"},

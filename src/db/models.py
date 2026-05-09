@@ -43,6 +43,26 @@ class SystemProject(Base):
         return f"<SystemProject {self.name} ({self.db_name})>"
 
 
+class UserProfile(Base):
+    """The profile of the currently logged-in Telegram user."""
+    __tablename__ = "user_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    telegram_id = Column(String(100), unique=True, nullable=False)
+    first_name = Column(String(255))
+    last_name = Column(String(255), nullable=True)
+    username = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    bio = Column(Text, nullable=True)
+    profile_photo_path = Column(String(500), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self) -> str:
+        return f"<UserProfile {self.first_name} ({self.telegram_id})>"
+
+
 class TrackedFolder(Base):
     """A formal concept of a tracked Telegram folder/project."""
     __tablename__ = "tracked_folders"
@@ -74,6 +94,12 @@ class TrackedChannel(Base):
     entity_type = Column(String(50), nullable=False)  # channel|group
     is_active = Column(Boolean, default=True)
     last_sync_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Tracking Stats
+    total_messages_synced = Column(Integer, default=0)
+    oldest_message_id = Column(String(255), nullable=True)
+    oldest_message_date = Column(DateTime(timezone=True), nullable=True)
+    
     metadata_json = Column(JSONB, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -122,6 +148,12 @@ class Contact(Base):
     is_verified = Column(Boolean, default=False)
     last_enriched_at = Column(DateTime(timezone=True), nullable=True)
     telegram_metadata = Column(JSONB, default=dict)
+    
+    # Tracking Stats
+    is_tracked = Column(Boolean, default=False)
+    total_messages_synced = Column(Integer, default=0)
+    oldest_message_id = Column(String(255), nullable=True)
+    oldest_message_date = Column(DateTime(timezone=True), nullable=True)
     
     embedding = Column(Vector(1024), nullable=True)
     embedding_dirty = Column(Boolean, default=True)

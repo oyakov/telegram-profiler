@@ -44,6 +44,10 @@ celery_app.conf.update(
                 minute="*/30"  # Default to 30 mins, could be moved to settings if needed
             ),
         },
+        "deep-track-orchestrator": {
+            "task": "src.pipeline.tasks.deep_track_orchestrator",
+            "schedule": crontab(minute="*/15"),
+        },
         "process-dirty-contacts": {
             "task": "src.pipeline.tasks.orchestrate_multi_db_maintenance",
             "schedule": crontab(minute="*/5"),

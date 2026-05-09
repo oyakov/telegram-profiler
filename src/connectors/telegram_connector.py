@@ -76,6 +76,8 @@ class TelegramConnector(BaseConnector):
         await client.connect()
         try:
             await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+            # Sync user profile on successful login
+            await self._update_user_profile(client)
             await client.disconnect()
             # Trigger auto-sync in background or sequentially
             asyncio.create_task(self.auto_sync_on_login())
@@ -92,6 +94,8 @@ class TelegramConnector(BaseConnector):
         await client.connect()
         try:
             await client.sign_in(password=password)
+            # Sync user profile on successful login
+            await self._update_user_profile(client)
             await client.disconnect()
             # Trigger auto-sync in background
             asyncio.create_task(self.auto_sync_on_login())
@@ -100,6 +104,47 @@ class TelegramConnector(BaseConnector):
             return {"status": "error", "message": str(e)}
         finally:
             await client.disconnect()
+
+    async def _update_user_profile(self, client):
+        """Fetch current user info and update UserProfile in master DB."""
+        from src.db.models import UserProfile
+        from src.db.database import get_session
+        try:
+            me = await client.get_me()
+            if not me:
+                return
+
+            async with get_session(db_name="crm") as session:
+                res = await session.execute(
+                    select(UserProfile).where(UserProfile.telegram_id == str(me.id))
+                )
+                profile = res.scalar_one_or_none()
+                
+                if not profile:
+                    profile = UserProfile(telegram_id=str(me.id))
+                    session.add(profile)
+                
+                profile.first_name = me.first_name
+                profile.last_name = me.last_name
+                profile.username = me.username
+                profile.phone = me.phone
+                
+                # Fetch full user for bio
+                try:
+                    full = await client(GetFullUserRequest(id=me))
+                    profile.bio = full.full_user.about
+                except Exception:
+                    pass
+                
+                # Download photo
+                photo_path = await self._download_photo(client, me)
+                if photo_path:
+                    profile.profile_photo_path = photo_path
+                
+                await session.commit()
+                logger.info("user_profile_updated", telegram_id=me.id)
+        except Exception as e:
+            logger.error("user_profile_update_failed", error=str(e))
 
     async def logout(self):
         client = self._get_client()
@@ -113,7 +158,7 @@ class TelegramConnector(BaseConnector):
         """Automatically sync folders and contacts after login.
         If force=False, respects the 'telegram_auto_sync_on_login' setting.
         """
-        from src.core.settings_service import SettingsService
+        from src.core.config import SettingsService
         from src.db.models import TrackedFolder, TrackedChannel, SystemProject
         from src.db.database import ensure_database_exists, init_database_schema
         import re
@@ -135,17 +180,25 @@ class TelegramConnector(BaseConnector):
         logger.info("telegram_auto_sync_started", force=force, db=self.db_name)
         try:
             # 1. Sync Contacts
+            logger.info("telegram_auto_sync_step_1", step="sync_contacts")
             await self.sync_contacts()
             
             # 2. Sync Folders into TrackedFolders/TrackedChannels
+            logger.info("telegram_auto_sync_step_2", step="list_folders")
             folders = await self.list_telegram_folders()
+            logger.info("telegram_auto_sync_folders_fetched", count=len(folders) if folders else 0)
+            
             if folders:
                 async with get_session(db_name=self.db_name) as session:
                     svc = SettingsService(session)
                     auto_create_projects = await svc.get("telegram_auto_create_projects", False)
+                    logger.info("telegram_auto_sync_settings", auto_create_projects=auto_create_projects)
 
                     for folder_data in folders:
+                        logger.info("telegram_auto_sync_processing_folder", folder=folder_data["name"])
                         # A. Auto-create SystemProject if enabled
+                        target_db_name = self.db_name # Fallback to current
+                        
                         if auto_create_projects:
                             slug = slugify(folder_data["name"])
                             new_db_name = f"crm_{slug}"
@@ -170,39 +223,43 @@ class TelegramConnector(BaseConnector):
                                         await init_database_schema(new_db_name)
                                     except Exception as e:
                                         logger.error("telegram_project_init_failed", db=new_db_name, error=str(e))
+                            
+                            target_db_name = new_db_name
 
-                        # B. Sync Folder in current DB
-                        res = await session.execute(
-                            select(TrackedFolder).where(TrackedFolder.name == folder_data["name"])
-                        )
-                        db_folder = res.scalar_one_or_none()
-                        if not db_folder:
-                            db_folder = TrackedFolder(name=folder_data["name"], description=f"Imported from Telegram folder {folder_data['id']}")
-                            session.add(db_folder)
-                            await session.flush()
-                        
-                        # Import channels from this folder
-                        channels_info = await self.import_folder_channels(folder_data["peer_ids"])
-                        for ch in channels_info:
-                            # Check if channel already exists
-                            res = await session.execute(
-                                select(TrackedChannel).where(TrackedChannel.telegram_id == ch["telegram_id"])
+                        # B. Sync Folder in target DB
+                        async with get_session(db_name=target_db_name) as target_session:
+                            res = await target_session.execute(
+                                select(TrackedFolder).where(TrackedFolder.name == folder_data["name"])
                             )
-                            existing_chan = res.scalar_one_or_none()
-                            if not existing_chan:
-                                new_chan = TrackedChannel(
-                                    folder_id=db_folder.id,
-                                    telegram_id=ch["telegram_id"],
-                                    title=ch["title"],
-                                    username=ch["username"],
-                                    entity_type=ch["entity_type"]
+                            db_folder = res.scalar_one_or_none()
+                            if not db_folder:
+                                db_folder = TrackedFolder(name=folder_data["name"], description=f"Imported from Telegram folder {folder_data['id']}")
+                                target_session.add(db_folder)
+                                await target_session.flush()
+                            
+                            # Import channels from this folder
+                            channels_info = await self.import_folder_channels(folder_data["peer_ids"])
+                            for ch in channels_info:
+                                # Check if channel already exists
+                                res = await target_session.execute(
+                                    select(TrackedChannel).where(TrackedChannel.telegram_id == ch["telegram_id"])
                                 )
-                                session.add(new_chan)
-                            else:
-                                # Ensure it belongs to this folder
-                                existing_chan.folder_id = db_folder.id
-                    
-                    await session.commit()
+                                existing_chan = res.scalar_one_or_none()
+                                if not existing_chan:
+                                    new_chan = TrackedChannel(
+                                        folder_id=db_folder.id,
+                                        telegram_id=ch["telegram_id"],
+                                        title=ch["title"],
+                                        username=ch["username"],
+                                        entity_type=ch["entity_type"]
+                                    )
+                                    target_session.add(new_chan)
+                                else:
+                                    existing_chan.folder_id = db_folder.id
+                                    existing_chan.is_active = True
+                            
+                            await target_session.commit()
+                            logger.info("telegram_auto_sync_folder_synced", folder=folder_data["name"], db=target_db_name)
             
             logger.info("telegram_auto_sync_completed", db=self.db_name, folders_found=len(folders))
         except Exception as e:
@@ -704,3 +761,98 @@ class TelegramConnector(BaseConnector):
             return {"status": "error", "error": str(e)}
         finally:
             await client.disconnect()
+
+    async def sync_deep_history_chunk(self, telegram_id: str, entity_type: str, limit: int = 100) -> int:
+        """Fetch historical messages BEFORE the current oldest_message_id."""
+        from src.db.models import TrackedChannel, Contact, Message, MessageContact
+        
+        client = self._get_client()
+        async with client:
+            if not await client.is_user_authorized():
+                logger.warning("telegram_deep_sync_unauthorized", db=self.db_name)
+                return 0
+            
+            try:
+                # Resolve entity
+                ident = int(telegram_id) if telegram_id.lstrip('-').isdigit() else telegram_id
+                entity = await client.get_entity(ident)
+            except Exception as e:
+                logger.error("deep_sync_chunk_resolve_failed", telegram_id=telegram_id, error=str(e), db=self.db_name)
+                return 0
+
+            async with get_session(db_name=self.db_name) as session:
+                # Find the target to get oldest_message_id
+                if entity_type in ["channel", "group"]:
+                    res = await session.execute(select(TrackedChannel).where(TrackedChannel.telegram_id == telegram_id))
+                    target = res.scalar_one_or_none()
+                else: # user/contact
+                    res = await session.execute(select(Contact).where(Contact.telegram_id == telegram_id))
+                    target = res.scalar_one_or_none()
+                
+                if not target:
+                    logger.warning("deep_sync_target_not_found", telegram_id=telegram_id, type=entity_type)
+                    return 0
+                
+                max_id = 0
+                if target.oldest_message_id:
+                    try:
+                        max_id = int(target.oldest_message_id)
+                    except ValueError: pass
+
+                messages_synced = 0
+                is_channel = isinstance(entity, Channel) and entity.broadcast
+                
+                iter_kwargs = {"limit": limit}
+                if max_id > 0:
+                    iter_kwargs["max_id"] = max_id
+
+                new_oldest_id = max_id
+                new_oldest_date = target.oldest_message_date
+
+                async for msg in client.iter_messages(entity, **iter_kwargs):
+                    # Save message
+                    source_msg_id = f"{entity.id}_{msg.id}"
+                    existing = await session.execute(
+                        select(Message).where(Message.source_message_id == source_msg_id)
+                    )
+                    if not existing.scalar_one_or_none():
+                        sender_entity = msg.sender or entity if not is_channel else entity
+                        contact = await self._get_or_create_contact(session, sender_entity, is_channel=is_channel)
+                        content = msg.text or ""
+                        
+                        group_name = "Unknown"
+                        if hasattr(entity, "title"):
+                            group_name = entity.title
+                        elif hasattr(entity, "first_name"):
+                            group_name = f"{getattr(entity, 'first_name', '')} {getattr(entity, 'last_name', '')}".strip() or "Private Chat"
+
+                        message = Message(
+                            contact_id=contact.id, 
+                            source="telegram", 
+                            source_message_id=source_msg_id,
+                            direction="outgoing" if msg.out else "incoming", 
+                            content=content, 
+                            group_id=str(entity.id),
+                            group_name=group_name,
+                            timestamp=msg.date
+                        )
+                        session.add(message)
+                        session.add(MessageContact(message=message, contact=contact, role="sender"))
+                        messages_synced += 1
+                    
+                    # Update local oldest tracking
+                    if new_oldest_id == 0 or msg.id < new_oldest_id:
+                        new_oldest_id = msg.id
+                        new_oldest_date = msg.date
+
+                # Update target stats
+                if new_oldest_id > 0 and (max_id == 0 or new_oldest_id < max_id):
+                    target.oldest_message_id = str(new_oldest_id)
+                    target.oldest_message_date = new_oldest_date
+                
+                target.total_messages_synced = (target.total_messages_synced or 0) + messages_synced
+                target.last_sync_at = datetime.now(timezone.utc)
+                
+                await session.commit()
+                logger.info("deep_sync_chunk_completed", telegram_id=telegram_id, synced=messages_synced, total=target.total_messages_synced)
+                return messages_synced

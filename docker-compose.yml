@@ -40,6 +40,7 @@ services:
     volumes:
       - .:/app
       - session_data:/app/sessions
+      - uploads_data:/app/uploads
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:
@@ -59,6 +60,7 @@ services:
     volumes:
       - .:/app
       - session_data:/app/sessions
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,6 +78,7 @@ services:
     volumes:
       - .:/app
       - session_data:/app/sessions
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,10 +90,11 @@ services:
   beat:
     build: .
     container_name: crm-beat
-    command: celery -A src.pipeline.celery_app beat --loglevel=info
+    command: celery -A src.pipeline.celery_app beat --loglevel=info --schedule=/app/sessions/celerybeat-schedule
     env_file: .env
     volumes:
       - .:/app
+      - session_data:/app/sessions
     depends_on:
       redis:
         condition: service_healthy
@@ -147,6 +151,7 @@ volumes:
   redisdata:
   whisper_cache:
   session_data:
+  uploads_data:
   prometheus_data:
 
 networks:

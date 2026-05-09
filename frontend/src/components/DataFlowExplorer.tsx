@@ -109,7 +109,7 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
     return type === 'cpu' ? `${val}%` : `${Math.round(val)}MB`;
   };
 
-  const Connector = ({ value, unit, label, active, reverse }: any) => {
+  const Connector = ({ value, unit, label, reverse }: any) => {
     // Calculate animation speed: more throughput = faster particles
     const speed = value > 0 ? Math.max(0.4, 2 - (value / 500)) : 0;
     const opacity = value > 0 ? 1 : 0.2;
@@ -155,7 +155,6 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
           value={throughput.ingestion} 
           unit="msg/m" 
           label="Ingestion" 
-          active={throughput.ingestion > 0} 
         />
 
         {/* Backend / Conductor */}
@@ -171,7 +170,6 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
           value={throughput.extraction} 
           unit="tasks/m" 
           label="AI Process" 
-          active={throughput.extraction > 0} 
         />
 
         {/* Workers */}
@@ -187,7 +185,6 @@ export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
           value={throughput.embeddings} 
           unit="vec/m" 
           label="Vectors" 
-          active={throughput.embeddings > 0} 
         />
 
         {/* Infrastructure */}

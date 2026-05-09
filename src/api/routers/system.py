@@ -43,6 +43,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     """Dashboard statistics."""
     total_contacts = (await db.execute(select(func.count(Contact.id)))).scalar()
     total_messages = (await db.execute(select(func.count(Message.id)))).scalar()
+    messages_with_group = (await db.execute(select(func.count(Message.id)).where(Message.group_id.isnot(None)))).scalar()
     total_voice = (await db.execute(select(func.count(VoiceNote.id)))).scalar()
 
     by_source = await db.execute(
@@ -52,6 +53,8 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     return {
         "total_contacts": total_contacts,
         "total_messages": total_messages,
+        "messages_with_group": messages_with_group,  # messages attached to channels
+        "messages_without_group": total_messages - (messages_with_group or 0),  # direct messages
         "total_voice_notes": total_voice,
         "contacts_by_source": {row[0]: row[1] for row in by_source},
     }
@@ -288,14 +291,20 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
                 channels_res = await proj_session.execute(select(TrackedChannel).order_by(TrackedChannel.title))
                 channels = channels_res.scalars().all()
                 
-                # Get message counts per channel
+                # Get message counts per channel (excluding NULL group_ids = direct messages)
                 msg_counts_res = await proj_session.execute(
                     select(Message.group_id, func.count(Message.id))
+                    .where(Message.group_id.isnot(None))
                     .group_by(Message.group_id)
                 )
                 msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
                 
-                proj_total_files = sum(msg_counts.values())
+                # Count unattached messages (NULL group_id)
+                unattached_count = (await proj_session.execute(
+                    select(func.count(Message.id)).where(Message.group_id.is_(None))
+                )).scalar() or 0
+
+                proj_total_files = sum(msg_counts.values()) + unattached_count
                 proj_node["files"] = proj_total_files
                 
                 # Organize into tree
@@ -331,6 +340,19 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
                     else:
                         proj_node["children"].append(ch_node)
                 
+                # Add unattached messages node if any exist
+                if unattached_count > 0:
+                    unattached_node = {
+                        "id": f"{proj.id}_unattached",
+                        "name": "Unattached Messages",
+                        "type": "folder",
+                        "children": [],
+                        "files": unattached_count,
+                        "percentage": 0,
+                        "last_change": None
+                    }
+                    proj_node["children"].append(unattached_node)
+
                 # Calculate percentages relative to project
                 for fn in proj_node["children"]:
                     if proj_total_files > 0:
@@ -349,7 +371,7 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
     return {"tree": tree}
 
 @router.get("/prometheus")
-async def get_prometheus_metrics(range: str = "1h", db: AsyncSession = Depends(get_db)):
+async def get_prometheus_metrics(range_str: str = "1h", db: AsyncSession = Depends(get_db)):
     """Get Prometheus metrics and real-time throughput for all system containers."""
     import random
     from datetime import datetime, timedelta, timezone

@@ -203,3 +203,51 @@ def orchestrate_multi_db_sync():
         return {"status": "dispatched", "databases": databases}
     
     return _run_async(_do())
+
+
+@celery_app.task(name="src.pipeline.tasks.deep_track_chunk")
+def deep_track_chunk(telegram_id: str, entity_type: str, limit: int = 100, db_name: str | None = None):
+    """Fetch one chunk of history for a tracked target."""
+    from src.connectors.telegram_connector import TelegramConnector
+    async def _do():
+        connector = TelegramConnector(db_name=db_name)
+        count = await connector.sync_deep_history_chunk(telegram_id, entity_type, limit=limit)
+        if count > 0:
+            # Trigger unified processing for the new messages
+            process_unified_messages.delay(limit=count + 50, db_name=db_name)
+        return {"status": "success", "synced": count}
+    return _run_async(_do())
+
+
+@celery_app.task(name="src.pipeline.tasks.deep_track_orchestrator")
+def deep_track_orchestrator():
+    """Find all active tracking targets and queue chunk tasks for them."""
+    from src.db.models import TrackedChannel, Contact, TrackedFolder
+    from sqlalchemy import select, or_
+    from scripts.migrate_all import get_all_crm_databases
+    
+    async def _do():
+        databases = await get_all_crm_databases()
+        for db in databases:
+            async with get_session(db_name=db) as session:
+                # 1. Active Channels (must be active AND their folder must be active if it exists)
+                res = await session.execute(
+                    select(TrackedChannel.telegram_id)
+                    .outerjoin(TrackedFolder, TrackedChannel.folder_id == TrackedFolder.id)
+                    .where(TrackedChannel.is_active == True)
+                    .where(or_(TrackedFolder.id == None, TrackedFolder.is_active == True))
+                )
+                for row in res.all():
+                    deep_track_chunk.delay(telegram_id=str(row[0]), entity_type="channel", db_name=db)
+                
+                # 2. Tracked Contacts
+                res = await session.execute(
+                    select(Contact.telegram_id).where(Contact.is_tracked == True)
+                )
+                for row in res.all():
+                    if row[0]:
+                        deep_track_chunk.delay(telegram_id=str(row[0]), entity_type="user", db_name=db)
+        
+        return {"status": "dispatched", "databases": databases}
+    
+    return _run_async(_do())

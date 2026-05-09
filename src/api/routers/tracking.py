@@ -126,9 +126,53 @@ async def list_tracked_channels(db: AsyncSession = Depends(get_db)):
             "folder_id": str(chan.folder_id) if chan.folder_id else None,
             "folder_name": folder_name,
             "messages_count": count or 0,
+            "total_synced": chan.total_messages_synced or 0,
+            "oldest_msg_date": chan.oldest_message_date.isoformat() if chan.oldest_message_date else None,
             "last_sync": chan.last_sync_at.isoformat() if chan.last_sync_at else None,
         })
     return {"channels": channels}
+
+
+@router.get("/contacts")
+async def list_tracked_contacts(db: AsyncSession = Depends(get_db)):
+    from src.db.models import Contact
+    res = await db.execute(
+        select(Contact)
+        .where(Contact.is_tracked == True)
+        .order_by(Contact.updated_at.desc())
+    )
+    contacts = res.scalars().all()
+    return {"contacts": [
+        {
+            "id": str(c.id),
+            "telegram_id": c.telegram_id,
+            "name": f"{c.first_name} {c.last_name or ''}".strip(),
+            "username": c.telegram_username,
+            "total_synced": c.total_messages_synced or 0,
+            "oldest_msg_date": c.oldest_message_date.isoformat() if c.oldest_message_date else None,
+            "last_sync": c.last_enriched_at.isoformat() if c.last_enriched_at else None,
+        }
+        for c in contacts
+    ]}
+
+
+@router.post("/contacts/{contact_id}/toggle")
+async def toggle_contact_tracking(contact_id: str, db: AsyncSession = Depends(get_db)):
+    from src.db.models import Contact
+    from uuid import UUID
+    try:
+        c_id = UUID(contact_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid contact ID format")
+
+    res = await db.execute(select(Contact).where(Contact.id == c_id))
+    contact = res.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(404, "Contact not found")
+    
+    contact.is_tracked = not contact.is_tracked
+    await db.commit()
+    return {"status": "success", "is_tracked": contact.is_tracked}
 
 
 @router.delete("/channels/{channel_id}")

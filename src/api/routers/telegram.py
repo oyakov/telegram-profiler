@@ -97,14 +97,52 @@ async def telegram_deep_sync(req: DeepSyncRequest, request: Request):
 
 @router.get("/auth/status")
 async def telegram_auth_status(request: Request):
-    """Check if Telegram is currently authorized."""
+    """Check if Telegram is currently authorized and return profile info."""
+    from src.db.models import UserProfile
     db_name = request.headers.get("X-Database")
     connector = TelegramConnector(db_name=db_name)
     try:
         is_auth = await connector.is_authorized()
-        return {"authorized": is_auth}
+        profile_data = None
+        
+        if is_auth:
+            async with get_session(db_name="crm") as session:
+                res = await session.execute(select(UserProfile).limit(1))
+                profile = res.scalar_one_or_none()
+                if profile:
+                    profile_data = {
+                        "telegram_id": profile.telegram_id,
+                        "first_name": profile.first_name,
+                        "last_name": profile.last_name,
+                        "username": profile.username,
+                        "phone": profile.phone,
+                        "bio": profile.bio,
+                        "photo": profile.profile_photo_path
+                    }
+        
+        return {"authorized": is_auth, "profile": profile_data}
     except Exception as e:
         return {"authorized": False, "error": str(e)}
+
+@router.get("/user")
+async def telegram_get_user(request: Request):
+    """Get the currently logged-in Telegram user profile."""
+    from src.db.models import UserProfile
+    async with get_session(db_name="crm") as session:
+        res = await session.execute(select(UserProfile).limit(1))
+        profile = res.scalar_one_or_none()
+        if not profile:
+            raise HTTPException(404, "User profile not found")
+        
+        return {
+            "telegram_id": profile.telegram_id,
+            "first_name": profile.first_name,
+            "last_name": profile.last_name,
+            "username": profile.username,
+            "phone": profile.phone,
+            "bio": profile.bio,
+            "photo": profile.profile_photo_path
+        }
 
 @router.post("/auth/send_code")
 async def telegram_send_code(req: TelegramSendCode, request: Request):
@@ -213,6 +251,16 @@ async def telegram_logout(request: Request):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(400, f"Logout failed: {str(e)}")
+
+@router.post("/auth/sync")
+async def telegram_manual_sync(request: Request):
+    """Manually trigger the folder and contact sync."""
+    db_name = request.headers.get("X-Database")
+    connector = TelegramConnector(db_name=db_name)
+    # We run it in background to avoid timeout
+    import asyncio
+    asyncio.create_task(connector.auto_sync_on_login(force=True))
+    return {"status": "dispatched", "message": "Manual sync started in background"}
 
 @router.post("/contacts/sync")
 async def telegram_sync_contacts(request: Request):

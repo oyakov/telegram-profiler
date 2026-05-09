@@ -50,6 +50,9 @@ class AppSettings(BaseSettings):
     telegram_api_id: str = Field("")
     telegram_api_hash: str = Field("")
     telegram_session_name: str = Field("crm_session")
+    telegram_sync_enabled: bool = Field(True)
+    telegram_auto_sync_on_login: bool = Field(True)
+    telegram_auto_create_projects: bool = Field(False)
 
     # --- Application ---
     app_port: int = Field(8000)

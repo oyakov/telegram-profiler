@@ -26,11 +26,11 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode; colo
   llm:        { label: 'AI / LLM',    icon: <Cpu size={18} />,      color: 'purple' },
   embeddings: { label: 'Embeddings',  icon: <Database size={18} />, color: 'blue'   },
   whisper:    { label: 'Whisper STT', icon: <Mic size={18} />,      color: 'green'  },
-  connectors: { label: 'Connectors',  icon: <Share2 size={18} />,   color: 'orange' },
+  telegram:   { label: 'Telegram',    icon: <Share2 size={18} />,   color: 'orange' },
   system:     { label: 'System',      icon: <Monitor size={18} />,  color: 'yellow' },
 };
 
-const CATEGORY_ORDER = ['llm', 'embeddings', 'whisper', 'connectors', 'system'];
+const CATEGORY_ORDER = ['llm', 'embeddings', 'whisper', 'telegram', 'system'];
 
 type SaveState = 'idle' | 'saving' | 'ok' | 'err';
 

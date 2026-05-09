@@ -37,6 +37,9 @@ def _contact_to_response(c: Contact) -> dict:
         "lead_score": float(c.lead_score or 0.0),
         "our_channel_ratio": float(c.our_channel_ratio or 0.0),
         "lead_context": dict(c.lead_context or {}),
+        "is_tracked": bool(c.is_tracked),
+        "total_synced": int(c.total_messages_synced or 0),
+        "oldest_msg_date": c.oldest_message_date.isoformat() if c.oldest_message_date else None,
         "last_interaction": c.last_interaction.isoformat() if c.last_interaction else None,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
@@ -139,6 +142,7 @@ async def add_to_tracked(
 
     for contact in contacts:
         contact.is_lead = True
+        contact.is_tracked = True
 
     await db.commit()
     return {"status": "success", "count": len(contacts)}
