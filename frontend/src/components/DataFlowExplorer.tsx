@@ -79,15 +79,17 @@ const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: str
             <span className="pct-text">{isSyncing && node.percentage === 0 ? '⧗' : `${node.percentage}%`}</span>
           </div>
         </div>
+<div className="tree-col files-col" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+  <div style={{ fontWeight: 600 }}>{node.files.toLocaleString()} msg</div>
+  {isSyncing && (
+    <span className="text-blue" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+      <Activity size={10} className="spin" />
+      {node.status === 'metadata' ? 'подготовка...' : 
+       node.status === 'reconciling' ? 'сверка...' : 'синхронизация...'}
+    </span>
+  )}
+</div>
 
-        <div className="tree-col files-col">
-          {isSyncing ? (
-            <span className="text-blue" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Activity size={12} className="spin" />
-              {node.status === 'metadata' ? 'подготовка...' : 'синхронизация...'}
-            </span>
-          ) : `${node.files.toLocaleString()} msg`}
-        </div>
 
         <div className="tree-col change-col">
           {isSyncing ? '🔄 в процессе' : (node.last_change ? new Date(node.last_change).toLocaleTimeString() : '—')}

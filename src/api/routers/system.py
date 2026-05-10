@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy import select, func, text, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.database import get_session
+from src.db.database import get_db
 from src.db.models import Contact, Message, VoiceNote, MessageEmbedding, ExtractionLog, SyncState, TrackedFolder, TrackedChannel, ChannelSyncState, SyncBatchLog
 from src.core.config import get_settings
 from datetime import datetime, timedelta, timezone
