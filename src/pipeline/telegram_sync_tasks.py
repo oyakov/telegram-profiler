@@ -258,7 +258,8 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
                                     "offset": offset,
                                     "limit": BATCH_SIZE
                                 },
-                                countdown=batch_num * 1  # 1s delay per batch
+                                countdown=batch_num * 1,  # 1s delay per batch
+                                priority=1  # Low priority - metadata runs first
                             )
                         logger.info("batch_tasks_queued", sync_state_id=sync_state_id, batch_count=batch_count)
                 except Exception as e:

@@ -198,11 +198,12 @@ class SyncOrchestrator:
                     session.add(sync_state)
                     await session.flush()
 
-                    # Queue metadata scan task
+                    # Queue metadata scan task with HIGH priority
                     logger.info("queuing_metadata_scan", channel=channel.title)
                     scan_channel_metadata.apply_async(
                         args=[channel.telegram_id, str(sync_state.id)],
-                        task_id=f"metadata_{sync_state.id}"
+                        task_id=f"metadata_{sync_state.id}",
+                        priority=10  # High priority (0-10, higher is more important)
                     )
 
                     queued_count += 1
