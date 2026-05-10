@@ -233,17 +233,21 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
 
             # If sync_state_id provided, update DB and queue batches
             if sync_state_id:
-                async with get_session(db_name="crm") as session:
-                    sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
-                    if sync_state:
-                        sync_state.phase = "syncing"
-                        sync_state.earliest_message_date = earliest_date
-                        sync_state.estimated_total_messages = total_count
-                        sync_state.eta_minutes = int(eta_seconds / 60)
-                        sync_state.started_at = datetime.now(timezone.utc)
-                        await session.commit()
+                try:
+                    async with get_session(db_name="crm") as session:
+                        sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
+                        if sync_state:
+                            sync_state.phase = "syncing"
+                            sync_state.earliest_message_date = earliest_date
+                            sync_state.estimated_total_messages = total_count
+                            sync_state.eta_minutes = int(eta_seconds / 60)
+                            sync_state.started_at = datetime.now(timezone.utc)
+                            logger.info("metadata_updated", sync_state_id=sync_state_id, total_messages=total_count)
+                        else:
+                            logger.warning("sync_state_not_found", sync_state_id=sync_state_id)
 
-                        # Queue batch tasks
+                    # Queue batch tasks (outside session to avoid transaction issues)
+                    if batch_count > 0:
                         for batch_num in range(batch_count):
                             offset = batch_num * BATCH_SIZE
                             sync_channel_batch.apply_async(
@@ -256,6 +260,9 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
                                 },
                                 countdown=batch_num * 1  # 1s delay per batch
                             )
+                        logger.info("batch_tasks_queued", sync_state_id=sync_state_id, batch_count=batch_count)
+                except Exception as e:
+                    logger.error("metadata_update_failed", sync_state_id=sync_state_id, error=str(e))
             
             return res_data
 
