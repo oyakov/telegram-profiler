@@ -142,7 +142,7 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
             if not ch.folder_id or str(ch.folder_id) not in folder_nodes: continue
             raw_id = str(ch.telegram_id).replace("-100", "").lstrip("-")
             id_variants = set([raw_id, f"-100{raw_id}", f"-{raw_id}", str(ch.telegram_id)])
-            ch_msg_count = sum(channel_counts.get(vid, 0) for vid in id_variants)
+            ch_msg_count = sum(counts_map.get(vid, 0) for vid in id_variants)
             
             st = latest_states.get(ch.id)
             progress = 0.0; status = "idle"
