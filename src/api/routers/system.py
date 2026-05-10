@@ -152,7 +152,10 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
                 if status == "complete":
                     progress = 100.0
                 elif ch_msg_count > 0:
-                    progress = (ch_msg_count / est * 100) if est > 0 else min(99.0, st.progress_percent or 99.0)
+                    if est > 0:
+                        progress = min(99.0, (ch_msg_count / est) * 100)
+                    else:
+                        progress = st.progress_percent or 50.0
                 else:
                     progress = st.progress_percent or 0.0
                 if status == "reconciling": progress = max(99.0, progress)
