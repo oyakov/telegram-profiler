@@ -202,14 +202,16 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
             ))
 
             earliest_date = None
-            total_count = getattr(result, 'count', 0)
+            total_count = getattr(result, 'count', None) or 0
+            if not total_count and hasattr(result, 'total'):
+                total_count = result.total
 
             if result.messages:
                 msg = result.messages[0]
                 if hasattr(msg, 'date'):
                     earliest_date = msg.date
 
-            batch_count = (total_count + BATCH_SIZE - 1) // BATCH_SIZE
+            batch_count = (total_count + BATCH_SIZE - 1) // BATCH_SIZE if total_count > 0 else 0
             eta_seconds = batch_count * BATCH_DELAY_SECONDS
 
             logger.info(
@@ -217,6 +219,8 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
                 channel_id=channel_id,
                 total_messages=total_count,
                 batches=batch_count,
+                result_count=getattr(result, 'count', 'N/A'),
+                result_total=getattr(result, 'total', 'N/A'),
                 sync_state_id=sync_state_id
             )
 
