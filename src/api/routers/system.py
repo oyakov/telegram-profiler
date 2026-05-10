@@ -143,20 +143,23 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
             raw_id = str(ch.telegram_id).replace("-100", "").lstrip("-")
             id_variants = set([raw_id, f"-100{raw_id}", f"-{raw_id}", str(ch.telegram_id)])
             ch_msg_count = sum(counts_map.get(vid, 0) for vid in id_variants)
-            
+
             st = latest_states.get(ch.id)
             progress = 0.0; status = "idle"
             if st:
-                status = st.phase; est = st.estimated_total_messages or 0
-                if est > 0: progress = (ch_msg_count / est) * 100
-                else: progress = st.progress_percent or 0.0
-                if ch_msg_count > 100 and status == "metadata": status = "syncing"
-                if status == "complete": progress = 100.0
-                elif status == "reconciling": progress = max(99.0, progress)
-                if status in ["metadata", "syncing"] and progress < 0.1: progress = 0.1
+                status = st.phase
+                est = st.estimated_total_messages or 0
+                if status == "complete":
+                    progress = 100.0
+                elif ch_msg_count > 0:
+                    progress = (ch_msg_count / est * 100) if est > 0 else min(99.0, st.progress_percent or 99.0)
+                else:
+                    progress = st.progress_percent or 0.0
+                if status == "reconciling": progress = max(99.0, progress)
+                if status in ["metadata", "syncing"] and progress < 1: progress = 1.0
             elif ch_msg_count > 0:
                 status = "complete"; progress = 100.0
-            
+
             cn = {"id": str(ch.id), "name": ch.title or str(ch.telegram_id), "type": "channel", "username": ch.username, "files": ch_msg_count, "percentage": round(min(100.0, progress), 1), "status": status, "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None}
             folder_nodes[str(ch.folder_id)]["children"].append(cn); folder_nodes[str(ch.folder_id)]["files"] += ch_msg_count
 
