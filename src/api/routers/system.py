@@ -117,71 +117,47 @@ async def purge_celery_tasks():
 @router.get("/tree")
 async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
     """Bulletproof hierarchical tree with factual progress calculation."""
+    from sqlalchemy.orm import selectinload
     try:
-        # 1. Folders
         folders_res = await db.execute(select(TrackedFolder).order_by(TrackedFolder.created_at))
         folders = folders_res.scalars().all()
-
-        # 2. Channel counts (group_id is telegram_id)
         counts_res = await db.execute(select(Message.group_id, func.count(Message.id)).group_by(Message.group_id))
         channel_counts = {str(row[0]): row[1] for row in counts_res.all()}
-
-        # 3. Channels and Latest Sync States
         channels_res = await db.execute(select(TrackedChannel))
         channels = channels_res.scalars().all()
         cids = [c.id for c in channels]
-        
         sync_res = await db.execute(select(ChannelSyncState).where(ChannelSyncState.channel_id.in_(cids)).order_by(ChannelSyncState.channel_id, ChannelSyncState.started_at.desc()))
         latest_states = {}
         for s in sync_res.scalars().all():
             if s.channel_id not in latest_states: latest_states[s.channel_id] = s
-
         tree = []
         folder_nodes = {}
         for f in folders:
             f_node = {"id": str(f.id), "name": f.name, "type": "folder", "children": [], "files": 0, "percentage": 0, "last_change": f.updated_at.isoformat() if f.updated_at else None}
             folder_nodes[str(f.id)] = f_node
             tree.append(f_node)
-
         for ch in channels:
             if not ch.folder_id or str(ch.folder_id) not in folder_nodes: continue
-
-            # ID Normalization
             raw_id = str(ch.telegram_id).replace("-100", "").lstrip("-")
             variants = [raw_id, f"-100{raw_id}", f"-{raw_id}", str(ch.telegram_id)]
             ch_msg_count = sum(channel_counts.get(v, 0) for v in set(variants))
-            
             st = latest_states.get(ch.id)
-            progress = 0.0
-            status = "idle"
-            
+            progress = 0.0; status = "idle"
             if st:
-                status = st.phase
-                est = st.estimated_total_messages or 0
-                if est > 0:
-                    progress = (ch_msg_count / est) * 100
+                status = st.phase; est = st.estimated_total_messages or 0
+                if est > 0: progress = (ch_msg_count / est) * 100
                 else: progress = st.progress_percent or 0.0
-                
                 if ch_msg_count > 100 and status == "metadata": status = "syncing"
                 if status == "complete": progress = 100.0
                 elif status == "reconciling": progress = max(99.0, progress)
                 if status in ["metadata", "syncing"] and progress < 0.1: progress = 0.1
-            elif ch_msg_count > 0:
-                status = "complete"; progress = 100.0
-
-            ch_node = {
-                "id": str(ch.id), "name": ch.title or str(ch.telegram_id), "type": "channel", "username": ch.username,
-                "files": ch_msg_count, "percentage": round(min(100.0, progress), 1), "status": status,
-                "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None
-            }
-            folder_nodes[str(ch.folder_id)]["children"].append(ch_node)
-            folder_nodes[str(ch.folder_id)]["files"] += ch_msg_count
-
+            elif ch_msg_count > 0: status = "complete"; progress = 100.0
+            ch_node = {"id": str(ch.id), "name": ch.title or str(ch.telegram_id), "type": "channel", "username": ch.username, "files": ch_msg_count, "percentage": round(min(100.0, progress), 1), "status": status, "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None}
+            folder_nodes[str(ch.folder_id)]["children"].append(ch_node); folder_nodes[str(ch.folder_id)]["files"] += ch_msg_count
         for fn in tree:
             if fn["children"]:
                 total = sum(c["percentage"] for c in fn["children"])
                 fn["percentage"] = round(total / len(fn["children"]), 1)
-
         return {"tree": tree}
     except Exception as e:
         logger.error("tree_error", error=str(e), exc_info=True)
@@ -202,3 +178,19 @@ async def get_embeddings_metrics(db: AsyncSession = Depends(get_db)):
         total = (await db.execute(select(func.count(MessageEmbedding.id)))).scalar() or 0
         return {"current_minute": {"tokens_processed": tokens}, "totals": {"total_embeddings": total}}
     except: return {"error": "metrics_unavailable"}
+
+@router.get("/data-quality")
+async def get_data_quality_metrics(db: AsyncSession = Depends(get_db)):
+    return {"status": "ok"}
+
+@router.get("/business-metrics")
+async def get_business_metrics(db: AsyncSession = Depends(get_db)):
+    return {"status": "ok"}
+
+@router.get("/sync-health")
+async def get_sync_health(db: AsyncSession = Depends(get_db)):
+    return {"status": "ok"}
+
+@router.get("/embeddings")
+async def get_embeddings_stats(db: AsyncSession = Depends(get_db)):
+    return {"status": "ok"}
