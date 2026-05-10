@@ -234,17 +234,18 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
             # If sync_state_id provided, update DB and queue batches
             if sync_state_id:
                 try:
+                    from sqlalchemy import update
                     async with get_session(db_name="crm") as session:
-                        sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
-                        if sync_state:
-                            sync_state.phase = "syncing"
-                            sync_state.earliest_message_date = earliest_date
-                            sync_state.estimated_total_messages = total_count
-                            sync_state.eta_minutes = int(eta_seconds / 60)
-                            sync_state.started_at = datetime.now(timezone.utc)
-                            logger.info("metadata_updated", sync_state_id=sync_state_id, total_messages=total_count)
-                        else:
-                            logger.warning("sync_state_not_found", sync_state_id=sync_state_id)
+                        await session.execute(
+                            update(ChannelSyncState).where(ChannelSyncState.id == UUID(sync_state_id)).values(
+                                phase="syncing",
+                                earliest_message_date=earliest_date,
+                                estimated_total_messages=total_count,
+                                eta_minutes=int(eta_seconds / 60),
+                                started_at=datetime.now(timezone.utc)
+                            )
+                        )
+                        logger.info("metadata_updated", sync_state_id=sync_state_id, total_messages=total_count)
 
                     # Queue batch tasks (outside session to avoid transaction issues)
                     if batch_count > 0:
