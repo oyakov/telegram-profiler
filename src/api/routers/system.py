@@ -52,10 +52,26 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
                 context = "Фоновая задача"
                 progress = None
                 try:
-                    parsed_args = ast.literal_eval(args_str)
-                    target_id = str(parsed_args[0]) if parsed_args else None
-                    ch = channels_map.get(target_id) or uuid_map.get(target_id)
-                    if ch: context = f"Канал: {ch.title}"
+                    # Clean the args string to parse it safely
+                    clean_args = args_str.strip("()").split(",")
+                    target_id_raw = clean_args[0].strip(" '\"") if clean_args else None
+                    
+                    if target_id_raw:
+                        # Find channel by any variant
+                        raw_id = target_id_raw.replace("-100", "").lstrip("-")
+                        id_variants = [raw_id, f"-100{raw_id}", f"-{raw_id}", target_id_raw]
+                        
+                        ch = None
+                        for vid in set(id_variants):
+                            if vid in channels_map: 
+                                ch = channels_map[vid]; break
+                        
+                        if not ch: ch = uuid_map.get(target_id_raw)
+                        
+                        if ch:
+                            context = f"Канал: {ch.title}"
+                            if ch.sync_state:
+                                progress = round(ch.sync_state.progress_percent or 0, 1)
                 except: pass
                 running_tasks.append({
                     "id": task.get("id"), "name": name, "worker": worker_name, "status": "running", 

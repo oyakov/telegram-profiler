@@ -44,6 +44,7 @@ def sync_channel_batch(
         from datetime import datetime, timezone
         from uuid import UUID
 
+        batch_log = None
         async with get_session(db_name="crm") as session:
             try:
                 # 1. Get sync state and channel
@@ -146,8 +147,9 @@ def sync_channel_batch(
 
             except Exception as e:
                 logger.error("batch_error", batch=batch_number, error=str(e), exc_info=True)
-                batch_log.status = "failed"
-                batch_log.error_message = str(e)
+                if batch_log:
+                    batch_log.status = "failed"
+                    batch_log.error_message = str(e)
                 await session.commit()
                 raise e
 
