@@ -98,23 +98,92 @@ def orchestrate_multi_db_cleanup():
 @celery_app.task(name="src.pipeline.tasks.process_unified_messages", queue="processing")
 def process_unified_messages(limit: int = 100, db_name: str | None = None):
     """Process new messages through AI pipeline."""
-    # Placeholder
-    return {"processed": 0}
+    from src.pipeline.unified_processor import MessageProcessor
+
+    async def _do():
+        async with get_session(db_name=db_name) as session:
+            from sqlalchemy import select
+            from src.db.models import Message
+
+            # Get unprocessed messages
+            query = (
+                select(Message)
+                .where(Message.content.isnot(None))
+                .order_by(Message.timestamp.desc())
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            messages = result.scalars().all()
+
+            if not messages:
+                logger.info("no_messages_to_process", db_name=db_name)
+                return {"processed": 0, "contacts_found": 0, "leads_found": 0, "errors": 0}
+
+            processor = MessageProcessor(session)
+            stats = await processor.process_batch(messages)
+            await session.commit()
+
+            logger.info("process_unified_messages_complete",
+                       processed=stats["processed"],
+                       contacts_found=stats["contacts_found"],
+                       leads_found=stats["leads_found"],
+                       errors=stats["errors"],
+                       db_name=db_name)
+            return stats
+
+    return _run_async(_do())
 
 @celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_message_processing")
 def orchestrate_multi_db_message_processing():
     """Trigger AI processing for all databases."""
-    return {"status": "dispatched", "databases": ["crm"]}
+    databases = ["crm"]
+    for db_name in databases:
+        process_unified_messages.delay(limit=100, db_name=db_name)
+        process_message_embeddings.delay(batch_size=100, db_name=db_name)
+        reindex_dirty_contacts.delay(batch_size=50, db_name=db_name)
+
+    logger.info("orchestrate_multi_db_message_processing_dispatched", databases=databases)
+    return {"status": "dispatched", "databases": databases}
 
 @celery_app.task(name="src.pipeline.tasks.process_message_embeddings", queue="processing")
 def process_message_embeddings(batch_size: int = 100, db_name: str | None = None):
     """Generate vector embeddings for new messages."""
-    return {"processed": 0, "errors": 0, "tokens": 0}
+    from src.pipeline.unified_processor import maintenance_index_messages
+
+    async def _do():
+        try:
+            result = await maintenance_index_messages(batch_size=batch_size, db_name=db_name)
+            logger.info("process_message_embeddings_complete",
+                       processed=result["processed"],
+                       errors=result["errors"],
+                       tokens=result["tokens"],
+                       db_name=db_name)
+            return result
+        except Exception as e:
+            logger.error("process_message_embeddings_failed", error=str(e), exc_info=True)
+            raise
+
+    return _run_async(_do())
 
 @celery_app.task(name="src.pipeline.tasks.reindex_dirty_contacts", queue="processing")
-def reindex_dirty_contacts(db_name: str | None = None):
+def reindex_dirty_contacts(batch_size: int = 50, db_name: str | None = None):
     """Re-index contacts that have changed."""
-    return {"indexed": 0}
+    from src.pipeline.unified_processor import maintenance_reindex_dirty
+
+    async def _do():
+        try:
+            result = await maintenance_reindex_dirty(batch_size=batch_size, db_name=db_name)
+            logger.info("reindex_dirty_contacts_complete",
+                       processed=result["processed"],
+                       errors=result["errors"],
+                       skipped=result["skipped"],
+                       db_name=db_name)
+            return result
+        except Exception as e:
+            logger.error("reindex_dirty_contacts_failed", error=str(e), exc_info=True)
+            raise
+
+    return _run_async(_do())
 
 @celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_sync")
 def orchestrate_multi_db_sync():

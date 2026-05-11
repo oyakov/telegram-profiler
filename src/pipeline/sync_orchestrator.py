@@ -13,7 +13,7 @@ import asyncio
 import structlog
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 
 from src.db.database import get_session
 from src.db.models import (
@@ -54,16 +54,19 @@ class SyncOrchestrator:
                 # Step 2: Detect and sync new/updated folders
                 await self._sync_folders(session)
 
-                # Step 3: Detect and queue new channels
+                # Step 3: Detect and queue metadata scans ONLY (blocks batch task queueing)
                 await self._queue_new_channels(session)
 
-                # Step 4: Monitor active syncs and update ETA
+                # Step 4: Queue batch tasks for channels with completed metadata
+                await self._queue_batch_tasks_for_metadata(session)
+
+                # Step 5: Monitor active syncs and update ETA
                 await self._update_active_syncs(session)
 
-                # Step 5: Auto-retry failed batches
+                # Step 6: Auto-retry failed batches
                 await self._retry_failed_batches(session)
 
-                # Step 6: Reconcile completed syncs
+                # Step 7: Reconcile completed syncs
                 await self._reconcile_completed_syncs(session)
 
                 logger.info("sync_orchestrator_cycle_complete")
@@ -162,7 +165,8 @@ class SyncOrchestrator:
 
     async def _queue_new_channels(self, session):
         """
-        Detect channels without sync_state and queue them for sync.
+        Detect channels without sync_state and queue metadata scans ONLY.
+        Batch tasks are queued in _queue_batch_tasks_for_metadata after metadata completes.
         """
         from sqlalchemy.orm import selectinload
         logger.info("queue_new_channels_start")
@@ -177,8 +181,19 @@ class SyncOrchestrator:
             queued_count = 0
 
             for channel in all_channels:
-                # Skip if already has sync state in progress
-                if channel.sync_state and channel.sync_state.phase in ["metadata", "syncing"]:
+                # Check if stuck in metadata phase for >2 minutes (metadata task lost)
+                if channel.sync_state and channel.sync_state.phase == "metadata":
+                    if channel.sync_state.started_at:
+                        stuck_time = datetime.now(timezone.utc) - channel.sync_state.started_at
+                        if stuck_time < timedelta(minutes=2):
+                            continue  # Still processing, skip
+                    # Re-queue metadata for stuck channels
+                    await session.delete(channel.sync_state)
+                    await session.flush()
+                    channel.sync_state = None
+
+                # Skip if in other in-progress phases
+                if channel.sync_state and channel.sync_state.phase in ["syncing", "reconciling"]:
                     continue
 
                 # Skip if completed recently (within 7 days)
@@ -189,7 +204,7 @@ class SyncOrchestrator:
                             continue
 
                 try:
-                    # Create new sync state
+                    # Create new sync state in metadata phase
                     sync_state = ChannelSyncState(
                         channel_id=channel.id,
                         phase="metadata",
@@ -198,12 +213,13 @@ class SyncOrchestrator:
                     session.add(sync_state)
                     await session.flush()
 
-                    # Queue metadata scan task with HIGH priority
+                    # Queue ONLY metadata scan task - batch tasks queued later after metadata completes
                     logger.info("queuing_metadata_scan", channel=channel.title)
                     scan_channel_metadata.apply_async(
                         args=[channel.telegram_id, str(sync_state.id)],
                         task_id=f"metadata_{sync_state.id}",
-                        priority=10  # High priority (0-10, higher is more important)
+                        queue="connectors",
+                        priority=9  # HIGH priority - metadata must complete before batches
                     )
 
                     queued_count += 1
@@ -222,6 +238,88 @@ class SyncOrchestrator:
 
         except Exception as e:
             logger.error("queue_new_channels_error", error=str(e))
+
+    async def _queue_batch_tasks_for_metadata(self, session):
+        """
+        Check for completed metadata scans and queue batch tasks.
+        This ensures batches are only queued AFTER metadata completes.
+        """
+        from sqlalchemy.orm import joinedload
+        logger.info("queue_batch_tasks_for_metadata_start")
+
+        try:
+            # Find sync states with completed metadata (phase="syncing" + estimated_total_messages set)
+            result = await session.execute(
+                select(ChannelSyncState)
+                .options(joinedload(ChannelSyncState.channel))
+                .where(
+                    and_(
+                        ChannelSyncState.phase == "syncing",
+                        ChannelSyncState.estimated_total_messages > 0
+                    )
+                )
+            )
+            ready_syncs = result.unique().scalars().all()
+
+            queued_count = 0
+
+            for sync_state in ready_syncs:
+                try:
+                    # Check if batches already queued for this sync
+                    batch_result = await session.execute(
+                        select(func.count(SyncBatchLog.id)).where(
+                            SyncBatchLog.sync_state_id == sync_state.id
+                        )
+                    )
+                    batch_count_in_db = batch_result.scalar() or 0
+
+                    if batch_count_in_db > 0:
+                        # Batches already queued for this sync
+                        continue
+
+                    # Calculate batches needed based on estimated total
+                    channel = sync_state.channel
+                    batch_count = (sync_state.estimated_total_messages + BATCH_SIZE - 1) // BATCH_SIZE
+
+                    logger.info(
+                        "queueing_batch_tasks",
+                        channel=channel.title if channel else "Unknown",
+                        sync_state=sync_state.id,
+                        batch_count=batch_count
+                    )
+
+                    # Queue all batch tasks for this sync
+                    for batch_num in range(batch_count):
+                        offset = batch_num * BATCH_SIZE
+                        sync_channel_batch.apply_async(
+                            kwargs={
+                                "channel_id": channel.telegram_id,
+                                "sync_state_id": str(sync_state.id),
+                                "batch_number": batch_num,
+                                "offset": offset,
+                                "limit": BATCH_SIZE
+                            },
+                            countdown=batch_num * 1,  # 1s delay per batch
+                            queue="connectors",
+                            priority=0  # LOW priority - only after metadata completes
+                        )
+
+                    queued_count += batch_count
+
+                except Exception as e:
+                    logger.error(
+                        "queue_batches_error",
+                        sync_state=sync_state.id,
+                        error=str(e)
+                    )
+
+            if queued_count > 0:
+                await session.commit()
+
+            logger.info("queue_batch_tasks_for_metadata_complete", queued_batches=queued_count)
+
+        except Exception as e:
+            logger.error("queue_batch_tasks_for_metadata_error", error=str(e))
 
     async def _update_active_syncs(self, session):
         """

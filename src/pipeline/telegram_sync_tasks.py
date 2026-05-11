@@ -245,24 +245,8 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
                                 started_at=datetime.now(timezone.utc)
                             )
                         )
-                        logger.info("metadata_updated", sync_state_id=sync_state_id, total_messages=total_count)
-
-                    # Queue batch tasks (outside session to avoid transaction issues)
-                    if batch_count > 0:
-                        for batch_num in range(batch_count):
-                            offset = batch_num * BATCH_SIZE
-                            sync_channel_batch.apply_async(
-                                kwargs={
-                                    "channel_id": channel_id,
-                                    "sync_state_id": sync_state_id,
-                                    "batch_number": batch_num,
-                                    "offset": offset,
-                                    "limit": BATCH_SIZE
-                                },
-                                countdown=batch_num * 1,  # 1s delay per batch
-                                priority=1  # Low priority - metadata runs first
-                            )
-                        logger.info("batch_tasks_queued", sync_state_id=sync_state_id, batch_count=batch_count)
+                        await session.commit()
+                        logger.info("metadata_updated", sync_state_id=sync_state_id, total_messages=total_count, batch_count=batch_count)
                 except Exception as e:
                     logger.error("metadata_update_failed", sync_state_id=sync_state_id, error=str(e))
             
