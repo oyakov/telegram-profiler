@@ -382,7 +382,7 @@ class SyncOrchestrator:
             for batch in failed_batches:
                 try:
                     batch.retry_attempt += 1
-                    batch.status = "pending"
+                    # Keep status as "failed" — the new task execution will create its own log
 
                     # Get sync state to find channel
                     sync_state = batch.sync_state
@@ -437,18 +437,30 @@ class SyncOrchestrator:
             syncing_states = result.scalars().all()
 
             for sync_state in syncing_states:
+                # Only reconcile if at least one batch log exists (batches have actually started)
+                total_batch_result = await session.execute(
+                    select(func.count(SyncBatchLog.id)).where(
+                        SyncBatchLog.sync_state_id == sync_state.id
+                    )
+                )
+                total_batches = total_batch_result.scalar() or 0
+
+                if total_batches == 0:
+                    # Batches haven't started yet (just queued), skip
+                    continue
+
                 # Count pending/processing batches
                 batch_result = await session.execute(
                     select(SyncBatchLog).where(
                         and_(
                             SyncBatchLog.sync_state_id == sync_state.id,
-                            SyncBatchLog.status.in_(["pending", "processing"])
+                            SyncBatchLog.status.in_(["pending", "processing", "running"])
                         )
                     )
                 )
                 pending_batches = batch_result.scalars().all()
 
-                # If no pending batches, trigger reconciliation
+                # If no pending batches and at least one batch exists, trigger reconciliation
                 if not pending_batches:
                     logger.info("triggering_reconciliation", sync_state=sync_state.id)
 

@@ -272,29 +272,33 @@ class TelegramConnector(BaseConnector):
         except Exception as e:
             logger.error("telegram_auto_sync_failed", error=str(e))
 
-    async def sync(self, chat_ids: list[int] | None = None, limit: int = 100, offset_date: datetime | None = None, **kwargs) -> SyncResult:
+    async def sync(self, chat_ids: list[int] | None = None, limit: int = 100, offset_date: datetime | None = None, complete: bool = False, **kwargs) -> SyncResult:
         result = SyncResult(connector=self.name, started_at=datetime.now(timezone.utc))
         client = await self._get_client()
         try:
             async with client:
                 if not await client.is_user_authorized():
                     result.status = "error"; return result
-                
+
                 async with get_session(db_name=self.db_name) as session:
                     sync_state = await self._get_sync_state(session)
                     sync_state.status = "running"
                     await session.commit()
-                    
+
                     from src.db.models import TrackedChannel
-                    res = await session.execute(select(TrackedChannel.telegram_id).where(TrackedChannel.is_active == True))
-                    target_ids = [int(row[0]) for row in res.all()]
+                    # Use provided chat_ids if given, otherwise fetch all active channels
+                    if chat_ids:
+                        target_ids = chat_ids
+                    else:
+                        res = await session.execute(select(TrackedChannel.telegram_id).where(TrackedChannel.is_active == True))
+                        target_ids = [int(row[0]) for row in res.all()]
 
                 semaphore = asyncio.Semaphore(3)
                 async def _sync_task(tid):
                     async with semaphore:
                         try:
                             async with get_session(db_name=self.db_name) as task_session:
-                                return await self._sync_chat(client, task_session, tid, limit, None, offset_date=offset_date)
+                                return await self._sync_chat(client, task_session, tid, limit, None, offset_date=offset_date, ignore_last_id=complete)
                         except Exception as e:
                             logger.error("telegram_sync_error", target_id=tid, error=str(e))
                             return 0
@@ -313,7 +317,7 @@ class TelegramConnector(BaseConnector):
         result.completed_at = datetime.now(timezone.utc)
         return result
 
-    async def _sync_chat(self, client, session, chat_id, limit, sync_state, offset_date=None, min_date=None) -> int:
+    async def _sync_chat(self, client, session, chat_id, limit, sync_state, offset_date=None, min_date=None, ignore_last_id=False) -> int:
         try:
             if isinstance(chat_id, str) and chat_id.lstrip('-').isdigit(): chat_id = int(chat_id)
             entity = await client.get_entity(chat_id)
@@ -326,7 +330,10 @@ class TelegramConnector(BaseConnector):
         is_channel = isinstance(entity, Channel) and entity.broadcast
         messages_synced = 0
         batch_size = 1000
-        last_id = (sync_state.metadata_json or {}).get(f"chat_{entity.id}_last_id") if sync_state else 0
+        last_id = 0 if ignore_last_id else ((sync_state.metadata_json or {}).get(f"chat_{entity.id}_last_id") if sync_state else 0)
+
+        logger.info("_sync_chat_start", chat_id=entity.id, chat_title=getattr(entity, "title", "unknown"), limit=limit, last_id=last_id, ignore_last_id=ignore_last_id)
+
         async for msg in client.iter_messages(entity, limit=limit, min_id=last_id or 0, offset_date=offset_date):
             if min_date and msg.date < min_date: break
             existing = await session.execute(select(Message).where(Message.source_message_id == f"{entity.id}_{msg.id}"))
@@ -346,6 +353,10 @@ class TelegramConnector(BaseConnector):
             session.add(message)
             session.add(MessageContact(message=message, contact=contact, role="sender"))
             messages_synced += 1
+
+            # Log progress every 100 messages
+            if messages_synced % 100 == 0:
+                logger.info("_sync_chat_progress", chat_id=entity.id, synced=messages_synced)
 
             # Commit batch every 1000 messages
             if messages_synced % batch_size == 0:

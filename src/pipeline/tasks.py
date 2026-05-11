@@ -254,11 +254,12 @@ def load_complete_history(db_name: str | None = None):
                    messages_before=before_count,
                    db_name=db_name)
 
-        # Load with massive limit (no time restriction)
+        # Load with massive limit (no time restriction), ignoring previous sync state
         result = await connector.sync(
             chat_ids=[int(ch.telegram_id) for ch in channels],
             limit=1000000,  # Load all available
-            offset_date=None  # No time restriction
+            offset_date=None,  # No time restriction
+            complete=True  # Load complete history from the beginning
         )
 
         # Count after
