@@ -325,6 +325,7 @@ class TelegramConnector(BaseConnector):
 
         is_channel = isinstance(entity, Channel) and entity.broadcast
         messages_synced = 0
+        batch_size = 1000
         last_id = (sync_state.metadata_json or {}).get(f"chat_{entity.id}_last_id") if sync_state else 0
         async for msg in client.iter_messages(entity, limit=limit, min_id=last_id or 0, offset_date=offset_date):
             if min_date and msg.date < min_date: break
@@ -345,10 +346,15 @@ class TelegramConnector(BaseConnector):
             session.add(message)
             session.add(MessageContact(message=message, contact=contact, role="sender"))
             messages_synced += 1
-        
+
+            # Commit batch every 1000 messages
+            if messages_synced % batch_size == 0:
+                await session.commit()
+                logger.info("batch_committed", batch_size=batch_size, total_synced=messages_synced, chat_id=entity.id)
+
         from src.db.models import TrackedChannel
         await session.execute(update(TrackedChannel).where(TrackedChannel.telegram_id == str(entity.id)).values(last_sync_at=datetime.now(timezone.utc)))
-        await session.flush()
+        await session.commit()
         return messages_synced
 
     async def _get_or_create_contact(self, session, sender, is_channel=False) -> Contact:
