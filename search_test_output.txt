@@ -1,0 +1,48 @@
+======================================================================
+SEMANTIC SEARCH TESTING
+======================================================================
+
+Database Coverage: 106 / 379,049 (0.03%)
+Note: Search coverage depends on embeddings. More embeddings = better results.
+
+Running search tests...
+
+Query                          Category     Contacts   Messages   Type           
+-----------------------------------------------------------------------------
+machine learning AI technology ERROR        - Connection error.
+2026-05-11 02:52:20 [error    ] search_test_failed             error='Connection error.' query='machine learning AI technology'
+investment startup funding     ERROR        - Connection error.
+2026-05-11 02:53:24 [error    ] search_test_failed             error='Connection error.' query='investment startup funding'
+product management development ERROR        - Connection error.
+2026-05-11 02:54:29 [error    ] search_test_failed             error='Connection error.' query='product management development'
+networking community collaboration ERROR        - Connection error.
+2026-05-11 02:55:34 [error    ] search_test_failed             error='Connection error.' query='networking community collaboration'
+marketing sales business growth ERROR        - Connection error.
+2026-05-11 02:56:38 [error    ] search_test_failed             error='Connection error.' query='marketing sales business growth'
+Python JavaScript programming  ERROR        - Connection error.
+2026-05-11 02:57:43 [error    ] search_test_failed             error='Connection error.' query='Python JavaScript programming'
+data analysis analytics insights ERROR        - Connection error.
+2026-05-11 02:58:48 [error    ] search_test_failed             error='Connection error.' query='data analysis analytics insights'
+hello meeting discussion chat  ERROR        - Connection error.
+2026-05-11 02:59:52 [error    ] search_test_failed             error='Connection error.' query='hello meeting discussion chat'
+
+======================================================================
+SEARCH TESTING SUMMARY
+======================================================================
+Queries tested: 0
+Queries with results: 0
+Success rate: 0.0%
+Avg contacts per query: 0.00
+Avg messages per query: 0.00
+
+Search type distribution:
+  Semantic: 0
+  Keyword fallback: 0
+  Mixed: 0
+
+======================================================================
+DETAILED RESULTS
+======================================================================
+
+======================================================================
+Results saved to: search_test_results_20260511_005952.json

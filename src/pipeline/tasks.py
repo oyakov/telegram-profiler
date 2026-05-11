@@ -213,7 +213,7 @@ def deep_track_orchestrator():
     """Find all active tracking targets and queue chunk tasks for them."""
     from src.db.models import TrackedChannel, TrackedFolder
     from sqlalchemy import select
-    
+
     async def _do():
         async with get_session(db_name="crm") as session:
             res = await session.execute(select(TrackedChannel).where(TrackedChannel.is_active == True))
@@ -222,6 +222,117 @@ def deep_track_orchestrator():
                 deep_track_chunk.delay(ch.telegram_id, ch.entity_type, db_name="crm")
             return {"queued": len(channels)}
     return _run_async(_do())
+
+@celery_app.task(name="src.pipeline.tasks.load_complete_history", queue="connectors")
+def load_complete_history(db_name: str | None = None):
+    """Load COMPLETE message history from all channels - no time limits."""
+    from src.connectors.telegram_connector import TelegramConnector
+    from src.db.models import TrackedChannel, Message
+    from sqlalchemy import select, func
+
+    async def _do():
+        connector = TelegramConnector(db_name=db_name or "crm")
+
+        # Check auth
+        if not await connector.is_authorized():
+            return {"status": "error", "reason": "not_authorized"}
+
+        # Count messages before
+        async with get_session(db_name=db_name or "crm") as session:
+            before = await session.execute(select(func.count(Message.id)))
+            before_count = before.scalar() or 0
+
+        # Get all active channels
+        async with get_session(db_name=db_name or "crm") as session:
+            res = await session.execute(
+                select(TrackedChannel).where(TrackedChannel.is_active == True)
+            )
+            channels = res.scalars().all()
+
+        logger.info("load_complete_history_start",
+                   channels_count=len(channels),
+                   messages_before=before_count,
+                   db_name=db_name)
+
+        # Load with massive limit (no time restriction)
+        result = await connector.sync(
+            chat_ids=[int(ch.telegram_id) for ch in channels],
+            limit=1000000,  # Load all available
+            offset_date=None  # No time restriction
+        )
+
+        # Count after
+        async with get_session(db_name=db_name or "crm") as session:
+            after = await session.execute(select(func.count(Message.id)))
+            after_count = after.scalar() or 0
+
+        new_messages = after_count - before_count
+
+        logger.info("load_complete_history_complete",
+                   messages_loaded=result.messages_fetched,
+                   messages_before=before_count,
+                   messages_after=after_count,
+                   new_messages=new_messages,
+                   db_name=db_name)
+
+        return {
+            "status": "success",
+            "messages_loaded": result.messages_fetched,
+            "before": before_count,
+            "after": after_count,
+            "new": new_messages
+        }
+
+    return _run_async(_do())
+
+@celery_app.task(name="src.pipeline.tasks.generate_all_embeddings", queue="processing")
+def generate_all_embeddings(batch_size: int = 500, db_name: str | None = None):
+    """Generate embeddings for all messages without embeddings."""
+    from src.pipeline.unified_processor import maintenance_index_messages
+
+    async def _do():
+        try:
+            result = await maintenance_index_messages(batch_size=batch_size, db_name=db_name)
+            logger.info("generate_all_embeddings_complete",
+                       processed=result["processed"],
+                       errors=result["errors"],
+                       tokens=result["tokens"],
+                       db_name=db_name)
+            return result
+        except Exception as e:
+            logger.error("generate_all_embeddings_failed", error=str(e), exc_info=True)
+            raise
+
+    return _run_async(_do())
+
+@celery_app.task(name="src.pipeline.tasks.orchestrate_complete_sync", queue="connectors")
+def orchestrate_complete_sync():
+    """
+    Orchestrate complete data sync pipeline:
+    1. Load complete history from all channels
+    2. Generate embeddings for all messages
+    3. Reindex contact profiles
+    """
+    logger.info("orchestrate_complete_sync_start")
+
+    # Chain tasks: load history → embeddings → reindex
+    from celery import chain
+
+    task_chain = chain(
+        load_complete_history.s(db_name="crm"),
+        generate_all_embeddings.s(batch_size=500, db_name="crm"),
+        reindex_dirty_contacts.s(batch_size=50, db_name="crm")
+    )
+
+    result = task_chain.apply_async()
+
+    logger.info("orchestrate_complete_sync_dispatched", chain_id=str(result.id))
+
+    return {
+        "status": "dispatched",
+        "chain_id": str(result.id),
+        "steps": ["load_complete_history", "generate_all_embeddings", "reindex_dirty_contacts"]
+    }
 
 @celery_app.task(name="src.pipeline.tasks.send_campaign", queue="connectors")
 def send_campaign(campaign_id: str, db_name: str | None = None):

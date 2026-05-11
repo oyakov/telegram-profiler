@@ -1,0 +1,12 @@
+{
+  "total_queries": 0,
+  "avg_contacts_found": 0,
+  "avg_messages_found": 0,
+  "queries_with_results": 0,
+  "semantic_vs_keyword": {
+    "semantic": 0,
+    "keyword": 0,
+    "mixed": 0
+  },
+  "results": []
+}
