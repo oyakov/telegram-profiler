@@ -11,7 +11,8 @@ from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.errors import FloodWaitError
 
 from src.db.database import get_session
-from src.connectors.telegram_connector import TelegramConnector
+from src.pipeline.base_task import AsyncDBTask
+from src.db.repository import MessageRepository
 
 logger = structlog.get_logger()
 
@@ -22,14 +23,15 @@ BATCH_DELAY_SECONDS = (BATCH_SIZE / MESSAGES_PER_SECOND) + 0.1
 MAX_RETRIES = 3
 
 
-@shared_task(bind=True, max_retries=MAX_RETRIES, autoretry_for=(FloodWaitError,), queue="connectors")
+@shared_task(bind=True, base=AsyncDBTask, max_retries=MAX_RETRIES, autoretry_for=(FloodWaitError,), queue="connectors")
 def sync_channel_batch(
     self,
     channel_id: str,
     sync_state_id: str,
     batch_number: int,
     offset: int,
-    limit: int = BATCH_SIZE
+    limit: int = BATCH_SIZE,
+    db_name: str | None = None
 ):
     """
     Download a single batch of messages for a channel.
@@ -45,8 +47,10 @@ def sync_channel_batch(
         from uuid import UUID
 
         batch_log = None
-        async with get_session(db_name="crm") as session:
+        db_name_actual = db_name or "crm"
+        async with get_session(db_name=db_name_actual) as session:
             try:
+                repo = MessageRepository(session)
                 # 1. Get sync state and channel
                 result = await session.execute(
                     select(ChannelSyncState)
@@ -71,7 +75,7 @@ def sync_channel_batch(
                 await session.flush()
 
                 # 3. Get Telethon client
-                connector = TelegramConnector(db_name="crm")
+                connector = TelegramConnector(db_name=db_name_actual)
                 client = await connector._get_client()
                 await client.connect()
 
@@ -92,20 +96,13 @@ def sync_channel_batch(
                 for msg in messages:
                     source_msg_id = f"{entity.id}_{msg.id}"
                     
-                    # Deduplication
-                    exists_stmt = select(func.count(Message.id)).where(Message.source_message_id == source_msg_id)
-                    exists = await session.execute(exists_stmt)
-                    if exists.scalar() > 0:
-                        continue
-
                     # Sender resolution
                     sender_entity = msg.sender or entity
                     contact = await connector._get_or_create_contact(session, sender_entity)
                     
-                    # Create message
-                    message = Message(
+                    # Use repository to save
+                    msg_obj = await repo.save_telegram_message(
                         contact_id=contact.id,
-                        source="telegram",
                         source_message_id=source_msg_id,
                         direction="outgoing" if msg.out else "incoming",
                         content=msg.text or "",
@@ -113,12 +110,8 @@ def sync_channel_batch(
                         group_name=getattr(entity, "title", "Unknown"),
                         timestamp=msg.date
                     )
-                    session.add(message)
-                    await session.flush()
-                    
-                    # Create association
-                    session.add(MessageContact(message_id=message.id, contact_id=contact.id, role="sender"))
-                    message_count += 1
+                    if msg_obj:
+                        message_count += 1
 
                 # 7. Update progress
                 sync_state.messages_synced += message_count
@@ -295,3 +288,18 @@ def reconcile_channel_sync(sync_state_id: str):
             logger.info("sync_reconcile_complete", sync_state=sync_state_id)
 
     asyncio.run(_reconcile())
+db_name or "crm"
+        async with get_session(db_name=db_name_actual) as session:
+            from sqlalchemy import select
+
+            sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
+            if not sync_state: return
+
+            # Placeholder for actual reconciliation logic
+            sync_state.phase = "complete"
+            sync_state.completed_at = datetime.now(timezone.utc)
+            await session.commit()
+
+            logger.info("sync_reconcile_complete", sync_state=sync_state_id)
+
+    return self.run_async(_reconcile())

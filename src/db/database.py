@@ -67,6 +67,10 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     db_name = request.headers.get("X-Database")
     async with get_session(db_name, use_pooling=True) as session:
         yield session
+ async DB session based on X-Database header."""
+    db_name = request.headers.get("X-Database")
+    async with get_session(db_name, use_pooling=True) as session:
+        yield session
 
 async def ensure_database_exists(db_name: str):
     """Ensure a database exists, creating it if necessary."""

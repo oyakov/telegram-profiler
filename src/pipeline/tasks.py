@@ -14,17 +14,12 @@ from src.db.models import Message
 
 logger = structlog.get_logger()
 
-def _run_async(coro):
-    """Run an async coroutine in the current event loop."""
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+from src.pipeline.base_task import AsyncDBTask
 
-@celery_app.task(name="src.pipeline.tasks.sync_telegram")
-def sync_telegram(db_name: str | None = None):
+logger = structlog.get_logger()
+
+@celery_app.task(name="src.pipeline.tasks.sync_telegram", base=AsyncDBTask)
+def sync_telegram(self, db_name: str | None = None):
     """Sync recent messages from all active Telegram channels."""
     from src.connectors.telegram_connector import TelegramConnector
     
@@ -36,10 +31,10 @@ def sync_telegram(db_name: str | None = None):
         
         result = await connector.sync()
         return asdict(result)
-    return _run_async(_do())
+    return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.deep_sync_telegram")
-def deep_sync_telegram(chat_ids: list[str | int], limit: int = 500, days: int = 90, db_name: str | None = None):
+@celery_app.task(name="src.pipeline.tasks.deep_sync_telegram", base=AsyncDBTask)
+def deep_sync_telegram(self, chat_ids: list[str | int], limit: int = 500, days: int = 90, db_name: str | None = None):
     """Deep sync historical messages from specific chats."""
     from src.connectors.telegram_connector import TelegramConnector
     
@@ -47,10 +42,10 @@ def deep_sync_telegram(chat_ids: list[str | int], limit: int = 500, days: int = 
         connector = TelegramConnector(db_name=db_name)
         result = await connector.deep_sync(chat_ids, limit=limit, days=days)
         return asdict(result)
-    return _run_async(_do())
+    return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.enrich_contact_task")
-def enrich_contact_task(contact_id: str, db_name: str | None = None):
+@celery_app.task(name="src.pipeline.tasks.enrich_contact_task", base=AsyncDBTask)
+def enrich_contact_task(self, contact_id: str, db_name: str | None = None):
     """Fetch full profile info for a contact."""
     from src.connectors.telegram_connector import TelegramConnector
     
@@ -58,7 +53,7 @@ def enrich_contact_task(contact_id: str, db_name: str | None = None):
         connector = TelegramConnector(db_name=db_name)
         success = await connector.enrich_contact(contact_id)
         return {"status": "success" if success else "failed"}
-    return _run_async(_do())
+    return self.run_async(_do())
 
 @celery_app.task(name="src.pipeline.tasks.import_excel")
 def import_excel(file_path: str, db_name: str | None = None):

@@ -450,6 +450,7 @@ class TelegramConnector(BaseConnector):
 
     async def sync_deep_history_chunk(self, telegram_id: str, entity_type: str, limit: int = 100) -> int:
         from src.db.models import TrackedChannel, Contact, Message, MessageContact
+        from src.db.repository import MessageRepository
         client = await self._get_client()
         async with client:
             if not await client.is_user_authorized(): return 0
@@ -458,6 +459,7 @@ class TelegramConnector(BaseConnector):
                 entity = await client.get_entity(ident)
             except Exception: return 0
             async with get_session(db_name=self.db_name) as session:
+                repo = MessageRepository(session)
                 if entity_type in ["channel", "group"]:
                     res = await session.execute(select(TrackedChannel).where(TrackedChannel.telegram_id == telegram_id))
                 else: res = await session.execute(select(Contact).where(Contact.telegram_id == telegram_id))
@@ -470,14 +472,21 @@ class TelegramConnector(BaseConnector):
                 new_oldest_id = max_id; new_oldest_date = target.oldest_message_date
                 async for msg in client.iter_messages(entity, **iter_kwargs):
                     source_msg_id = f"{entity.id}_{msg.id}"
-                    existing = await session.execute(select(Message).where(Message.source_message_id == source_msg_id))
-                    if not existing.scalar_one_or_none():
-                        contact = await self._get_or_create_contact(session, msg.sender or entity if not is_channel else entity, is_channel=is_channel)
-                        message = Message(contact_id=contact.id, source="telegram", source_message_id=source_msg_id,
-                                        direction="outgoing" if msg.out else "incoming", content=msg.text or "",
-                                        group_id=str(entity.id), group_name=getattr(entity, "title", "Unknown"), timestamp=msg.date)
-                        session.add(message); session.add(MessageContact(message=message, contact=contact, role="sender"))
+                    contact = await self._get_or_create_contact(session, msg.sender or entity if not is_channel else entity, is_channel=is_channel)
+                    
+                    msg_obj = await repo.save_telegram_message(
+                        contact_id=contact.id,
+                        source_message_id=source_msg_id,
+                        direction="outgoing" if msg.out else "incoming",
+                        content=msg.text or "",
+                        group_id=str(entity.id),
+                        group_name=getattr(entity, "title", "Unknown"),
+                        timestamp=msg.date
+                    )
+                    
+                    if msg_obj:
                         messages_synced += 1
+                        
                     if new_oldest_id == 0 or msg.id < new_oldest_id:
                         new_oldest_id = msg.id; new_oldest_date = msg.date
                 if new_oldest_id > 0 and (max_id == 0 or new_oldest_id < max_id):
