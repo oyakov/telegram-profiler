@@ -48,6 +48,8 @@ celery_app.conf.update(
         "src.pipeline.tasks.process_contact_batch": {"queue": "processing"},
         "src.pipeline.tasks.process_message_embeddings": {"queue": "processing"},
         "src.pipeline.tasks.reindex_embeddings": {"queue": "processing"},
+        "src.pipeline.tasks.generate_all_embeddings": {"queue": "processing"},
+        "src.pipeline.tasks.reindex_dirty_contacts": {"queue": "processing"},
         "src.pipeline.tasks.assign_orphaned_messages_to_projects": {"queue": "processing"},
     },
     beat_schedule={
