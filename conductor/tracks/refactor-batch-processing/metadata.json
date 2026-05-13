@@ -1,0 +1,7 @@
+{
+  "id": "refactor-batch-processing",
+  "title": "Refactor: Batch AI Processing & Repositories",
+  "status": "pending",
+  "priority": "high",
+  "description": "Implement batch embedding generation and expand the Repository pattern to Contacts and Extractions."
+}

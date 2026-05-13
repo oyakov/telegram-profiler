@@ -14,4 +14,6 @@
 | [refactor-infrastructure-models](./tracks/refactor-infrastructure-models/index.md) | Refactor: Modular Models & Async Infrastructure | `[x]` |
 | [refactor-multi-db-consistency](./tracks/refactor-multi-db-consistency/index.md) | Refactor: Multi-DB Consistency & Repository Pattern | `[x]` |
 | [refactor-cleanup-admin](./tracks/refactor-cleanup-admin/index.md) | Refactor: Cleanup & Admin Utilities | `[x]` |
+| [refactor-batch-processing](./tracks/refactor-batch-processing/index.md) | Refactor: Batch AI Processing & Repositories | `[ ]` |
+| [refactor-service-layer](./tracks/refactor-service-layer/index.md) | Refactor: Pipeline Service & Task Cleanup | `[ ]` |
 | [belgrade-discovery](./tracks/belgrade-discovery/index.md) | Belgrade Discovery & Ingestion | `[ ]` |

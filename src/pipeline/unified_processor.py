@@ -313,20 +313,17 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
     stats = {"processed": 0, "errors": 0, "tokens": 0}
     processed_ids = select(MessageEmbedding.message_id)
     query = (
-        select(Message.id, Message.content, Message.timestamp, Message.group_id, Message.group_name)
+        select(Message)
         .where(Message.id.not_in(processed_ids))
         .where(Message.content.isnot(None))
         .where(func.length(Message.content) > 10)
         .limit(batch_size)
     )
     result = await session.execute(query)
-    rows = result.all()
-    if not rows:
+    messages = result.scalars().all()
+    if not messages:
         logger.info("no_messages_to_embed")
         return stats
-
-    # Convert rows to objects for easier access
-    messages = [type('Msg', (), {'id': r[0], 'content': r[1], 'timestamp': r[2], 'group_id': r[3], 'group_name': r[4]})() for r in rows]
 
     # Setup Redis for metrics tracking
     try:
@@ -339,12 +336,77 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
         logger.warning("redis_tracking_unavailable", error=str(e))
         r = None
 
-    for msg in messages:
-        try:
-            text = msg.content.strip()
-            if not text: continue
-            vector = await generate_embedding(text)
-            emb = MessageEmbedding(message_id=msg.id, embedding=vector, chunk_text=text[:1000])
+    # Prepare texts for batch embedding
+    texts = [msg.content.strip() for msg in messages if msg.content and msg.content.strip()]
+    if not texts:
+        return stats
+
+    try:
+        vectors = await generate_embeddings_batch(texts)
+        
+        for msg, vector in zip(messages, vectors):
+            emb = MessageEmbedding(message_id=msg.id, embedding=vector, chunk_text=msg.content[:1000])
+            session.add(emb)
+            stats["processed"] += 1
+
+            # Estimate tokens
+            estimated_tokens = max(1, len(msg.content) // 4)
+            stats["tokens"] += estimated_tokens
+
+            if r:
+                try:
+                    r.incr(tokens_key, estimated_tokens)
+                    r.incr(requests_key, 1)
+                    r.expire(tokens_key, 3600)
+                    r.expire(requests_key, 3600)
+                except Exception: pass
+                
+    except Exception as e:
+        logger.error("batch_embedding_error", error=str(e))
+        stats["errors"] += len(messages)
+
+    logger.info("embeddings_before_commit", processed=stats["processed"], errors=stats["errors"], tokens=stats["tokens"])
+    try:
+        await session.commit()
+        logger.info("embeddings_commit_success", processed=stats["processed"], tokens=stats["tokens"])
+    except Exception as e:
+        logger.error("embeddings_commit_failed", error=str(e))
+        raise
+
+    return stats
+
+
+async def full_reindex(db_name: str | None = None) -> dict:
+    """Re-generate all embeddings."""
+    from sqlalchemy import delete
+    async with get_session(db_name=db_name) as session:
+        await session.execute(update(Contact).values(embedding_dirty=True, embedding=None))
+        await session.execute(delete(MessageEmbedding))
+    
+    stats = {"contacts_reindexed": 0, "errors": 0}
+    while True:
+        result = await maintenance_reindex_dirty(batch_size=50, db_name=db_name)
+        stats["contacts_reindexed"] += result["processed"]
+        stats["errors"] += result["errors"]
+        if result["processed"] == 0: break
+    return stats
+
+
+def _build_contact_profile(contact: Contact) -> str:
+    """Build a text profile for embedding generation."""
+    parts = []
+    if contact.first_name or contact.last_name:
+        parts.append(f"Name: {contact.first_name or ''} {contact.last_name or ''}".strip())
+    if contact.company: parts.append(f"Company: {contact.company}")
+    if contact.position: parts.append(f"Position: {contact.position}")
+    if contact.context: parts.append(f"Context: {contact.context}")
+    if contact.interests: parts.append(f"Interests: {', '.join(contact.interests)}")
+    if contact.skills: parts.append(f"Skills: {', '.join(contact.skills)}")
+    if contact.notes: parts.append(f"Notes: {contact.notes}")
+    if contact.facts_json:
+        for k, v in contact.facts_json.items(): parts.append(f"{k}: {v}")
+    return "\n".join(parts)
+(message_id=msg.id, embedding=vector, chunk_text=text[:1000])
             session.add(emb)
             stats["processed"] += 1
 

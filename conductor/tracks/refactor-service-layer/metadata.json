@@ -1,0 +1,7 @@
+{
+  "id": "refactor-service-layer",
+  "title": "Refactor: Pipeline Service & Task Cleanup",
+  "status": "pending",
+  "priority": "medium",
+  "description": "Extract business logic from Celery tasks into a dedicated PipelineService and clean up tasks.py."
+}
