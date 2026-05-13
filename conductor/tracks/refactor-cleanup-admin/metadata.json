@@ -1,0 +1,7 @@
+{
+  "id": "refactor-cleanup-admin",
+  "title": "Refactor: Cleanup & Admin Utilities",
+  "status": "completed",
+  "priority": "medium",
+  "description": "Separate administrative database utilities from core runtime logic."
+}

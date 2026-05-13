@@ -1,0 +1,7 @@
+{
+  "id": "refactor-multi-db-consistency",
+  "title": "Refactor: Multi-DB Consistency & Repository Pattern",
+  "status": "completed",
+  "priority": "high",
+  "description": "Eliminate hardcoded database names and unify message ingestion logic using the Repository pattern."
+}

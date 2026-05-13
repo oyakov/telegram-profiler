@@ -11,4 +11,7 @@
 | [russian-ui](./tracks/russian-ui/index.md) | Russian UI Support | `[x]` |
 | [lead-migration](#) | Unified Terminology Migration (Ad Buyer -> Lead) | `[x]` |
 | [refactor-v2-architecture](./tracks/refactor-v2-architecture/index.md) | Architecture V2: Decoupling & Providers | `[x]` |
+| [refactor-infrastructure-models](./tracks/refactor-infrastructure-models/index.md) | Refactor: Modular Models & Async Infrastructure | `[x]` |
+| [refactor-multi-db-consistency](./tracks/refactor-multi-db-consistency/index.md) | Refactor: Multi-DB Consistency & Repository Pattern | `[x]` |
+| [refactor-cleanup-admin](./tracks/refactor-cleanup-admin/index.md) | Refactor: Cleanup & Admin Utilities | `[x]` |
 | [belgrade-discovery](./tracks/belgrade-discovery/index.md) | Belgrade Discovery & Ingestion | `[ ]` |

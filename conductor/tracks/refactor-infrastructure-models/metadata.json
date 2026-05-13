@@ -1,0 +1,7 @@
+{
+  "id": "refactor-infrastructure-models",
+  "title": "Refactor: Modular Models & Async Infrastructure",
+  "status": "completed",
+  "priority": "high",
+  "description": "Modularize database models and standardize async task execution via a custom Celery base class."
+}
