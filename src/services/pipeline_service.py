@@ -74,3 +74,19 @@ class PipelineService:
             "after": after_count,
             "new": new_messages
         }
+
+    async def orchestrate_message_processing(self) -> dict:
+        """Trigger AI processing tasks."""
+        from src.pipeline.tasks import process_unified_messages, process_message_embeddings, reindex_dirty_contacts
+        
+        process_unified_messages.delay(limit=100, db_name=self.db_name)
+        process_message_embeddings.delay(batch_size=100, db_name=self.db_name)
+        reindex_dirty_contacts.delay(batch_size=50, db_name=self.db_name)
+        
+        return {"status": "dispatched", "db_name": self.db_name}
+
+    async def orchestrate_sync(self) -> dict:
+        """Trigger background sync."""
+        from src.pipeline.tasks import sync_telegram
+        sync_telegram.delay(db_name=self.db_name)
+        return {"status": "dispatched", "db_name": self.db_name}
