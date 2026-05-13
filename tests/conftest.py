@@ -10,16 +10,16 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy import text
 
-os.environ.setdefault("POSTGRES_HOST", "localhost")
-os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("POSTGRES_DB", "crm")
-os.environ.setdefault("POSTGRES_USER", "crm")
-os.environ.setdefault("POSTGRES_PASSWORD", "changeme")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("LLM_PROVIDER", "google")
-os.environ.setdefault("EMBED_PROVIDER", "google")
-os.environ.setdefault("GOOGLE_API_KEY", "test-key")
-os.environ.setdefault("WHISPER_URL", "http://localhost:9000")
+os.environ["POSTGRES_HOST"] = "localhost"
+os.environ["POSTGRES_PORT"] = "5432"
+os.environ["POSTGRES_DB"] = "crm"
+os.environ["POSTGRES_USER"] = "crm"
+os.environ["POSTGRES_PASSWORD"] = "changeme"
+os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+os.environ["LLM_PROVIDER"] = "google"
+os.environ["EMBED_PROVIDER"] = "google"
+os.environ["GOOGLE_API_KEY"] = "test-key"
+os.environ["WHISPER_URL"] = "http://localhost:9000"
 
 from src.core.config import get_settings
 

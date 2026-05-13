@@ -92,7 +92,7 @@ async def test_message_relationship(db_session):
 @pytest.mark.asyncio
 async def test_settings_crud(db_session):
     """Test settings service."""
-    from src.core.settings_service import SettingsService
+    from src.core.config import SettingsService
 
     svc = SettingsService(db_session)
 
