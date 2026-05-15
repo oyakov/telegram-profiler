@@ -24,8 +24,10 @@ logger = structlog.get_logger()
 class ExtractionService:
     """Service for running various LLM-based extractions on text."""
 
-    def __init__(self, model: str = "gpt-4o"):
-        self.model = model
+    def __init__(self):
+        from src.core.config import get_settings
+        settings = get_settings()
+        self.model = settings.google_llm_model if settings.llm_provider == "google" else settings.lmstudio_llm_model
 
     def _chunk_text(self, text: str, max_tokens: int = 3000, overlap_tokens: int = 200) -> list[str]:
         """Split text into overlapping chunks using tiktoken."""

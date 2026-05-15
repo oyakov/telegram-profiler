@@ -43,14 +43,12 @@ celery_app.conf.update(
         "src.pipeline.telegram_sync_tasks.reconcile_channel_sync": {"queue": "connectors"},
         "sync_orchestrator": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_sync": {"queue": "processing"},
-        "src.pipeline.tasks.orchestrate_multi_db_maintenance": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_message_processing": {"queue": "processing"},
         "src.pipeline.tasks.process_contact_batch": {"queue": "processing"},
         "src.pipeline.tasks.process_message_embeddings": {"queue": "processing"},
         "src.pipeline.tasks.reindex_embeddings": {"queue": "processing"},
         "src.pipeline.tasks.generate_all_embeddings": {"queue": "processing"},
         "src.pipeline.tasks.reindex_dirty_contacts": {"queue": "processing"},
-        "src.pipeline.tasks.assign_orphaned_messages_to_projects": {"queue": "processing"},
     },
     beat_schedule={
         "sync-orchestrator": {
@@ -67,17 +65,9 @@ celery_app.conf.update(
             "task": "src.pipeline.tasks.deep_track_orchestrator",
             "schedule": crontab(minute="*/15"),
         },
-        "process-dirty-contacts": {
-            "task": "src.pipeline.tasks.orchestrate_multi_db_maintenance",
-            "schedule": crontab(minute="*/5"),
-        },
         "process-messages": {
             "task": "src.pipeline.tasks.orchestrate_multi_db_message_processing",
-            "schedule": crontab(minute="*"), # Every minute
-        },
-        "assign-orphaned-messages": {
-            "task": "src.pipeline.tasks.assign_orphaned_messages_to_projects",
-            "schedule": crontab(minute="*/10"), # Every 10 minutes
+            "schedule": crontab(minute="*"),
         },
     },
 )

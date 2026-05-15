@@ -96,7 +96,11 @@ class TelegramConnector(BaseConnector):
             # Sync user profile on successful login
             await self._update_user_profile(client)
             # Trigger project setup and auto-sync in background
-            asyncio.create_task(self._post_login_setup())
+            task = asyncio.create_task(self._post_login_setup())
+            task.add_done_callback(
+                lambda t: logger.error("post_login_setup_failed", error=str(t.exception()))
+                if not t.cancelled() and t.exception() else None
+            )
             return {"status": "success"}
         except SessionPasswordNeededError:
             return {"status": "requires_2fa"}
@@ -126,7 +130,11 @@ class TelegramConnector(BaseConnector):
             # Sync user profile on successful login
             await self._update_user_profile(client)
             # Trigger project setup and auto-sync in background
-            asyncio.create_task(self._post_login_setup())
+            task = asyncio.create_task(self._post_login_setup())
+            task.add_done_callback(
+                lambda t: logger.error("post_login_setup_failed", error=str(t.exception()))
+                if not t.cancelled() and t.exception() else None
+            )
             return {"status": "success"}
         except Exception as e:
             logger.error("sign_in_2fa_error", error=str(e))
@@ -334,16 +342,22 @@ class TelegramConnector(BaseConnector):
 
         logger.info("_sync_chat_start", chat_id=entity.id, chat_title=getattr(entity, "title", "unknown"), limit=limit, last_id=last_id, ignore_last_id=ignore_last_id)
 
+        # Pre-load existing message IDs for this entity to avoid N+1 queries
+        existing_rows = await session.execute(
+            select(Message.source_message_id).where(Message.group_id == str(entity.id))
+        )
+        existing_ids: set[str] = {r[0] for r in existing_rows if r[0]}
+
         async for msg in client.iter_messages(entity, limit=limit, min_id=last_id or 0, offset_date=offset_date):
             if min_date and msg.date < min_date: break
-            existing = await session.execute(select(Message).where(Message.source_message_id == f"{entity.id}_{msg.id}"))
-            if existing.scalar_one_or_none(): continue
+            source_id = f"{entity.id}_{msg.id}"
+            if source_id in existing_ids: continue
             sender_entity = msg.sender or entity if not is_channel else entity
             contact = await self._get_or_create_contact(session, sender_entity, is_channel=is_channel)
             message = Message(
                 contact_id=contact.id,
                 source="telegram",
-                source_message_id=f"{entity.id}_{msg.id}",
+                source_message_id=source_id,
                 direction="outgoing" if msg.out else "incoming",
                 content=msg.text or "",
                 group_id=str(entity.id),
@@ -352,6 +366,7 @@ class TelegramConnector(BaseConnector):
             )
             session.add(message)
             session.add(MessageContact(message=message, contact=contact, role="sender"))
+            existing_ids.add(source_id)
             messages_synced += 1
 
             # Log progress every 100 messages
@@ -369,7 +384,14 @@ class TelegramConnector(BaseConnector):
         return messages_synced
 
     async def _get_or_create_contact(self, session, sender, is_channel=False) -> Contact:
-        if sender is None: return Contact(first_name="System", telegram_id="system", source="telegram")
+        if sender is None:
+            result = await session.execute(select(Contact).where(Contact.telegram_id == "system").limit(1))
+            contact = result.scalar_one_or_none()
+            if not contact:
+                contact = Contact(first_name="System", telegram_id="system", source="telegram")
+                session.add(contact)
+                await session.flush()
+            return contact
         tg_id = str(sender.id)
         result = await session.execute(select(Contact).where(Contact.telegram_id == tg_id).limit(1))
         contact = result.scalar_one_or_none()

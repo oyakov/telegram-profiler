@@ -31,80 +31,79 @@ class MessageProcessor:
         self.settings_svc = SettingsService(session)
 
     async def process_batch(self, messages: list[Message], force_lead_detection: bool = False) -> dict:
-        """Process a batch of messages concurrently. 
-        Detects contacts, leads, and generates embeddings.
+        """Process a batch of messages concurrently.
+        LLM extraction runs in parallel; DB writes are serialised to avoid race conditions.
         """
         stats = {"processed": 0, "contacts_found": 0, "leads_found": 0, "errors": 0}
-        
-        # Use semaphore to limit concurrent LLM calls
+
         semaphore = asyncio.Semaphore(5)
+        lead_threshold = await self.settings_svc.get("extraction_lead_confidence_threshold", 0.6)
 
-        async def _process_single(msg: Message):
+        # Phase 1: run all LLM extractions concurrently (no DB writes here)
+        async def _extract_single(msg: Message):
             async with semaphore:
+                if not msg.content or len(msg.content.strip()) < 10:
+                    return None
                 try:
-                    if not msg.content or len(msg.content.strip()) < 10:
-                        return
-
-                    # 1. Run Extraction
                     is_channel = msg.raw_json.get("is_channel", False) if msg.raw_json else False
-                    
-                    # Extract contacts
                     contacts, _ = await self.ai_service.extract(
-                        msg.content, 
-                        extraction_type="contacts", 
+                        msg.content,
+                        extraction_type="contacts",
                         source_context=f"Group: {msg.group_name or 'Unknown'}"
                     )
-                    
-                    # Extract leads (commercial intent)
                     leads = []
                     if is_channel or force_lead_detection:
                         leads, _ = await self.ai_service.extract(
-                            msg.content, 
+                            msg.content,
                             extraction_type="leads",
                             source_context=f"Group: {msg.group_name or 'Unknown'}"
                         )
-                    
-                    # 3. Sync contacts found (if any)
-                    for c_data in contacts:
-                        contact = await self._sync_contact(c_data)
-                        if contact:
-                            stats["contacts_found"] += 1
-                            if not is_channel:
-                                msg.contact_id = contact.id
-
-                    # 4. Sync leads found
-                    lead_threshold = await self.settings_svc.get("extraction_lead_confidence_threshold", 0.6)
-                    for l_data in leads:
-                        if l_data.confidence < lead_threshold:
-                            continue
-                        contact = await self._sync_lead(l_data, msg)
-                        if contact:
-                            stats["leads_found"] += 1
-
-                    # 5. Log extraction
-                    log_entry = ExtractionLog(
-                        source_type="unified_message",
-                        source_id=str(msg.id),
-                        model_used=self.ai_service.model,
-                        extracted_data={
-                            "contacts": [c.model_dump() for c in contacts],
-                            "leads": [l.model_dump() for l in leads]
-                        },
-                        success=True
-                    )
-                    self.session.add(log_entry)
-                    stats["processed"] += 1
-
+                    return msg, contacts, leads, is_channel
                 except Exception as e:
-                    logger.error("unified_message_processing_error", message_id=str(msg.id), error=str(e))
+                    logger.error("unified_message_extraction_error", message_id=str(msg.id), error=str(e))
                     stats["errors"] += 1
+                    return None
 
-        # Run all messages in parallel
-        await asyncio.gather(*[_process_single(msg) for msg in messages])
-        
-        # Flush all changes at once
+        extraction_results = await asyncio.gather(*[_extract_single(msg) for msg in messages])
+
+        # Phase 2: apply DB writes sequentially to eliminate concurrent JSONB mutations
+        for result in extraction_results:
+            if result is None:
+                continue
+            msg, contacts, leads, is_channel = result
+            try:
+                for c_data in contacts:
+                    contact = await self._sync_contact(c_data)
+                    if contact:
+                        stats["contacts_found"] += 1
+                        if not is_channel:
+                            msg.contact_id = contact.id
+
+                for l_data in leads:
+                    if l_data.confidence < lead_threshold:
+                        continue
+                    contact = await self._sync_lead(l_data, msg)
+                    if contact:
+                        stats["leads_found"] += 1
+
+                log_entry = ExtractionLog(
+                    source_type="unified_message",
+                    source_id=str(msg.id),
+                    model_used=self.ai_service.model,
+                    extracted_data={
+                        "contacts": [c.model_dump() for c in contacts],
+                        "leads": [l.model_dump() for l in leads]
+                    },
+                    success=True
+                )
+                self.session.add(log_entry)
+                stats["processed"] += 1
+
+            except Exception as e:
+                logger.error("unified_message_processing_error", message_id=str(msg.id), error=str(e))
+                stats["errors"] += 1
+
         await self.session.flush()
-
         return stats
 
     async def _sync_contact(self, extraction: ContactExtraction) -> Optional[Contact]:
@@ -198,11 +197,18 @@ async def process_unprocessed_messages(limit: int = 100, session: Optional[Async
 
 
 async def _process_messages_impl(session: AsyncSession, limit: int) -> dict:
-    processed_ids = select(ExtractionLog.source_id).where(ExtractionLog.source_type == "unified_message")
     import sqlalchemy as sa
+    already_processed = (
+        select(ExtractionLog.id)
+        .where(ExtractionLog.source_type == "unified_message")
+        .where(ExtractionLog.source_id == Message.id.cast(sa.String))
+        .correlate(Message)
+        .exists()
+    )
     query = (
         select(Message)
-        .where(Message.id.cast(sa.String).not_in(processed_ids))
+        .where(~already_processed)
+        .where(Message.content.isnot(None))
         .order_by(Message.timestamp.desc())
         .limit(limit)
     )
@@ -309,7 +315,7 @@ async def maintenance_index_messages(batch_size: int = 100, session: Optional[As
 
 async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: int) -> dict:
     from datetime import datetime, timezone
-    import redis as redis_lib
+    import redis.asyncio as aioredis
     from src.core.config import get_settings
 
     stats = {"processed": 0, "errors": 0, "tokens": 0}
@@ -327,10 +333,12 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
         logger.info("no_messages_to_embed")
         return stats
 
-    # Setup Redis for metrics tracking
+    # Setup async Redis for metrics tracking
+    r = None
+    tokens_key = requests_key = None
     try:
         settings = get_settings()
-        r = redis_lib.from_url(settings.redis_url, socket_timeout=2)
+        r = aioredis.from_url(settings.redis_url, socket_timeout=2)
         minute_key = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         tokens_key = f"embeddings:tokens:{minute_key}"
         requests_key = f"embeddings:requests:{minute_key}"
@@ -341,31 +349,36 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
     # Prepare texts for batch embedding
     texts = [msg.content.strip() for msg in messages if msg.content and msg.content.strip()]
     if not texts:
+        if r:
+            await r.aclose()
         return stats
 
     try:
         vectors = await generate_embeddings_batch(texts)
-        
+
         for msg, vector in zip(messages, vectors):
             emb = MessageEmbedding(message_id=msg.id, embedding=vector, chunk_text=msg.content[:1000])
             session.add(emb)
             stats["processed"] += 1
 
-            # Estimate tokens
             estimated_tokens = max(1, len(msg.content) // 4)
             stats["tokens"] += estimated_tokens
 
             if r:
                 try:
-                    r.incr(tokens_key, estimated_tokens)
-                    r.incr(requests_key, 1)
-                    r.expire(tokens_key, 3600)
-                    r.expire(requests_key, 3600)
-                except Exception: pass
-                
+                    await r.incr(tokens_key, estimated_tokens)
+                    await r.incr(requests_key, 1)
+                    await r.expire(tokens_key, 3600)
+                    await r.expire(requests_key, 3600)
+                except Exception:
+                    pass
+
     except Exception as e:
         logger.error("batch_embedding_error", error=str(e))
         stats["errors"] += len(messages)
+    finally:
+        if r:
+            await r.aclose()
 
     logger.info("embeddings_before_commit", processed=stats["processed"], errors=stats["errors"], tokens=stats["tokens"])
     try:

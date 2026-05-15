@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import os
+import re
+import threading
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -15,42 +16,44 @@ from src.core.config import get_settings
 
 settings = get_settings()
 _engines: dict[str, AsyncEngine] = {}
+_engines_lock = threading.Lock()
+
+_DB_NAME_RE = re.compile(r'^[a-z][a-z0-9_]{0,62}$')
 
 def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.asyncio.AsyncEngine:
     db_name = db_name or settings.postgres_db
     cache_key = f"{db_name}_{'pooled' if use_pooling else 'direct'}"
-    
-    if cache_key not in _engines:
-        # Dispose oldest engine if cache exceeds limit (e.g., 50 engines)
-        if len(_engines) >= 50:
-            oldest_key = next(iter(_engines))
-            old_engine = _engines.pop(oldest_key)
-            import asyncio
-            try:
-                asyncio.get_running_loop().create_task(old_engine.dispose())
-            except RuntimeError:
-                pass  # No event loop (Celery sync context); GC will clean up
-            
-        url = (
-            f"postgresql+asyncpg://"
-            f"{settings.postgres_user}:{settings.postgres_password}"
-            f"@{settings.postgres_host}:{settings.postgres_port}"
-            f"/{db_name}"
-        )
-        
-        engine_kwargs = {
-            "echo": settings.log_level.upper() == "DEBUG",
-        }
-        
-        if not use_pooling:
-            engine_kwargs["poolclass"] = NullPool
-        else:
-            # Standard pooling for web app
-            engine_kwargs["pool_size"] = 20
-            engine_kwargs["max_overflow"] = 10
-            
-        _engines[cache_key] = create_async_engine(url, **engine_kwargs)
-        
+
+    with _engines_lock:
+        if cache_key not in _engines:
+            if len(_engines) >= 50:
+                oldest_key = next(iter(_engines))
+                old_engine = _engines.pop(oldest_key)
+                import asyncio
+                try:
+                    asyncio.get_running_loop().create_task(old_engine.dispose())
+                except RuntimeError:
+                    pass  # No event loop (Celery sync context); GC will clean up
+
+            url = (
+                f"postgresql+asyncpg://"
+                f"{settings.postgres_user}:{settings.postgres_password}"
+                f"@{settings.postgres_host}:{settings.postgres_port}"
+                f"/{db_name}"
+            )
+
+            engine_kwargs = {
+                "echo": settings.log_level.upper() == "DEBUG",
+            }
+
+            if not use_pooling:
+                engine_kwargs["poolclass"] = NullPool
+            else:
+                engine_kwargs["pool_size"] = 20
+                engine_kwargs["max_overflow"] = 10
+
+            _engines[cache_key] = create_async_engine(url, **engine_kwargs)
+
     return _engines[cache_key]
 
 @asynccontextmanager
@@ -80,6 +83,8 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
 
 async def ensure_database_exists(db_name: str):
     """Ensure a database exists, creating it if necessary."""
+    if not _DB_NAME_RE.match(db_name):
+        raise ValueError(f"Invalid database name: {db_name!r}")
     user = settings.postgres_user
     password = settings.postgres_password
     host = settings.postgres_host

@@ -28,7 +28,8 @@ async def import_excel_file(file: UploadFile = File(...)):
     upload_dir = Path("/app/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+    safe_name = Path(file.filename).name if file.filename else "upload"
+    filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
     with open(filepath, "wb") as f:
@@ -46,7 +47,8 @@ async def import_audio_file(file: UploadFile = File(...), contact_id: Optional[s
     upload_dir = Path("/app/uploads/voice")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+    safe_name = Path(file.filename).name if file.filename else "upload"
+    filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
     with open(filepath, "wb") as f:

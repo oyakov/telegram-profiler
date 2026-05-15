@@ -129,7 +129,7 @@ async def delete_contact(contact_id: str, db: AsyncSession = Depends(get_db)):
     if not contact:
         raise HTTPException(404, "Contact not found")
     await db.delete(contact)
-    await db.commit()
+    await db.flush()
 
 @router.post("/add-to-tracked")
 async def add_to_tracked(
@@ -149,5 +149,5 @@ async def add_to_tracked(
         contact.is_lead = True
         contact.is_tracked = True
 
-    await db.commit()
+    await db.flush()
     return {"status": "success", "count": len(contacts)}

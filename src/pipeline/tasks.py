@@ -9,6 +9,7 @@ from uuid import UUID
 from src.pipeline.celery_app import celery_app
 from src.services.pipeline_service import PipelineService
 from src.pipeline.base_task import AsyncDBTask
+from src.core.config import get_settings
 
 logger = structlog.get_logger()
 
@@ -52,31 +53,10 @@ def sync_telegram_contacts(self, db_name: str | None = None):
 
 @celery_app.task(name="src.pipeline.tasks.process_unified_messages", queue="processing", base=AsyncDBTask)
 def process_unified_messages(self, limit: int = 100, db_name: str | None = None):
-    """Process new messages through AI pipeline."""
-    from src.pipeline.unified_processor import MessageProcessor
-    from src.db.database import get_session
-    from sqlalchemy import select
-    from src.db.models import Message
-
+    """Process only new (unprocessed) messages through AI pipeline."""
+    from src.pipeline.unified_processor import process_unprocessed_messages
     async def _do():
-        async with get_session(db_name=db_name) as session:
-            query = (
-                select(Message)
-                .where(Message.content.isnot(None))
-                .order_by(Message.timestamp.desc())
-                .limit(limit)
-            )
-            result = await session.execute(query)
-            messages = result.scalars().all()
-
-            if not messages:
-                logger.info("no_messages_to_process", db_name=db_name)
-                return {"processed": 0, "contacts_found": 0, "leads_found": 0, "errors": 0}
-
-            processor = MessageProcessor(session)
-            stats = await processor.process_batch(messages)
-            await session.commit()
-            return stats
+        return await process_unprocessed_messages(limit=limit, db_name=db_name)
     return self.run_async(_do())
 
 @celery_app.task(name="src.pipeline.tasks.process_message_embeddings", queue="processing", base=AsyncDBTask)

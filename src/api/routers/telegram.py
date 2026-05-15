@@ -1,17 +1,15 @@
 import structlog
-import os
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from sqlalchemy import select
 from telethon.tl.types import Channel
 
-from src.core.config import get_settings
+from src.core.config import get_settings, SettingsService
 from src.api.schemas import (
-    TelegramSendCode, TelegramVerifyCode, TelegramTwoFA, 
+    TelegramSendCode, TelegramVerifyCode, TelegramTwoFA,
     DeepSyncRequest, DiscoveryJoinRequest
 )
 from src.connectors.telegram_connector import TelegramConnector
 from src.db.database import get_session
-from src.core.config import SettingsService
 from src.db.models import TrackedFolder, TrackedChannel
 from src.pipeline.tasks import deep_sync_telegram
 
@@ -39,10 +37,9 @@ async def telegram_join(req: DiscoveryJoinRequest, request: Request):
     
     # 2. Add to TrackedChannels automatically
     async with get_session(db_name=db_name) as session:
-        # Get target folder
-        folder_name = os.getenv("TARGET_FOLDER", "BG Intel")
-        if db_name == "crm_crypto": folder_name = "Crypto"
-        
+        svc = SettingsService(session)
+        folder_name = await svc.get("default_folder_name", "Imported")
+
         res = await session.execute(select(TrackedFolder).where(TrackedFolder.name == folder_name))
         folder = res.scalar_one_or_none()
         if not folder:
@@ -273,13 +270,11 @@ async def telegram_reset_session(request: Request):
     return {"status": "success", "message": "Session cleaned. Please try again."}
 
 @router.post("/auth/sync")
-async def telegram_manual_sync(request: Request):
+async def telegram_manual_sync(request: Request, background_tasks: BackgroundTasks):
     """Manually trigger the folder and contact sync."""
     db_name = request.headers.get("X-Database")
     connector = TelegramConnector(db_name=db_name)
-    # We run it in background to avoid timeout
-    import asyncio
-    asyncio.create_task(connector.auto_sync_on_login(force=True))
+    background_tasks.add_task(connector.auto_sync_on_login, force=True)
     return {"status": "dispatched", "message": "Manual sync started in background"}
 
 @router.post("/contacts/sync")

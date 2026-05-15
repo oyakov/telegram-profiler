@@ -7,6 +7,10 @@ from .base import Base
 
 class Contact(Base):
     __tablename__ = "contacts"
+    __table_args__ = (
+        Index("ix_contact_telegram_id", "telegram_id"),
+        Index("ix_contact_embedding_dirty", "embedding_dirty"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     first_name = Column(String(255))
@@ -60,6 +64,10 @@ class Contact(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        UniqueConstraint("source_message_id", name="uq_message_source_id"),
+        Index("ix_message_group_id", "group_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     folder_id = Column(UUID(as_uuid=True), ForeignKey("tracked_folders.id", ondelete="SET NULL"), nullable=True)
@@ -99,6 +107,9 @@ class MessageContact(Base):
 
 class MessageEmbedding(Base):
     __tablename__ = "message_embeddings"
+    __table_args__ = (
+        Index("ix_msg_embedding_message_id", "message_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     message_id = Column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
