@@ -27,6 +27,13 @@ setup_logging()
 app_settings = get_settings()
 logger = structlog.get_logger()
 
+if not app_settings.api_key:
+    logger.warning(
+        "api_key_not_configured",
+        msg="API_KEY is not set — all endpoints are publicly accessible. "
+            "Set API_KEY in your .env for production.",
+    )
+
 # --- Rate limiter (shared across routers via app.state) ---
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 

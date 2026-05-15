@@ -20,29 +20,19 @@ logger = structlog.get_logger()
 # Paths that never require a key (health probe, docs)
 _EXEMPT = frozenset({"/", "/docs", "/redoc", "/openapi.json", "/metrics"})
 
-_api_key_warned = False
-
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """Require a static Bearer token on all non-exempt paths."""
 
     async def dispatch(self, request: Request, call_next):
-        global _api_key_warned
         settings = get_settings()
 
-        # Auth disabled — warn once per worker process, then pass through
-        if not settings.api_key:
-            if not _api_key_warned:
-                _api_key_warned = True
-                logger.warning(
-                    "api_key_not_configured",
-                    msg="API_KEY is not set — all endpoints are publicly accessible. "
-                        "Set API_KEY in your .env for production.",
-                )
+        # Exempt paths bypass auth entirely (including the no-key warning)
+        if request.url.path in _EXEMPT:
             return await call_next(request)
 
-        # Exempt paths
-        if request.url.path in _EXEMPT:
+        # Auth disabled — pass through with a single startup warning (logged at app init)
+        if not settings.api_key:
             return await call_next(request)
 
         # Validate Bearer token
