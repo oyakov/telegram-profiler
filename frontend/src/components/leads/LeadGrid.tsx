@@ -1,7 +1,7 @@
 import React from 'react';
 import { TrendingUp } from 'lucide-react';
 import LeadCard from './LeadCard';
-import { LeadSearchResult } from '../../hooks/useLeads';
+import type { LeadSearchResult } from '../../hooks/useLeads';
 
 interface Props {
   searchResults: LeadSearchResult | null;

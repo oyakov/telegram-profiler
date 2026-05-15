@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, X, TrendingUp, Save, Loader } from 'lucide-react';
-import { LeadProfile } from '../../hooks/useLeads';
+import type { LeadProfile } from '../../hooks/useLeads';
 
 interface Props {
   profile: LeadProfile;

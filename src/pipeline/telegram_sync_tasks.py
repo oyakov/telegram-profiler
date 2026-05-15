@@ -13,6 +13,7 @@ from telethon.errors import FloodWaitError
 from src.db.database import get_session
 from src.pipeline.base_task import AsyncDBTask
 from src.db.repository import MessageRepository
+from src.connectors.telegram_connector import TelegramConnector
 
 logger = structlog.get_logger()
 

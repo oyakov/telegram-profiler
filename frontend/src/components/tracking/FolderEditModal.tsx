@@ -9,7 +9,7 @@ interface FolderEditModalProps {
   onSubmit: (e: React.FormEvent) => void;
 }
 
-const FolderEditModal: React.FC<FolderEditModalProps> = ({ folder, formData, setFormData, onClose, onSubmit }) => {
+const FolderEditModal: React.FC<FolderEditModalProps> = ({ folder: _folder, formData, setFormData, onClose, onSubmit }) => {
   return (
     <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
       <div className="modal-content serpent-card" style={{ width: '450px', padding: '24px' }}>

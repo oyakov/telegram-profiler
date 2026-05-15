@@ -1,6 +1,6 @@
 import React from 'react';
 import { History, TrashIcon } from 'lucide-react';
-import { LeadSearch } from '../../hooks/useLeads';
+import type { LeadSearch } from '../../hooks/useLeads';
 
 interface Props {
   savedSearches: LeadSearch[];

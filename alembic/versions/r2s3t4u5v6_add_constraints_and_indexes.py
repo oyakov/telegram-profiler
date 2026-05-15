@@ -16,16 +16,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Remove duplicate source_message_id rows before adding the unique constraint.
-    # Keep the row with the smallest created_at for each duplicate group.
+    # Uses a window function (ROW_NUMBER) which is index-friendly and efficient on large tables.
     op.execute("""
-        DELETE FROM messages
-        WHERE id NOT IN (
-            SELECT DISTINCT ON (source_message_id) id
+        WITH ranked AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY source_message_id
+                       ORDER BY created_at
+                   ) AS rn
             FROM messages
             WHERE source_message_id IS NOT NULL
-            ORDER BY source_message_id, created_at
         )
-        AND source_message_id IS NOT NULL
+        DELETE FROM messages
+        WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
     """)
 
     op.create_unique_constraint(

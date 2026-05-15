@@ -75,7 +75,7 @@ def reindex_dirty_contacts(self, batch_size: int = 50, db_name: str | None = Non
         return await maintenance_reindex_dirty(batch_size=batch_size, db_name=db_name)
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_message_processing", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_message_processing", bind=True, base=AsyncDBTask)
 def orchestrate_multi_db_message_processing(self):
     """Trigger AI processing for all databases."""
     from src.db.database import list_tenant_databases
@@ -87,7 +87,7 @@ def orchestrate_multi_db_message_processing(self):
         return {"status": "dispatched", "databases": databases}
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_sync", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_sync", bind=True, base=AsyncDBTask)
 def orchestrate_multi_db_sync(self):
     """Trigger background sync for all databases."""
     from src.db.database import list_tenant_databases
@@ -111,7 +111,7 @@ def deep_track_chunk(self, telegram_id: str, entity_type: str, limit: int = 100,
         return {"status": "success", "synced": count}
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.deep_track_orchestrator", queue="connectors", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.deep_track_orchestrator", bind=True, queue="connectors", base=AsyncDBTask)
 def deep_track_orchestrator(self):
     """Find all active tracking targets and queue chunk tasks for them across all databases."""
     from src.db.models import TrackedChannel
