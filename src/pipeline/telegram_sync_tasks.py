@@ -47,7 +47,8 @@ def sync_channel_batch(
         from uuid import UUID
 
         batch_log = None
-        db_name_actual = db_name or "crm"
+        from src.core.config import get_settings
+        db_name_actual = db_name or get_settings().postgres_db
         async with get_session(db_name=db_name_actual) as session:
             try:
                 repo = MessageRepository(session)
@@ -150,7 +151,7 @@ def sync_channel_batch(
 
 
 @shared_task(queue="connectors")
-def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) -> dict:
+def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None, db_name: Optional[str] = None) -> dict:
     """
     Scan channel metadata to determine:
     - Earliest message date
@@ -164,7 +165,9 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
         from telethon.tl.functions.messages import GetHistoryRequest
 
         # Get Telethon client
-        connector = TelegramConnector(db_name="crm")
+        from src.core.config import get_settings
+        db_name_actual = db_name or get_settings().postgres_db
+        connector = TelegramConnector(db_name=db_name_actual)
         client = await connector._get_client()
 
         try:
@@ -228,7 +231,7 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
             if sync_state_id:
                 try:
                     from sqlalchemy import update
-                    async with get_session(db_name="crm") as session:
+                    async with get_session(db_name=db_name_actual) as session:
                         await session.execute(
                             update(ChannelSyncState).where(ChannelSyncState.id == UUID(sync_state_id)).values(
                                 phase="syncing",
@@ -248,7 +251,7 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
         except Exception as e:
             logger.error("metadata_scan_error", channel_id=channel_id, error=str(e))
             if sync_state_id:
-                async with get_session(db_name="crm") as session:
+                async with get_session(db_name=db_name_actual) as session:
                     sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
                     if sync_state:
                         sync_state.phase = "error"
@@ -265,7 +268,7 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None) 
 
 
 @shared_task(queue="connectors")
-def reconcile_channel_sync(sync_state_id: str):
+def reconcile_channel_sync(sync_state_id: str, db_name: Optional[str] = None):
     """
     Post-sync reconciliation:
     1. Detect gaps in message sequence
@@ -274,13 +277,16 @@ def reconcile_channel_sync(sync_state_id: str):
     """
 
     async def _reconcile():
-        async with get_session(db_name="crm") as session:
+        from src.core.config import get_settings
+        db_name_actual = db_name or get_settings().postgres_db
+        async with get_session(db_name=db_name_actual) as session:
             from sqlalchemy import select
+            from src.db.models import ChannelSyncState
 
             sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
             if not sync_state: return
 
-            # Placeholder for actual reconciliation logic
+            # TODO: detect message ID gaps and re-queue missing ranges
             sync_state.phase = "complete"
             sync_state.completed_at = datetime.now(timezone.utc)
             await session.commit()
@@ -288,18 +294,3 @@ def reconcile_channel_sync(sync_state_id: str):
             logger.info("sync_reconcile_complete", sync_state=sync_state_id)
 
     asyncio.run(_reconcile())
-db_name or "crm"
-        async with get_session(db_name=db_name_actual) as session:
-            from sqlalchemy import select
-
-            sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
-            if not sync_state: return
-
-            # Placeholder for actual reconciliation logic
-            sync_state.phase = "complete"
-            sync_state.completed_at = datetime.now(timezone.utc)
-            await session.commit()
-
-            logger.info("sync_reconcile_complete", sync_state=sync_state_id)
-
-    return self.run_async(_reconcile())

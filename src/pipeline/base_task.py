@@ -28,7 +28,8 @@ class AsyncDBTask(Task):
             # Assume db_name might be a positional arg if it's a string and looks like a DB name
             # This is a heuristic, better to use kwargs
             pass
-        return db_name or "crm"
+        from src.core.config import get_settings
+        return db_name or get_settings().postgres_db
 
     async def session_scope(self, db_name=None):
         """Shortcut for getting an async session."""

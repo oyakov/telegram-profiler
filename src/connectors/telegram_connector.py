@@ -35,9 +35,9 @@ class TelegramConnector(BaseConnector):
         self.settings = get_settings()
         self.whisper = WhisperClient()
         self.enable_transcription = enable_transcription
-        self.db_name = db_name or os.getenv('POSTGRES_DB', 'crm')
+        self.db_name = db_name or self.settings.postgres_db
         self.project_id = project_id
-        self.pg_session = PostgresTelegramSession(session_name=self.settings.telegram_session_name)
+        self.pg_session = PostgresTelegramSession(session_name=self.settings.telegram_session_name, db_name=self.db_name)
 
     async def _get_client(self):
         """Create a new Telethon client instance with PostgreSQL-backed session."""
@@ -146,7 +146,7 @@ class TelegramConnector(BaseConnector):
             if not me:
                 return
 
-            async with get_session(db_name="crm") as session:
+            async with get_session(db_name=self.db_name) as session:
                 res = await session.execute(
                     select(UserProfile).where(UserProfile.telegram_id == str(me.id))
                 )
@@ -513,4 +513,27 @@ class TelegramConnector(BaseConnector):
             async with client:
                 return (await client.get_me()) is not None
         except Exception:
+            return False
+
+    async def send_message(self, recipient_id: str, text: str) -> bool:
+        """Send a message to a recipient by Telegram ID or username."""
+        client = await self._get_client()
+        try:
+            async with client:
+                if not await client.is_user_authorized():
+                    logger.error("telegram_not_authorized", db_name=self.db_name)
+                    return False
+                
+                # Resolve entity
+                try:
+                    ident = int(recipient_id) if recipient_id.lstrip('-').isdigit() else recipient_id
+                    entity = await client.get_entity(ident)
+                except Exception as e:
+                    logger.error("telegram_resolve_entity_failed", recipient=recipient_id, error=str(e))
+                    return False
+                
+                await client.send_message(entity, text)
+                return True
+        except Exception as e:
+            logger.error("telegram_send_message_failed", recipient=recipient_id, error=str(e))
             return False

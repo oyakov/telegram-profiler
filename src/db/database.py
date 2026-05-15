@@ -16,11 +16,21 @@ from src.core.config import get_settings
 settings = get_settings()
 _engines: dict[str, AsyncEngine] = {}
 
-def get_engine(db_name: str | None = None, use_pooling: bool = True) -> AsyncEngine:
+def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.asyncio.AsyncEngine:
     db_name = db_name or settings.postgres_db
     cache_key = f"{db_name}_{'pooled' if use_pooling else 'direct'}"
     
     if cache_key not in _engines:
+        # Dispose oldest engine if cache exceeds limit (e.g., 50 engines)
+        if len(_engines) >= 50:
+            oldest_key = next(iter(_engines))
+            old_engine = _engines.pop(oldest_key)
+            import asyncio
+            try:
+                asyncio.get_running_loop().create_task(old_engine.dispose())
+            except RuntimeError:
+                pass  # No event loop (Celery sync context); GC will clean up
+            
         url = (
             f"postgresql+asyncpg://"
             f"{settings.postgres_user}:{settings.postgres_password}"
@@ -67,10 +77,6 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     db_name = request.headers.get("X-Database")
     async with get_session(db_name, use_pooling=True) as session:
         yield session
- async DB session based on X-Database header."""
-    db_name = request.headers.get("X-Database")
-    async with get_session(db_name, use_pooling=True) as session:
-        yield session
 
 async def ensure_database_exists(db_name: str):
     """Ensure a database exists, creating it if necessary."""
@@ -108,3 +114,28 @@ async def init_database_schema(db_name: str):
         await conn.run_sync(Base.metadata.create_all)
     await engine.dispose()
     print(f"Initialized schema for database: {db_name}")
+
+async def list_tenant_databases() -> list[str]:
+    """Scan Postgres for all databases starting with 'crm_' or return configured default."""
+    user = settings.postgres_user
+    password = settings.postgres_password
+    host = settings.postgres_host
+    port = settings.postgres_port
+    
+    # Connect to system 'postgres' DB
+    conn = await asyncpg.connect(
+        user=user, 
+        password=password, 
+        host=host, 
+        port=port, 
+        database="postgres"
+    )
+    try:
+        rows = await conn.fetch("SELECT datname FROM pg_database WHERE datname LIKE 'crm%'")
+        dbs = [row['datname'] for row in rows]
+        # Always include the default configured DB if not found
+        if settings.postgres_db not in dbs:
+            dbs.append(settings.postgres_db)
+        return sorted(list(set(dbs)))
+    finally:
+        await conn.close()

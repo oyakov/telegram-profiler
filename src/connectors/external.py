@@ -30,7 +30,8 @@ class ExternalConnector(BaseConnector):
     ):
         self.connector_type = connector_type
         self.name = connector_type
-        self.db_name = db_name or os.getenv("POSTGRES_DB", "crm")
+        from src.core.config import get_settings
+        self.db_name = db_name or get_settings().postgres_db
         self.project_id = project_id
 
     async def sync(self, **kwargs) -> SyncResult:

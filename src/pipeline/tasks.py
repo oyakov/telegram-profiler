@@ -98,8 +98,9 @@ def reindex_dirty_contacts(self, batch_size: int = 50, db_name: str | None = Non
 @celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_message_processing", base=AsyncDBTask)
 def orchestrate_multi_db_message_processing(self):
     """Trigger AI processing for all databases."""
+    from src.db.database import list_tenant_databases
     async def _do():
-        databases = ["crm"]
+        databases = await list_tenant_databases()
         for db_name in databases:
             service = PipelineService(db_name=db_name)
             await service.orchestrate_message_processing()
@@ -109,8 +110,9 @@ def orchestrate_multi_db_message_processing(self):
 @celery_app.task(name="src.pipeline.tasks.orchestrate_multi_db_sync", base=AsyncDBTask)
 def orchestrate_multi_db_sync(self):
     """Trigger background sync for all databases."""
+    from src.db.database import list_tenant_databases
     async def _do():
-        databases = ["crm"]
+        databases = await list_tenant_databases()
         for db_name in databases:
             service = PipelineService(db_name=db_name)
             await service.orchestrate_sync()
@@ -131,17 +133,21 @@ def deep_track_chunk(self, telegram_id: str, entity_type: str, limit: int = 100,
 
 @celery_app.task(name="src.pipeline.tasks.deep_track_orchestrator", queue="connectors", base=AsyncDBTask)
 def deep_track_orchestrator(self):
-    """Find all active tracking targets and queue chunk tasks for them."""
+    """Find all active tracking targets and queue chunk tasks for them across all databases."""
     from src.db.models import TrackedChannel
-    from src.db.database import get_session
+    from src.db.database import get_session, list_tenant_databases
     from sqlalchemy import select
     async def _do():
-        async with get_session(db_name="crm") as session:
-            res = await session.execute(select(TrackedChannel).where(TrackedChannel.is_active == True))
-            channels = res.scalars().all()
-            for ch in channels:
-                deep_track_chunk.delay(ch.telegram_id, ch.entity_type, db_name="crm")
-            return {"queued": len(channels)}
+        databases = await list_tenant_databases()
+        total_queued = 0
+        for db_name in databases:
+            async with get_session(db_name=db_name) as session:
+                res = await session.execute(select(TrackedChannel).where(TrackedChannel.is_active == True))
+                channels = res.scalars().all()
+                for ch in channels:
+                    deep_track_chunk.delay(ch.telegram_id, ch.entity_type, db_name=db_name)
+                total_queued += len(channels)
+        return {"status": "success", "total_queued": total_queued, "databases": len(databases)}
     return self.run_async(_do())
 
 @celery_app.task(name="src.pipeline.tasks.load_complete_history", queue="connectors", base=AsyncDBTask)
@@ -164,10 +170,12 @@ def generate_all_embeddings(self, batch_size: int = 500, db_name: str | None = N
 def orchestrate_massive_sync():
     """Trigger a full system re-sync and re-index."""
     from celery import chain
+    settings = get_settings()
+    db_name = settings.postgres_db
     task_chain = chain(
-        load_complete_history.s(db_name="crm"),
-        generate_all_embeddings.s(batch_size=500, db_name="crm"),
-        reindex_dirty_contacts.s(batch_size=50, db_name="crm")
+        load_complete_history.s(db_name=db_name),
+        generate_all_embeddings.s(batch_size=500, db_name=db_name),
+        reindex_dirty_contacts.s(batch_size=50, db_name=db_name)
     )
     result = task_chain.apply_async()
     return {"status": "dispatched", "chain_id": str(result.id)}
@@ -175,12 +183,11 @@ def orchestrate_massive_sync():
 @celery_app.task(name="src.pipeline.tasks.send_campaign", queue="connectors", base=AsyncDBTask)
 def send_campaign(self, campaign_id: str, db_name: str | None = None):
     """Send campaign messages to all contacts."""
-    from src.db.models import Campaign
     from src.db.database import get_session
+    from src.services.campaign_service import CampaignService
+    from uuid import UUID
     async def _do():
-        async with get_session(db_name=db_name or "crm") as session:
-            campaign = await session.get(Campaign, UUID(campaign_id))
-            if not campaign: return {"status": "error", "reason": "campaign not found"}
-            # Placeholder for actual implementation
-            return {"status": "completed"}
+        async with get_session(db_name=db_name) as session:
+            service = CampaignService(session, db_name=db_name)
+            return await service.run_campaign(UUID(campaign_id))
     return self.run_async(_do())

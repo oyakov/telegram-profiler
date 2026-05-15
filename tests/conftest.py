@@ -1,56 +1,52 @@
-"""Pytest fixtures for Networking Brain tests."""
-
-from __future__ import annotations
-
-import os
-from typing import AsyncGenerator
-
+import asyncio
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy_utils import database_exists, create_database, drop_database
+import sqlalchemy as sa
 
-os.environ["POSTGRES_HOST"] = "localhost"
-os.environ["POSTGRES_PORT"] = "5432"
-os.environ["POSTGRES_DB"] = "crm"
-os.environ["POSTGRES_USER"] = "crm"
-os.environ["POSTGRES_PASSWORD"] = "changeme"
-os.environ["REDIS_URL"] = "redis://localhost:6379/0"
-os.environ["LLM_PROVIDER"] = "google"
-os.environ["EMBED_PROVIDER"] = "google"
-os.environ["GOOGLE_API_KEY"] = "test-key"
-os.environ["WHISPER_URL"] = "http://localhost:9000"
-
+from src.db.database import get_engine, list_tenant_databases
+from src.db.models import Base
 from src.core.config import get_settings
 
-DATABASE_URL = get_settings().database_url
+settings = get_settings()
+TEST_DB_NAME = "crm_test"
+DB_HOST = "localhost" if settings.postgres_host == "postgres" else settings.postgres_host
 
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
-@pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Per-test database session with cleanup.
-
-    Uses a direct AsyncSession against the live DB.
-    Cleans up test-created rows by filtering on source='__test__' or
-    known test keys after each test.
-    """
-    engine = create_async_engine(DATABASE_URL, echo=False)
-    session = AsyncSession(engine, expire_on_commit=False)
-
-    yield session
-
-    # Cleanup: delete any test data (contacts with source='__test__' or specific test emails)
-    await session.rollback()
-    await session.close()
+@pytest_asyncio.fixture(scope="session")
+async def setup_test_db():
+    """Create a test database and initialize schema."""
+    sync_url = f"postgresql://{settings.postgres_user}:{settings.postgres_password}@{DB_HOST}:{settings.postgres_port}/{TEST_DB_NAME}"
+    
+    if not database_exists(sync_url):
+        create_database(sync_url)
+    
+    # Initialize schema
+    engine = create_async_engine(
+        f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}@{DB_HOST}:{settings.postgres_port}/{TEST_DB_NAME}"
+    )
+    
+    async with engine.begin() as conn:
+        await conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.run_sync(Base.metadata.create_all)
+    
+    yield engine
+    
     await engine.dispose()
-
+    # Optional: drop_database(sync_url)
 
 @pytest_asyncio.fixture
-async def api_client():
-    """FastAPI test client."""
-    from httpx import ASGITransport, AsyncClient
-    from src.api.main import app
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+async def db_session(setup_test_db):
+    """Provide an async session for a test."""
+    engine = setup_test_db
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    
+    async with session_factory() as session:
+        yield session
+        await session.rollback() # Always rollback to keep tests isolated

@@ -20,8 +20,10 @@ class PostgresTelegramSession:
     StringSession is lightweight and doesn't require SQLite.
     """
 
-    def __init__(self, session_name: str = "telethon_session"):
+    def __init__(self, session_name: str = "telethon_session", db_name: str | None = None):
+        from src.core.config import get_settings
         self.session_name = session_name
+        self.db_name = db_name or get_settings().postgres_db
         self._cache: Optional[StringSession] = None
         self._lock = asyncio.Lock()
 
@@ -32,7 +34,7 @@ class PostgresTelegramSession:
             if self._cache is not None:
                 return self._cache
 
-            async with get_session(db_name="crm") as db_session:
+            async with get_session(db_name=self.db_name) as db_session:
                 # Query PostgreSQL
                 result = await db_session.execute(
                     select(TelegramSession).where(
@@ -68,7 +70,7 @@ class PostgresTelegramSession:
             async with self._lock:
                 session_str = self._cache.save()
 
-                async with get_session(db_name="crm") as db_session:
+                async with get_session(db_name=self.db_name) as db_session:
                     # Find or create session record
                     result = await db_session.execute(
                         select(TelegramSession).where(
@@ -110,7 +112,7 @@ class PostgresTelegramSession:
         """Delete session from PostgreSQL and clear cache."""
         try:
             async with self._lock:
-                async with get_session(db_name="crm") as db_session:
+                async with get_session(db_name=self.db_name) as db_session:
                     result = await db_session.execute(
                         select(TelegramSession).where(
                             TelegramSession.session_name == self.session_name

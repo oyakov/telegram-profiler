@@ -106,7 +106,7 @@ async def telegram_auth_status(request: Request):
         profile_data = None
         
         if is_auth:
-            async with get_session(db_name="crm") as session:
+            async with get_session(db_name=db_name) as session:
                 res = await session.execute(select(UserProfile).limit(1))
                 profile = res.scalar_one_or_none()
                 if profile:
@@ -128,7 +128,8 @@ async def telegram_auth_status(request: Request):
 async def telegram_get_user(request: Request):
     """Get the currently logged-in Telegram user profile."""
     from src.db.models import UserProfile
-    async with get_session(db_name="crm") as session:
+    db_name = request.headers.get("X-Database")
+    async with get_session(db_name=db_name) as session:
         res = await session.execute(select(UserProfile).limit(1))
         profile = res.scalar_one_or_none()
         if not profile:
@@ -285,7 +286,8 @@ async def telegram_manual_sync(request: Request):
 async def telegram_sync_contacts(request: Request):
     """Queue async task to sync contacts from Telegram account."""
     from src.pipeline.tasks import sync_telegram_contacts
-    db_name = request.headers.get("X-Database") or "crm"
+    from src.core.config import get_settings
+    db_name = request.headers.get("X-Database") or get_settings().postgres_db
 
     task = sync_telegram_contacts.delay(db_name=db_name)
     return {

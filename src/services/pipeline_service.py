@@ -14,7 +14,8 @@ class PipelineService:
     """Service for high-level pipeline orchestration."""
 
     def __init__(self, db_name: str | None = None):
-        self.db_name = db_name or "crm"
+        from src.core.config import get_settings
+        self.db_name = db_name or get_settings().postgres_db
 
     async def run_recent_sync(self) -> dict:
         """Sync recent messages from all active Telegram channels."""

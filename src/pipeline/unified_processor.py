@@ -12,10 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.services import ExtractionService
 from src.ai.schemas import ContactExtraction, LeadExtraction
-from src.ai.analysis import find_duplicate, merge_contact_fields, generate_embedding
+from src.ai.analysis import generate_embedding, generate_embeddings_batch
 from src.core.config import SettingsService
 from src.db.database import get_session
 from src.db.models import Contact, ExtractionLog, Message, MessageEmbedding, MessageContact
+from src.db.repository import ContactRepository
 
 logger = structlog.get_logger()
 
@@ -26,6 +27,8 @@ class MessageProcessor:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.ai_service = ExtractionService()
+        self.contact_repo = ContactRepository(session)
+        self.settings_svc = SettingsService(session)
 
     async def process_batch(self, messages: list[Message], force_lead_detection: bool = False) -> dict:
         """Process a batch of messages concurrently. 
@@ -70,8 +73,9 @@ class MessageProcessor:
                                 msg.contact_id = contact.id
 
                     # 4. Sync leads found
+                    lead_threshold = await self.settings_svc.get("extraction_lead_confidence_threshold", 0.6)
                     for l_data in leads:
-                        if l_data.confidence < 0.6:
+                        if l_data.confidence < lead_threshold:
                             continue
                         contact = await self._sync_lead(l_data, msg)
                         if contact:
@@ -105,8 +109,7 @@ class MessageProcessor:
 
     async def _sync_contact(self, extraction: ContactExtraction) -> Optional[Contact]:
         """Deduplicate and sync contact data."""
-        contact = await find_duplicate(
-            self.session,
+        contact = await self.contact_repo.find_duplicate(
             email=extraction.email,
             phone=extraction.phone,
             telegram_username=extraction.telegram_username,
@@ -124,14 +127,13 @@ class MessageProcessor:
             self.session.add(contact)
             await self.session.flush()
         else:
-            merge_contact_fields(contact, extraction.model_dump(exclude_none=True))
+            self.contact_repo.merge_contact_fields(contact, extraction.model_dump(exclude_none=True))
         
         return contact
 
     async def _sync_lead(self, lead_data: LeadExtraction, original_msg: Message) -> Optional[Contact]:
         """Update or create a contact based on detected lead data."""
-        contact = await find_duplicate(
-            self.session,
+        contact = await self.contact_repo.find_duplicate(
             telegram_username=lead_data.username,
             first_name=lead_data.display_name
         )
@@ -371,68 +373,6 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
         logger.info("embeddings_commit_success", processed=stats["processed"], tokens=stats["tokens"])
     except Exception as e:
         logger.error("embeddings_commit_failed", error=str(e))
-        raise
-
-    return stats
-
-
-async def full_reindex(db_name: str | None = None) -> dict:
-    """Re-generate all embeddings."""
-    from sqlalchemy import delete
-    async with get_session(db_name=db_name) as session:
-        await session.execute(update(Contact).values(embedding_dirty=True, embedding=None))
-        await session.execute(delete(MessageEmbedding))
-    
-    stats = {"contacts_reindexed": 0, "errors": 0}
-    while True:
-        result = await maintenance_reindex_dirty(batch_size=50, db_name=db_name)
-        stats["contacts_reindexed"] += result["processed"]
-        stats["errors"] += result["errors"]
-        if result["processed"] == 0: break
-    return stats
-
-
-def _build_contact_profile(contact: Contact) -> str:
-    """Build a text profile for embedding generation."""
-    parts = []
-    if contact.first_name or contact.last_name:
-        parts.append(f"Name: {contact.first_name or ''} {contact.last_name or ''}".strip())
-    if contact.company: parts.append(f"Company: {contact.company}")
-    if contact.position: parts.append(f"Position: {contact.position}")
-    if contact.context: parts.append(f"Context: {contact.context}")
-    if contact.interests: parts.append(f"Interests: {', '.join(contact.interests)}")
-    if contact.skills: parts.append(f"Skills: {', '.join(contact.skills)}")
-    if contact.notes: parts.append(f"Notes: {contact.notes}")
-    if contact.facts_json:
-        for k, v in contact.facts_json.items(): parts.append(f"{k}: {v}")
-    return "\n".join(parts)
-(message_id=msg.id, embedding=vector, chunk_text=text[:1000])
-            session.add(emb)
-            stats["processed"] += 1
-
-            # Estimate tokens (approximate: ~4 chars per token)
-            estimated_tokens = max(1, len(text) // 4)
-            stats["tokens"] += estimated_tokens
-
-            # Track metrics in Redis
-            if r:
-                try:
-                    r.incr(tokens_key, estimated_tokens)
-                    r.incr(requests_key, 1)
-                    r.expire(tokens_key, 3600)  # Expire after 1 hour
-                    r.expire(requests_key, 3600)
-                except Exception as track_err:
-                    logger.debug("redis_metric_tracking_error", error=str(track_err))
-        except Exception as e:
-            logger.error("message_embedding_error", message_id=str(msg.id), error=str(e))
-            stats["errors"] += 1
-
-    logger.info("embeddings_before_commit", processed=stats["processed"], errors=stats["errors"], tokens=stats["tokens"])
-    try:
-        await session.commit()
-        logger.info("embeddings_commit_success", processed=stats["processed"], tokens=stats["tokens"])
-    except Exception as e:
-        logger.error("embeddings_commit_failed", error=str(e), processed=stats["processed"])
         raise
 
     return stats

@@ -35,8 +35,9 @@ MAX_RETRIES_PER_CYCLE = 10
 class SyncOrchestrator:
     """Manages automated sync workflow."""
 
-    def __init__(self):
-        self.db_name = "crm"
+    def __init__(self, db_name: str | None = None):
+        from src.core.config import get_settings
+        self.db_name = db_name or get_settings().postgres_db
         self.connector = TelegramConnector(db_name=self.db_name)
 
     async def run(self):
@@ -217,6 +218,7 @@ class SyncOrchestrator:
                     logger.info("queuing_metadata_scan", channel=channel.title)
                     scan_channel_metadata.apply_async(
                         args=[channel.telegram_id, str(sync_state.id)],
+                        kwargs={"db_name": self.db_name},
                         task_id=f"metadata_{sync_state.id}",
                         queue="connectors",
                         priority=9  # HIGH priority - metadata must complete before batches
@@ -297,7 +299,8 @@ class SyncOrchestrator:
                                 "sync_state_id": str(sync_state.id),
                                 "batch_number": batch_num,
                                 "offset": offset,
-                                "limit": BATCH_SIZE
+                                "limit": BATCH_SIZE,
+                                "db_name": self.db_name
                             },
                             countdown=batch_num * 1,  # 1s delay per batch
                             queue="connectors",
@@ -402,7 +405,8 @@ class SyncOrchestrator:
                             "sync_state_id": str(sync_state.id),
                             "batch_number": batch.batch_number,
                             "offset": batch.requested_offset,
-                            "limit": batch.messages_in_batch or BATCH_SIZE
+                            "limit": batch.messages_in_batch or BATCH_SIZE,
+                            "db_name": self.db_name
                         },
                         countdown=60 * batch.retry_attempt  # 1m, 2m, 3m delays
                     )
@@ -469,7 +473,8 @@ class SyncOrchestrator:
 
                     # Queue reconciliation task
                     reconcile_channel_sync.apply_async(
-                        args=[str(sync_state.id)]
+                        args=[str(sync_state.id)],
+                        kwargs={"db_name": self.db_name}
                     )
 
             logger.info("reconcile_completed_syncs_complete")
