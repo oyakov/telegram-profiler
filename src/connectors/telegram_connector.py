@@ -518,14 +518,50 @@ class TelegramConnector(BaseConnector):
                 await session.commit()
                 return messages_synced
 
+    async def enrich_contact(self, contact_id: str) -> bool:
+        """Fetch fresh Telegram profile data for a known contact and persist it."""
+        from telethon.tl.functions.users import GetFullUserRequest
+        from src.db.models import Contact as ContactModel
+        try:
+            async with get_session(db_name=self.db_name) as session:
+                res = await session.execute(select(ContactModel).where(ContactModel.id == contact_id))
+                contact = res.scalar_one_or_none()
+                if not contact:
+                    return False
+
+                client = await self._get_client()
+                async with client:
+                    entity = await client.get_entity(int(contact.telegram_id))
+                    contact.first_name = entity.first_name or contact.first_name
+                    contact.telegram_username = getattr(entity, "username", None) or contact.telegram_username
+                    contact.is_verified = getattr(entity, "verified", False)
+
+                    try:
+                        full = await client(GetFullUserRequest(id=entity))
+                        contact.bio = full.full_user.about
+                    except Exception:
+                        pass
+
+                    photo_path = await self._download_photo(client, entity)
+                    if photo_path:
+                        contact.profile_photo_path = photo_path
+
+                    await session.commit()
+            return True
+        except Exception as e:
+            logger.error("enrich_contact_failed", contact_id=contact_id, error=str(e))
+            return False
+
     async def get_status(self) -> dict[str, Any]:
         """Implement abstract method from BaseConnector."""
         async with get_session(db_name=self.db_name) as session:
             state = await self._get_sync_state(session)
+            meta = state.metadata_json or {}
             return {
                 "connector": self.name,
                 "status": state.status,
                 "last_sync_at": state.last_sync_at.isoformat() if state.last_sync_at else None,
+                "messages_fetched": meta.get("messages_fetched", 0),
             }
 
     async def test_connection(self) -> bool:

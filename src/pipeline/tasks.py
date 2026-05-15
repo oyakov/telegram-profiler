@@ -13,7 +13,7 @@ from src.core.config import get_settings
 
 logger = structlog.get_logger()
 
-@celery_app.task(name="src.pipeline.tasks.sync_telegram", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.sync_telegram", bind=True, base=AsyncDBTask)
 def sync_telegram(self, db_name: str | None = None):
     """Sync recent messages from all active Telegram channels."""
     async def _do():
@@ -21,7 +21,7 @@ def sync_telegram(self, db_name: str | None = None):
         return await service.run_recent_sync()
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.deep_sync_telegram", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.deep_sync_telegram", bind=True, base=AsyncDBTask)
 def deep_sync_telegram(self, chat_ids: list[str | int], limit: int = 500, days: int = 90, db_name: str | None = None):
     """Deep sync historical messages from specific chats."""
     async def _do():
@@ -29,7 +29,7 @@ def deep_sync_telegram(self, chat_ids: list[str | int], limit: int = 500, days: 
         return await service.run_historical_sync(chat_ids, limit=limit, days=days)
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.enrich_contact_task", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.enrich_contact_task", bind=True, base=AsyncDBTask)
 def enrich_contact_task(self, contact_id: str, db_name: str | None = None):
     """Fetch full profile info for a contact."""
     from src.connectors.telegram_connector import TelegramConnector
@@ -39,7 +39,7 @@ def enrich_contact_task(self, contact_id: str, db_name: str | None = None):
         return {"status": "success" if success else "failed"}
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.sync_telegram_contacts", queue="connectors", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.sync_telegram_contacts", bind=True, queue="connectors", base=AsyncDBTask)
 def sync_telegram_contacts(self, db_name: str | None = None):
     """Sync personal contacts from Telegram account."""
     from src.connectors.telegram_connector import TelegramConnector
@@ -51,7 +51,7 @@ def sync_telegram_contacts(self, db_name: str | None = None):
         return result
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.process_unified_messages", queue="processing", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.process_unified_messages", bind=True, queue="processing", base=AsyncDBTask)
 def process_unified_messages(self, limit: int = 100, db_name: str | None = None):
     """Process only new (unprocessed) messages through AI pipeline."""
     from src.pipeline.unified_processor import process_unprocessed_messages
@@ -59,7 +59,7 @@ def process_unified_messages(self, limit: int = 100, db_name: str | None = None)
         return await process_unprocessed_messages(limit=limit, db_name=db_name)
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.process_message_embeddings", queue="processing", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.process_message_embeddings", bind=True, queue="processing", base=AsyncDBTask)
 def process_message_embeddings(self, batch_size: int = 100, db_name: str | None = None):
     """Generate vector embeddings for new messages."""
     from src.pipeline.unified_processor import maintenance_index_messages
@@ -67,7 +67,7 @@ def process_message_embeddings(self, batch_size: int = 100, db_name: str | None 
         return await maintenance_index_messages(batch_size=batch_size, db_name=db_name)
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.reindex_dirty_contacts", queue="processing", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.reindex_dirty_contacts", bind=True, queue="processing", base=AsyncDBTask)
 def reindex_dirty_contacts(self, batch_size: int = 50, db_name: str | None = None):
     """Re-index contacts that have changed."""
     from src.pipeline.unified_processor import maintenance_reindex_dirty
@@ -99,7 +99,7 @@ def orchestrate_multi_db_sync(self):
         return {"status": "dispatched", "databases": databases}
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.deep_track_chunk", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.deep_track_chunk", bind=True, base=AsyncDBTask)
 def deep_track_chunk(self, telegram_id: str, entity_type: str, limit: int = 100, db_name: str | None = None):
     """Fetch a chunk of historical messages for a tracked target."""
     from src.connectors.telegram_connector import TelegramConnector
@@ -130,7 +130,7 @@ def deep_track_orchestrator(self):
         return {"status": "success", "total_queued": total_queued, "databases": len(databases)}
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.load_complete_history", queue="connectors", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.load_complete_history", bind=True, queue="connectors", base=AsyncDBTask)
 def load_complete_history(self, db_name: str | None = None):
     """Load COMPLETE message history from all channels."""
     async def _do():
@@ -138,7 +138,7 @@ def load_complete_history(self, db_name: str | None = None):
         return await service.run_complete_history_load()
     return self.run_async(_do())
 
-@celery_app.task(name="src.pipeline.tasks.generate_all_embeddings", queue="processing", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.generate_all_embeddings", bind=True, queue="processing", base=AsyncDBTask)
 def generate_all_embeddings(self, batch_size: int = 500, db_name: str | None = None):
     """Generate embeddings for all messages without embeddings."""
     from src.pipeline.unified_processor import maintenance_index_messages
@@ -160,7 +160,7 @@ def orchestrate_massive_sync():
     result = task_chain.apply_async()
     return {"status": "dispatched", "chain_id": str(result.id)}
 
-@celery_app.task(name="src.pipeline.tasks.send_campaign", queue="connectors", base=AsyncDBTask)
+@celery_app.task(name="src.pipeline.tasks.send_campaign", bind=True, queue="connectors", base=AsyncDBTask)
 def send_campaign(self, campaign_id: str, db_name: str | None = None):
     """Send campaign messages to all contacts."""
     from src.db.database import get_session

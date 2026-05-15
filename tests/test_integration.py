@@ -10,6 +10,11 @@ async def test_parallel_message_processing_concurrency():
     """Verify that MessageProcessor.process_batch runs tasks concurrently."""
     # 1. Setup mocks
     mock_session = AsyncMock()
+    # Make session.execute().scalar_one_or_none() return None so SettingsService.get returns defaults
+    mock_exec_result = MagicMock()
+    mock_exec_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_exec_result
+
     # Mocking the AI service to have a slight delay to prove concurrency
     mock_ai_service = AsyncMock()
     

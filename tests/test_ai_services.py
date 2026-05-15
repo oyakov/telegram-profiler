@@ -1,20 +1,24 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-# Mock tiktoken BEFORE it is used by any code
-mock_tiktoken = MagicMock()
-mock_enc = MagicMock()
-mock_enc.encode.return_value = [0] * 2000
-mock_enc.decode.return_value = "chunk"
-mock_tiktoken.encoding_for_model.return_value = mock_enc
-mock_tiktoken.get_encoding.return_value = mock_enc
+from src.ai.services import ExtractionService, ContactExtraction, LeadExtraction, ChannelDeepAnalysis
 
-with patch("src.ai.services.tiktoken", mock_tiktoken):
-    from src.ai.services import ExtractionService, ContactExtraction, LeadExtraction, ChannelDeepAnalysis
 
 @pytest.fixture
 def extraction_service():
-    return ExtractionService(model="gpt-4o")
+    mock_enc = MagicMock()
+    mock_enc.encode.return_value = list(range(500))  # 500 tokens
+    mock_enc.decode.return_value = "chunk"
+    mock_tiktoken = MagicMock()
+    mock_tiktoken.encoding_for_model.return_value = mock_enc
+    mock_tiktoken.get_encoding.return_value = mock_enc
+
+    with patch("src.core.config.get_settings") as mock_cfg, \
+         patch("src.ai.services.tiktoken", mock_tiktoken):
+        mock_cfg.return_value.llm_provider = "google"
+        mock_cfg.return_value.google_llm_model = "gemini-2.5-flash"
+        mock_cfg.return_value.lmstudio_llm_model = "qwen3.5-3b"
+        yield ExtractionService()
 
 def test_chunk_text(extraction_service):
     text = "Hello world " * 1000 

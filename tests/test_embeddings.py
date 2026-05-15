@@ -12,12 +12,12 @@ async def test_generate_embedding():
     mock_response = AsyncMock()
     mock_response.data = [AsyncMock(embedding=[0.1] * 1024)]
 
-    with patch("src.ai.embeddings._get_embed_client") as mock_client:
+    with patch("src.ai.analysis._get_embed_client") as mock_client:
         client = AsyncMock()
         client.embeddings.create = AsyncMock(return_value=mock_response)
         mock_client.return_value = (client, "test-model", 1024)
 
-        from src.ai.embeddings import generate_embedding
+        from src.ai.analysis import generate_embedding
         result = await generate_embedding("test text")
 
         assert len(result) == 1024
@@ -31,12 +31,12 @@ async def test_generate_embeddings_batch():
     mock_response = AsyncMock()
     mock_response.data = mock_data
 
-    with patch("src.ai.embeddings._get_embed_client") as mock_client:
+    with patch("src.ai.analysis._get_embed_client") as mock_client:
         client = AsyncMock()
         client.embeddings.create = AsyncMock(return_value=mock_response)
         mock_client.return_value = (client, "test-model", 1024)
 
-        from src.ai.embeddings import generate_embeddings_batch
+        from src.ai.analysis import generate_embeddings_batch
         result = await generate_embeddings_batch(["text1", "text2", "text3"])
 
         assert len(result) == 3
@@ -44,7 +44,7 @@ async def test_generate_embeddings_batch():
 
 def test_cosine_similarity():
     """Test cosine similarity computation."""
-    from src.ai.embeddings import cosine_similarity
+    from src.ai.analysis import cosine_similarity
 
     # Identical vectors → 1.0
     a = [1.0, 0.0, 0.0]

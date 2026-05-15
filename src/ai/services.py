@@ -40,12 +40,14 @@ class ExtractionService:
         if len(tokens) <= max_tokens:
             return [text]
 
+        # Ensure overlap < step so start always advances
+        step = max(max_tokens - overlap_tokens, 1)
         chunks = []
         start = 0
         while start < len(tokens):
             end = start + max_tokens
             chunks.append(enc.decode(tokens[start:end]))
-            start = end - overlap_tokens
+            start += step
         return chunks
 
     async def extract(
