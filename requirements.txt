@@ -38,3 +38,6 @@ pytest-cov==6.1.1
 
 # Observability
 prometheus-fastapi-instrumentator==7.0.0
+
+# Security
+slowapi==0.1.9

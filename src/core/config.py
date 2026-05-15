@@ -58,6 +58,8 @@ class AppSettings(BaseSettings):
     app_port: int = Field(8000)
     log_level: str = Field("INFO")
     secret_key: str = Field("change-me-to-a-random-string")
+    # API key for protecting all endpoints — set in production, leave empty for local dev
+    api_key: str = Field("", description="Bearer token required on all /api/* requests. Empty = disabled (local dev only).")
 
     # --- Observability ---
     enable_metrics: bool = Field(True)
