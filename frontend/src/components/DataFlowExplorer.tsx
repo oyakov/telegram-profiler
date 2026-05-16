@@ -27,7 +27,7 @@ const Pacman: React.FC<{ size?: number; active?: boolean }> = ({ size = 16, acti
 };
 
 const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: string) => Promise<void> }> = ({ node, level, onSync }) => {
-  const [isOpen, setIsOpen] = useState(level < 1);
+  const [isOpen, setIsOpen] = useState(false);
   const [isLocalSyncing, setIsLocalSyncing] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
 
