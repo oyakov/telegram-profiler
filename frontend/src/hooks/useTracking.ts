@@ -7,7 +7,7 @@ const fetcher = (url: string) => api.get(url).then(res => res.data);
 export const useTracking = () => {
   const { data, mutate } = useSWR('/api/tracking/channels', fetcher);
   const { data: foldersData, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
-  const { data: syncData, mutate: mutateSyncStatus } = useSWR('/api/connectors/status', fetcher, { refreshInterval: 2000 });
+  const { data: syncData, mutate: mutateSyncStatus } = useSWR('/api/connectors/sync/status', fetcher, { refreshInterval: 2000 });
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
