@@ -27,28 +27,6 @@
 - [Style Guide: Python](./04-development/style-guides/python.md)
 - [Требования к тестам](./04-development/testing.md)
 
-### [5. Функциональность](./05-features/)
-- [Идентификация leads](./05-features/lead-identification.md)
-- [Telegram Auth](./05-features/telegram-auth.md)
-- [Отслеживание контактов](./05-features/contact-tracking.md)
-- [Семантический поиск](./05-features/semantic-search.md)
-- [Тематическое открытие](./05-features/thematic-discovery.md)
-- [Рыночная разведка](./05-features/market-intelligence.md)
-
-### [6. Управление проектом](./06-project-management/)
-- [Трэки разработки](./06-project-management/tracks.md)
-- [Планы реализации](./06-project-management/plans.md)
-
-### [7. Паттерны и навыки](./07-patterns/)
-- [Host-Side Processing](./07-patterns/host-side-processing.md)
-- [Thematic Discovery Pattern](./07-patterns/thematic-discovery.md)
-
-### [8. Продвинутые темы](./08-advanced/)
-- [Lead Scoring Algorithm](./08-advanced/lead-scoring.md)
-- [Управление embeddings](./08-advanced/embeddings.md)
-- [Сессии Telegram](./08-advanced/sessions.md)
-- [Обработка данных](./08-advanced/data-processing.md)
-
 ---
 
 ## 🚀 Быстрые ссылки
@@ -72,4 +50,4 @@
 
 ---
 
-**Последнее обновление**: 2026-05-08
+**Последнее обновление**: 2026-05-16

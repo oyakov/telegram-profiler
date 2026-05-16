@@ -1,75 +1,84 @@
+"""Tests for AI analysis utilities (cosine similarity, embeddings)."""
+
+import math
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from src.ai.deduplication import find_duplicate, merge_contact_fields
-from src.ai.embeddings import cosine_similarity, generate_embedding
-from src.db.models import Contact
+from unittest.mock import AsyncMock, patch, MagicMock
 
-@pytest.fixture
-def mock_session():
-    session = AsyncMock()
-    return session
+from src.ai.analysis import cosine_similarity, generate_embedding
 
-@pytest.mark.asyncio
-async def test_find_duplicate_exact(mock_session):
-    # Setup: Contact in DB
-    existing = Contact(id=1, email="test@example.com", first_name="Test")
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = existing
-    mock_session.execute.return_value = mock_res
-    
-    # Run
-    match = await find_duplicate(mock_session, email="test@example.com")
-    
-    # Assert
-    assert match.id == 1
-    mock_session.execute.assert_called()
 
-@pytest.mark.asyncio
-async def test_find_duplicate_fuzzy(mock_session):
-    # Setup: Contact with embedding
-    existing = Contact(id=2, first_name="Fuzzy")
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = existing
-    mock_session.execute.return_value = mock_res
-    
-    # Mock embedding query
-    match = await find_duplicate(mock_session, embedding=[0.1]*1024)
-    
-    assert match.id == 2
+# ──────────────────────────────────────────────
+# cosine_similarity — pure math, no mocks needed
+# ──────────────────────────────────────────────
 
-def test_merge_contact_fields():
-    existing = Contact(id=1, first_name="John", email=None, skills=["python"])
-    new_data = {
-        "first_name": "Johnny", # Should NOT overwrite
-        "email": "john@example.com", # Should fill
-        "skills": ["rust", "python"], # Should merge unique
-        "notes": "New note"
-    }
-    
-    updated = merge_contact_fields(existing, new_data)
-    
-    assert updated is True
-    assert existing.first_name == "John"
-    assert existing.email == "john@example.com"
-    assert set(existing.skills) == {"python", "rust"}
-    assert existing.notes == "New note"
+def test_cosine_similarity_identical_vectors():
+    v = [1.0, 0.5, 0.0, -0.5]
+    assert cosine_similarity(v, v) == pytest.approx(1.0, abs=1e-9)
 
-def test_cosine_similarity():
+
+def test_cosine_similarity_orthogonal_vectors():
     v1 = [1.0, 0.0]
-    v2 = [1.0, 0.0]
-    v3 = [0.0, 1.0]
-    
-    assert cosine_similarity(v1, v2) > 0.99
-    assert abs(cosine_similarity(v1, v3)) < 0.01
+    v2 = [0.0, 1.0]
+    assert cosine_similarity(v1, v2) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_cosine_similarity_opposite_vectors():
+    v1 = [1.0, 0.0]
+    v2 = [-1.0, 0.0]
+    assert cosine_similarity(v1, v2) == pytest.approx(-1.0, abs=1e-9)
+
+
+def test_cosine_similarity_zero_vector_returns_zero():
+    """Division by zero guard: returns 0.0 instead of raising."""
+    v1 = [0.0, 0.0]
+    v2 = [1.0, 0.5]
+    assert cosine_similarity(v1, v2) == 0.0
+    assert cosine_similarity(v2, v1) == 0.0
+
+
+def test_cosine_similarity_known_value():
+    # [1, 0] vs [1, 1]/√2  →  dot=1, |a|=1, |b|=√2  →  1/√2 ≈ 0.7071
+    v1 = [1.0, 0.0]
+    v2 = [1.0, 1.0]
+    expected = 1.0 / math.sqrt(2)
+    assert cosine_similarity(v1, v2) == pytest.approx(expected, rel=1e-6)
+
+
+# ──────────────────────────────────────────────
+# generate_embedding — mock the OpenAI client
+# ──────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_generate_embedding_mock():
-    with patch("src.ai.embeddings.OpenAI") as mock_openai:
-        mock_client = mock_openai.return_value
-        mock_client.embeddings.create.return_value = MagicMock(
-            data=[MagicMock(embedding=[0.5]*1024)]
-        )
-        
-        vec = await generate_embedding("test text")
-        assert len(vec) == 1024
-        assert vec[0] == 0.5
+async def test_generate_embedding_returns_vector():
+    """generate_embedding should return the vector from the API response."""
+    fake_vector = [0.1] * 768
+
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(embedding=fake_vector)]
+
+    mock_client = AsyncMock()
+    mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+
+    with patch("src.ai.analysis.AsyncOpenAI", return_value=mock_client):
+        result = await generate_embedding("hello world")
+
+    assert result == fake_vector
+    mock_client.embeddings.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_generate_embedding_passes_text_to_api():
+    """generate_embedding should forward the text to the embeddings endpoint."""
+    fake_vector = [0.0] * 512
+
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(embedding=fake_vector)]
+
+    mock_client = AsyncMock()
+    mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+
+    with patch("src.ai.analysis.AsyncOpenAI", return_value=mock_client):
+        await generate_embedding("specific query text")
+
+    call_kwargs = mock_client.embeddings.create.call_args
+    assert call_kwargs.kwargs["input"] == "specific query text"

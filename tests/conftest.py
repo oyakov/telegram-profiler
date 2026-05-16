@@ -13,13 +13,7 @@ settings = get_settings()
 TEST_DB_NAME = "crm_test"
 DB_HOST = "localhost" if settings.postgres_host == "postgres" else settings.postgres_host
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def setup_test_db():
     """Create a test database and initialize schema."""
     sync_url = f"postgresql://{settings.postgres_user}:{settings.postgres_password}@{DB_HOST}:{settings.postgres_port}/{TEST_DB_NAME}"
@@ -46,7 +40,21 @@ async def db_session(setup_test_db):
     """Provide an async session for a test."""
     engine = setup_test_db
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
+
     async with session_factory() as session:
         yield session
         await session.rollback() # Always rollback to keep tests isolated
+
+
+@pytest_asyncio.fixture
+async def api_client(setup_test_db):
+    """Async HTTP client for testing FastAPI endpoints.
+
+    Uses httpx.AsyncClient with ASGITransport so no real TCP socket is needed.
+    The test database engine is set up before the first request is made.
+    """
+    from httpx import AsyncClient, ASGITransport
+    from src.api.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        yield client

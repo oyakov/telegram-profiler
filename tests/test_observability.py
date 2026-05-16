@@ -8,7 +8,8 @@ def test_metrics_endpoint():
     """Verify that the /metrics endpoint is available and returns Prometheus data."""
     response = client.get("/metrics")
     assert response.status_code == 200
-    assert "process_cpu_seconds_total" in response.text
+    # process_cpu_seconds_total is Linux-only; check cross-platform metrics instead
+    assert "python_gc_objects_collected_total" in response.text
     assert "http_request_duration_seconds" in response.text
 
 def test_health_check_with_db(db_session):

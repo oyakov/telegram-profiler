@@ -65,7 +65,8 @@ async def test_enrich_contact_mock():
         assert mock_contact.first_name == "New Name"
         assert mock_contact.telegram_username == "new_username"
         assert mock_contact.is_verified is True
-        assert mock_contact.profile_photo_path == "uploads/avatars/123456.jpg"
+        # Connector uses absolute path /app/uploads/avatars (fixed in Round-3 #18)
+        assert mock_contact.profile_photo_path.endswith("uploads/avatars/123456.jpg")
         
         mock_session.commit.assert_called()
 
