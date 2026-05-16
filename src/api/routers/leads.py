@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from src.db.database import get_db
@@ -122,13 +122,13 @@ async def get_ad_history_alias(
 async def trigger_lead_processing(request: Request):
     """Manually trigger lead detection and scoring tasks."""
     db_name = request.headers.get("X-Database")
-    from src.pipeline.tasks import process_unified_messages, update_lead_scores_task
+    from src.pipeline.tasks import process_unified_messages, reindex_dirty_contacts
 
-    # Run sequentially (chain)
-    chain = (process_unified_messages.s(db_name=db_name) | update_lead_scores_task.s(db_name=db_name))
-    result = chain.delay()
+    # Queue message processing (includes lead scoring) then contact re-index
+    r1 = process_unified_messages.delay(limit=500, db_name=db_name)
+    r2 = reindex_dirty_contacts.delay(batch_size=50, db_name=db_name)
 
-    return {"task_id": result.id, "status": "queued"}
+    return {"task_ids": [r1.id, r2.id], "status": "queued"}
 
 
 @router.post("/search")
@@ -410,7 +410,7 @@ async def run_lead_search(
     total = (await db.execute(count_stmt)).scalar() or 0
 
     # Update search metadata
-    search.last_run_at = datetime.utcnow()
+    search.last_run_at = datetime.now(timezone.utc)
     search.last_result_count = total
     await db.commit()
 

@@ -160,6 +160,52 @@ def orchestrate_massive_sync():
     result = task_chain.apply_async()
     return {"status": "dispatched", "chain_id": str(result.id)}
 
+@celery_app.task(name="src.pipeline.tasks.import_excel", bind=True, queue="connectors", base=AsyncDBTask)
+def import_excel(self, file_path: str, db_name: str | None = None):
+    """Import contacts/messages from an Excel or CSV file."""
+    from src.db.database import get_session
+    async def _do():
+        import pandas as pd
+        from pathlib import Path
+        from src.db.models import Contact
+        path = Path(file_path)
+        if not path.exists():
+            return {"status": "error", "reason": "file_not_found", "path": file_path}
+        try:
+            df = pd.read_excel(path) if path.suffix in {".xlsx", ".xls"} else pd.read_csv(path)
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}
+        imported = 0
+        async with get_session(db_name=db_name) as session:
+            for _, row in df.iterrows():
+                first_name = str(row.get("first_name") or row.get("name") or "").strip()
+                if not first_name:
+                    continue
+                contact = Contact(
+                    first_name=first_name,
+                    last_name=str(row.get("last_name") or "").strip() or None,
+                    email=str(row.get("email") or "").strip() or None,
+                    phone=str(row.get("phone") or "").strip() or None,
+                    source="excel_import",
+                )
+                session.add(contact)
+                imported += 1
+            await session.commit()
+        try:
+            path.unlink()
+        except Exception:
+            pass
+        return {"status": "success", "imported": imported}
+    return self.run_async(_do())
+
+
+@celery_app.task(name="src.pipeline.tasks.sync_crm", bind=True, queue="connectors", base=AsyncDBTask)
+def sync_crm(self, db_name: str | None = None):
+    """Placeholder for external CRM sync (not yet implemented)."""
+    logger.warning("sync_crm_not_implemented", db_name=db_name)
+    return {"status": "skipped", "reason": "not_implemented"}
+
+
 @celery_app.task(name="src.pipeline.tasks.send_campaign", bind=True, queue="connectors", base=AsyncDBTask)
 def send_campaign(self, campaign_id: str, db_name: str | None = None):
     """Send campaign messages to all contacts."""

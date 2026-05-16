@@ -1,7 +1,7 @@
 """API routes for campaign management."""
 
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, HTTPException, Query, Depends
@@ -157,7 +157,7 @@ async def update_campaign(
     if request.message is not None:
         campaign.message = request.message
 
-    campaign.updated_at = datetime.utcnow()
+    campaign.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(campaign)
     return campaign
@@ -195,7 +195,7 @@ async def send_campaign_messages(
         raise HTTPException(status_code=400, detail="Campaign already sent or sending")
 
     campaign.status = "sending"
-    campaign.started_at = datetime.utcnow()
+    campaign.started_at = datetime.now(timezone.utc)
     await db.commit()
 
     task = send_campaign.delay(str(campaign_id))

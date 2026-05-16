@@ -148,11 +148,11 @@ def sync_channel_batch(
                 await session.commit()
                 raise e
 
-    asyncio.run(_sync_batch())
+    return self.run_async(_sync_batch())
 
 
-@shared_task(queue="connectors")
-def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None, db_name: Optional[str] = None) -> dict:
+@shared_task(bind=True, base=AsyncDBTask, queue="connectors")
+def scan_channel_metadata(self, channel_id: str, sync_state_id: Optional[str] = None, db_name: Optional[str] = None) -> dict:
     """
     Scan channel metadata to determine:
     - Earliest message date
@@ -265,11 +265,11 @@ def scan_channel_metadata(channel_id: str, sync_state_id: Optional[str] = None, 
                 await client.disconnect()
             except Exception: pass
 
-    return asyncio.run(_scan())
+    return self.run_async(_scan())
 
 
-@shared_task(queue="connectors")
-def reconcile_channel_sync(sync_state_id: str, db_name: Optional[str] = None):
+@shared_task(bind=True, base=AsyncDBTask, queue="connectors")
+def reconcile_channel_sync(self, sync_state_id: str, db_name: Optional[str] = None):
     """
     Post-sync reconciliation:
     1. Detect gaps in message sequence
@@ -294,4 +294,4 @@ def reconcile_channel_sync(sync_state_id: str, db_name: Optional[str] = None):
 
             logger.info("sync_reconcile_complete", sync_state=sync_state_id)
 
-    asyncio.run(_reconcile())
+    return self.run_async(_reconcile())

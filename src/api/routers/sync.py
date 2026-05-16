@@ -70,7 +70,7 @@ async def get_sync_status(db: AsyncSession = Depends(get_db)):
                     "completed_at": None
                 })
 
-        folder_progress = (total_progress / channel_count * 100) if channel_count > 0 else 0
+        folder_progress = (total_progress / channel_count) if channel_count > 0 else 0
 
         folders_data.append({
             "id": str(folder.id),
@@ -95,8 +95,13 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
     """
 
     # Get channel
+    try:
+        channel_uuid = UUID(channel_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(422, f"Invalid channel_id: {channel_id!r}")
+
     result = await db.execute(
-        select(TrackedChannel).where(TrackedChannel.id == UUID(channel_id))
+        select(TrackedChannel).where(TrackedChannel.id == channel_uuid)
     )
     channel = result.scalar_one_or_none()
     if not channel:
@@ -108,7 +113,7 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
 
     # Create new sync state
     sync_state = ChannelSyncState(
-        channel_id=UUID(channel_id),
+        channel_id=channel_uuid,
         phase="metadata",
         started_at=datetime.now(timezone.utc)
     )
@@ -134,8 +139,13 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
 async def get_channel_sync_status(channel_id: str, db: AsyncSession = Depends(get_db)):
     """Get detailed sync status for a channel."""
 
+    try:
+        channel_uuid = UUID(channel_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(422, f"Invalid channel_id: {channel_id!r}")
+
     result = await db.execute(
-        select(TrackedChannel).where(TrackedChannel.id == UUID(channel_id))
+        select(TrackedChannel).where(TrackedChannel.id == channel_uuid)
     )
     channel = result.scalar_one_or_none()
     if not channel:
@@ -195,8 +205,13 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
     logger = structlog.get_logger()
     logger.info("start_folder_sync_request", folder_id=folder_id)
 
+    try:
+        folder_uuid = UUID(folder_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(422, f"Invalid folder_id: {folder_id!r}")
+
     result = await db.execute(
-        select(TrackedFolder).where(TrackedFolder.id == UUID(folder_id)).options(
+        select(TrackedFolder).where(TrackedFolder.id == folder_uuid).options(
             selectinload(TrackedFolder.channels).selectinload(TrackedChannel.sync_state)
         )
     )
@@ -266,4 +281,6 @@ async def trigger_manual_sync(db: AsyncSession = Depends(get_db)):
             "message": "Folders and personal contacts synchronized"
         }
     except Exception as e:
-        raise HTTPException(500, f"Sync failed: {str(e)}")
+        import structlog
+        structlog.get_logger().error("manual_sync_error", error=str(e), exc_info=True)
+        raise HTTPException(500, "Sync failed. Check server logs for details.")

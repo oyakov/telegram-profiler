@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-import shutil
+import asyncio
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Request
@@ -32,8 +32,8 @@ async def import_excel_file(file: UploadFile = File(...)):
     filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
-    with open(filepath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    contents = await file.read()
+    await asyncio.get_event_loop().run_in_executor(None, filepath.write_bytes, contents)
 
     from src.pipeline.tasks import import_excel
     result = import_excel.delay(file_path=str(filepath))
@@ -51,8 +51,8 @@ async def import_audio_file(file: UploadFile = File(...), contact_id: Optional[s
     filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
-    with open(filepath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    contents = await file.read()
+    await asyncio.get_event_loop().run_in_executor(None, filepath.write_bytes, contents)
 
     from src.connectors.audio import AudioProcessor
     processor = AudioProcessor()

@@ -193,7 +193,7 @@ async def get_prometheus_metrics(db: AsyncSession = Depends(get_db)):
 @router.post("/embeddings/reindex")
 async def trigger_embeddings_reindex(request: Request):
     """Dispatch generate_all_embeddings Celery task for the current tenant DB."""
-    db_name = getattr(request.state, "db_name", None) or get_settings().postgres_db
+    db_name = request.headers.get("X-Database") or get_settings().postgres_db
     try:
         from src.pipeline.tasks import generate_all_embeddings
         generate_all_embeddings.delay(batch_size=500, db_name=db_name)
@@ -201,7 +201,7 @@ async def trigger_embeddings_reindex(request: Request):
         return {"status": "queued", "db_name": db_name}
     except Exception as e:
         logger.error("embeddings_reindex_failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to queue reindex task.")
 
 @router.get("/embeddings")
 async def get_embeddings_stats(db: AsyncSession = Depends(get_db)):

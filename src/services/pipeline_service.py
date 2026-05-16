@@ -29,7 +29,9 @@ class PipelineService:
     async def run_historical_sync(self, chat_ids: List[str | int], limit: int = 500, days: int = 90) -> dict:
         """Deep sync historical messages from specific chats."""
         connector = TelegramConnector(db_name=self.db_name)
-        result = await connector.deep_sync(chat_ids, limit=limit, days=days)
+        if not await connector.is_authorized():
+            return {"status": "skipped", "reason": "not_authorized"}
+        result = await connector.sync(chat_ids=[int(c) for c in chat_ids], limit=limit)
         return asdict(result)
 
     async def run_complete_history_load(self) -> dict:
