@@ -121,7 +121,11 @@ async def get_ad_history_alias(
 @router.post("/process", status_code=202)
 async def trigger_lead_processing(request: Request):
     """Manually trigger lead detection and scoring tasks."""
-    db_name = request.headers.get("X-Database")
+    from src.db.database import _DB_NAME_RE
+    from fastapi import HTTPException
+    db_name = request.headers.get("X-Database") or None
+    if db_name is not None and not _DB_NAME_RE.match(db_name):
+        raise HTTPException(status_code=400, detail="Invalid X-Database header value")
     from src.pipeline.tasks import process_unified_messages, reindex_dirty_contacts
 
     # Queue message processing (includes lead scoring) then contact re-index

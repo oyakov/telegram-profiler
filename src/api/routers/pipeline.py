@@ -21,14 +21,15 @@ router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
 async def import_excel_file(file: UploadFile = File(...)):
     """Upload an Excel/CSV file for import."""
     allowed = {".xlsx", ".xls", ".csv", ".tsv"}
-    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    raw_name = (file.filename or "").replace("\x00", "")  # strip null bytes
+    ext = Path(raw_name).suffix.lower() if raw_name else ""
     if ext not in allowed:
         raise HTTPException(400, f"Unsupported file type: {ext}")
 
     upload_dir = Path("/app/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_name = Path(file.filename).name if file.filename else "upload"
+    safe_name = Path(raw_name).name if raw_name else "upload"
     filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
@@ -47,7 +48,8 @@ async def import_audio_file(file: UploadFile = File(...), contact_id: Optional[s
     upload_dir = Path("/app/uploads/voice")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_name = Path(file.filename).name if file.filename else "upload"
+    raw_name = (file.filename or "").replace("\x00", "")  # strip null bytes
+    safe_name = Path(raw_name).name if raw_name else "upload"
     filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
@@ -70,7 +72,10 @@ async def import_audio_file(file: UploadFile = File(...), contact_id: Optional[s
 @router.post("/sync/{connector}")
 async def trigger_sync(connector: str, request: Request, db: AsyncSession = Depends(get_db)):
     """Manually trigger a connector sync."""
-    db_name = request.headers.get("X-Database")
+    from src.db.database import _DB_NAME_RE
+    db_name = request.headers.get("X-Database") or None
+    if db_name is not None and not _DB_NAME_RE.match(db_name):
+        raise HTTPException(400, "Invalid X-Database header value")
     from src.pipeline.tasks import import_excel, sync_crm, sync_telegram
     from datetime import datetime, timezone
 

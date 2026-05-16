@@ -46,6 +46,7 @@ celery_app.conf.update(
         "src.pipeline.tasks.process_message_embeddings": {"queue": "processing"},
         "src.pipeline.tasks.generate_all_embeddings": {"queue": "processing"},
         "src.pipeline.tasks.reindex_dirty_contacts": {"queue": "processing"},
+        "src.pipeline.tasks.purge_extraction_log": {"queue": "processing"},
     },
     beat_schedule={
         "sync-orchestrator": {
@@ -65,6 +66,11 @@ celery_app.conf.update(
         "process-messages": {
             "task": "src.pipeline.tasks.orchestrate_multi_db_message_processing",
             "schedule": crontab(minute="*"),
+        },
+        "purge-extraction-log": {
+            "task": "src.pipeline.tasks.purge_extraction_log",
+            "schedule": crontab(hour="3", minute="0"),  # Daily at 03:00 UTC
+            "kwargs": {"days": 30},
         },
     },
 )

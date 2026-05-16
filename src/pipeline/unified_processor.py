@@ -275,16 +275,29 @@ async def maintenance_reindex_dirty(batch_size: int = 50, session: Optional[Asyn
 
 
 async def _maintenance_reindex_dirty_impl(session: AsyncSession, batch_size: int) -> dict:
+    from collections import defaultdict
     stats = {"processed": 0, "errors": 0, "skipped": 0}
     result = await session.execute(select(Contact).where(Contact.embedding_dirty == True).limit(batch_size))
     contacts = result.scalars().all()
     if not contacts: return stats
 
+    # Batch-load all recent messages for these contacts in one query (avoids N+1)
+    contact_ids = [c.id for c in contacts]
+    msgs_result = await session.execute(
+        select(Message)
+        .where(Message.contact_id.in_(contact_ids))
+        .where(Message.content.isnot(None))
+        .order_by(Message.contact_id, Message.timestamp.desc())
+    )
+    messages_by_contact: dict = defaultdict(list)
+    for m in msgs_result.scalars().all():
+        if len(messages_by_contact[m.contact_id]) < 20:
+            messages_by_contact[m.contact_id].append(m)
+
     for contact in contacts:
         try:
             profile_text = _build_contact_profile(contact)
-            msg_result = await session.execute(select(Message).where(Message.contact_id == contact.id).order_by(Message.timestamp.desc()).limit(20))
-            messages = msg_result.scalars().all()
+            messages = messages_by_contact.get(contact.id, [])
             message_texts = [m.content for m in messages if m.content]
             if message_texts: profile_text += "\n\nRecent messages:\n" + "\n".join(message_texts[:10])
             if profile_text.strip():

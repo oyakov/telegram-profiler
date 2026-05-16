@@ -206,6 +206,34 @@ def sync_crm(self, db_name: str | None = None):
     return {"status": "skipped", "reason": "not_implemented"}
 
 
+@celery_app.task(name="src.pipeline.tasks.purge_extraction_log", bind=True, base=AsyncDBTask)
+def purge_extraction_log(self, days: int = 30):
+    """Delete ExtractionLog rows older than `days` days across all tenant databases."""
+    from src.db.database import get_session, list_tenant_databases
+    from src.db.models import ExtractionLog
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import delete
+
+    async def _do():
+        databases = await list_tenant_databases()
+        total_deleted = 0
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        for db_name in databases:
+            try:
+                async with get_session(db_name=db_name) as session:
+                    result = await session.execute(
+                        delete(ExtractionLog).where(ExtractionLog.created_at < cutoff)
+                    )
+                    deleted = result.rowcount
+                    total_deleted += deleted
+                    logger.info("purge_extraction_log", db_name=db_name, deleted=deleted, cutoff=cutoff.isoformat())
+            except Exception as e:
+                logger.error("purge_extraction_log_error", db_name=db_name, error=str(e))
+        return {"deleted": total_deleted, "databases": len(databases), "cutoff_days": days}
+
+    return self.run_async(_do())
+
+
 @celery_app.task(name="src.pipeline.tasks.send_campaign", bind=True, queue="connectors", base=AsyncDBTask)
 def send_campaign(self, campaign_id: str, db_name: str | None = None):
     """Send campaign messages to all contacts."""

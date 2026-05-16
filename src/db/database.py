@@ -24,41 +24,51 @@ def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.a
     db_name = db_name or settings.postgres_db
     cache_key = f"{db_name}_{'pooled' if use_pooling else 'direct'}"
 
+    # Fast path: no lock needed once the engine is cached.
+    if cache_key in _engines:
+        return _engines[cache_key]
+
     with _engines_lock:
-        if cache_key not in _engines:
-            if len(_engines) >= 50:
-                oldest_key = next(iter(_engines))
-                old_engine = _engines.pop(oldest_key)
-                import asyncio
-                try:
-                    asyncio.get_running_loop().create_task(old_engine.dispose())
-                except RuntimeError:
-                    pass  # No event loop (Celery sync context); GC will clean up
+        # Re-check inside the lock to handle concurrent first-access.
+        if cache_key in _engines:
+            return _engines[cache_key]
 
-            url = (
-                f"postgresql+asyncpg://"
-                f"{settings.postgres_user}:{settings.postgres_password}"
-                f"@{settings.postgres_host}:{settings.postgres_port}"
-                f"/{db_name}"
-            )
+        if len(_engines) >= 50:
+            oldest_key = next(iter(_engines))
+            old_engine = _engines.pop(oldest_key)
+            import asyncio
+            try:
+                asyncio.get_running_loop().create_task(old_engine.dispose())
+            except RuntimeError:
+                pass  # No event loop (Celery sync context); GC will clean up
 
-            engine_kwargs = {
-                # Mask password in echo output — use a sanitised URL for logging
-                "echo": settings.log_level.upper() == "DEBUG",
-            }
+        # Use SQLAlchemy URL object so the password is redacted in repr/logs
+        url = sa.engine.URL.create(
+            drivername="postgresql+asyncpg",
+            username=settings.postgres_user,
+            password=settings.postgres_password,
+            host=settings.postgres_host,
+            port=int(settings.postgres_port),
+            database=db_name,
+        )
 
-            if not use_pooling:
-                engine_kwargs["poolclass"] = NullPool
-            else:
-                # Conservative pool per tenant: 50 tenants × 8 conn = 400 max vs PG default 100
-                engine_kwargs["pool_size"] = 5
-                engine_kwargs["max_overflow"] = 3
-                # Detect stale connections after Docker/network restarts
-                engine_kwargs["pool_pre_ping"] = True
-                # Recycle connections every 30 min to prevent idle-timeout drops
-                engine_kwargs["pool_recycle"] = 1800
+        engine_kwargs: dict = {
+            # echo logs SQL statements (never the connection URL/password)
+            "echo": settings.log_level.upper() == "DEBUG",
+        }
 
-            _engines[cache_key] = create_async_engine(url, **engine_kwargs)
+        if not use_pooling:
+            engine_kwargs["poolclass"] = NullPool
+        else:
+            # Conservative pool per tenant: 50 tenants × 8 conn = 400 max vs PG default 100
+            engine_kwargs["pool_size"] = 5
+            engine_kwargs["max_overflow"] = 3
+            # Detect stale connections after Docker/network restarts
+            engine_kwargs["pool_pre_ping"] = True
+            # Recycle connections every 30 min to prevent idle-timeout drops
+            engine_kwargs["pool_recycle"] = 1800
+
+        _engines[cache_key] = create_async_engine(url, **engine_kwargs)
 
     return _engines[cache_key]
 

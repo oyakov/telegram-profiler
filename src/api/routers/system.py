@@ -6,6 +6,7 @@ from src.db.models import Contact, Message, VoiceNote, MessageEmbedding, Extract
 from src.core.config import get_settings
 from datetime import datetime, timedelta, timezone
 import redis
+import redis.asyncio as aioredis
 import psutil
 import structlog
 
@@ -114,17 +115,45 @@ async def purge_celery_tasks():
         return {"status": "success"}
     except Exception as e: raise HTTPException(500, str(e))
 
+_TREE_COUNTS_CACHE_KEY = "tree:msg_counts"
+_TREE_COUNTS_TTL_S = 30  # Refresh at most every 30 s; GROUP BY on millions of rows is expensive
+
 @router.get("/tree")
 async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
     """Hierarchical tree with factual progress."""
-    from sqlalchemy.orm import selectinload
     try:
         folders = (await db.execute(select(TrackedFolder).order_by(TrackedFolder.created_at))).scalars().all()
         channels = (await db.execute(select(TrackedChannel))).scalars().all()
         cids = [c.id for c in channels]
-        
-        counts_res = await db.execute(select(Message.group_id, func.count(Message.id)).group_by(Message.group_id))
-        counts_map = {str(row[0]): row[1] for row in counts_res.all()}
+
+        # Cache the heavy GROUP BY aggregation in Redis so repeated page loads
+        # don't trigger a full sequential scan on the messages table.
+        counts_map: dict = {}
+        settings = get_settings()
+        _redis = None
+        try:
+            _redis = aioredis.from_url(settings.redis_url, socket_timeout=1, decode_responses=True)
+            cached = await _redis.get(_TREE_COUNTS_CACHE_KEY)
+            if cached:
+                import json
+                counts_map = json.loads(cached)
+        except Exception:
+            pass  # Redis unavailable — fall through to DB query
+
+        if not counts_map:
+            counts_res = await db.execute(select(Message.group_id, func.count(Message.id)).group_by(Message.group_id))
+            counts_map = {str(row[0]): row[1] for row in counts_res.all()}
+            if _redis is not None:
+                try:
+                    import json
+                    await _redis.set(_TREE_COUNTS_CACHE_KEY, json.dumps(counts_map), ex=_TREE_COUNTS_TTL_S)
+                except Exception:
+                    pass
+        if _redis is not None:
+            try:
+                await _redis.aclose()
+            except Exception:
+                pass
 
         sync_res = await db.execute(select(ChannelSyncState).where(ChannelSyncState.channel_id.in_(cids)).order_by(ChannelSyncState.channel_id, ChannelSyncState.started_at.desc()))
         latest_states = {}
