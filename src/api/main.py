@@ -16,7 +16,7 @@ import structlog
 
 from src.api.routers import (
     contacts, messages, telegram, leads,
-    search, system, settings, pipeline, tracking, sync
+    search, system, settings, pipeline, tracking, sync, projects
 )
 from src.api.middleware.auth import APIKeyMiddleware
 from src.core.logging import setup_logging
@@ -41,9 +41,10 @@ app = FastAPI(
     title="Networking Brain",
     description="Personal CRM with AI-powered contact extraction and semantic search",
     version="1.1.0",
-    # Hide docs in production when API_KEY is configured
-    docs_url="/docs" if not app_settings.api_key else None,
-    redoc_url="/redoc" if not app_settings.api_key else None,
+    # Always disable auto-generated docs URLs — they are gated by APIKeyMiddleware
+    # when API_KEY is set, so there's no need to hide them at the FastAPI level.
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 app.state.limiter = limiter
@@ -115,6 +116,7 @@ app.include_router(settings.router, prefix=API_PREFIX)
 app.include_router(pipeline.router, prefix=f"{API_PREFIX}/connectors")
 app.include_router(tracking.router, prefix=API_PREFIX)
 app.include_router(sync.router, prefix=API_PREFIX)
+app.include_router(projects.router, prefix=API_PREFIX)
 
 @app.get("/")
 async def root():

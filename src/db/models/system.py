@@ -1,10 +1,31 @@
 import uuid
-from sqlalchemy import Column, String, Text, Boolean, DateTime, func, Integer
+from sqlalchemy import Column, String, Text, Boolean, DateTime, func, Integer, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from .base import Base
 
+
+class SystemProject(Base):
+    """Top-level project/workspace (replaces removed projects table)."""
+    __tablename__ = "system_projects"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    telegram_folder_id = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self) -> str:
+        return f"<SystemProject {self.name!r}>"
+
+
 class ExtractionLog(Base):
     __tablename__ = "extraction_log"
+    __table_args__ = (
+        # Composite index used by the already-processed correlated subquery
+        Index("ix_extraction_log_source", "source_type", "source_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_type = Column(String(50), nullable=False)

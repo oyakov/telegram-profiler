@@ -111,10 +111,14 @@ class TelegramConnector(BaseConnector):
             await self._update_user_profile(client)
             # Trigger project setup and auto-sync in background
             task = asyncio.create_task(self._post_login_setup())
-            task.add_done_callback(
-                lambda t: logger.error("post_login_setup_failed", error=str(t.exception()))
-                if not t.cancelled() and t.exception() else None
-            )
+
+            def _on_post_login_done(t: asyncio.Task) -> None:
+                if t.cancelled():
+                    logger.warning("post_login_setup_cancelled")
+                elif exc := t.exception():
+                    logger.error("post_login_setup_failed", error=str(exc), exc_info=exc)
+
+            task.add_done_callback(_on_post_login_done)
             return {"status": "success"}
         except SessionPasswordNeededError:
             return {"status": "requires_2fa"}
@@ -145,10 +149,14 @@ class TelegramConnector(BaseConnector):
             await self._update_user_profile(client)
             # Trigger project setup and auto-sync in background
             task = asyncio.create_task(self._post_login_setup())
-            task.add_done_callback(
-                lambda t: logger.error("post_login_setup_failed", error=str(t.exception()))
-                if not t.cancelled() and t.exception() else None
-            )
+
+            def _on_post_login_done_2fa(t: asyncio.Task) -> None:
+                if t.cancelled():
+                    logger.warning("post_login_setup_cancelled")
+                elif exc := t.exception():
+                    logger.error("post_login_setup_failed", error=str(exc), exc_info=exc)
+
+            task.add_done_callback(_on_post_login_done_2fa)
             return {"status": "success"}
         except Exception as e:
             logger.error("sign_in_2fa_error", error=str(e))

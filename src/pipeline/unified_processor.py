@@ -45,7 +45,7 @@ class MessageProcessor:
                 if not msg.content or len(msg.content.strip()) < 10:
                     return None
                 try:
-                    is_channel = msg.raw_json.get("is_channel", False) if msg.raw_json else False
+                    is_channel = (isinstance(msg.raw_json, dict) and msg.raw_json.get("is_channel", False))
                     contacts, _ = await self.ai_service.extract(
                         msg.content,
                         extraction_type="contacts",
@@ -97,6 +97,9 @@ class MessageProcessor:
                     success=True
                 )
                 self.session.add(log_entry)
+                # Mark message as extracted so the next batch query (indexed boolean)
+                # skips it instead of scanning ExtractionLog again
+                msg.is_extracted = True
                 stats["processed"] += 1
 
             except Exception as e:
@@ -197,17 +200,11 @@ async def process_unprocessed_messages(limit: int = 100, session: Optional[Async
 
 
 async def _process_messages_impl(session: AsyncSession, limit: int) -> dict:
-    import sqlalchemy as sa
-    already_processed = (
-        select(ExtractionLog.id)
-        .where(ExtractionLog.source_type == "unified_message")
-        .where(ExtractionLog.source_id == Message.id.cast(sa.String))
-        .correlate(Message)
-        .exists()
-    )
+    # Use the is_extracted flag (indexed boolean) instead of an expensive
+    # correlated subquery against the ever-growing ExtractionLog table.
     query = (
         select(Message)
-        .where(~already_processed)
+        .where(Message.is_extracted == False)  # noqa: E712
         .where(Message.content.isnot(None))
         .order_by(Message.timestamp.desc())
         .limit(limit)

@@ -8,6 +8,7 @@ Leave API_KEY empty for local development (auth is skipped with a warning).
 
 from __future__ import annotations
 
+import hmac
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -17,8 +18,10 @@ from src.core.config import get_settings
 
 logger = structlog.get_logger()
 
-# Paths that never require a key (health probe, docs)
-_EXEMPT = frozenset({"/", "/docs", "/redoc", "/openapi.json", "/metrics"})
+# Only the liveness probe is unconditionally exempt.
+# /docs, /redoc, /openapi.json, /metrics are gated when API_KEY is set so that
+# internal API schema and Prometheus data aren't publicly accessible.
+_ALWAYS_EXEMPT = frozenset({"/", "/api/stats/health"})
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
@@ -27,19 +30,19 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         settings = get_settings()
 
-        # Exempt paths bypass auth entirely (including the no-key warning)
-        if request.url.path in _EXEMPT:
+        # Liveness probe — always pass through
+        if request.url.path in _ALWAYS_EXEMPT:
             return await call_next(request)
 
-        # Auth disabled — pass through with a single startup warning (logged at app init)
+        # Auth disabled — pass through (local dev only)
         if not settings.api_key:
             return await call_next(request)
 
-        # Validate Bearer token
+        # Validate Bearer token using constant-time comparison to prevent timing attacks
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-            if token == settings.api_key:
+            if hmac.compare_digest(token, settings.api_key):
                 return await call_next(request)
 
         logger.warning(

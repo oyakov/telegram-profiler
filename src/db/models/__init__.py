@@ -4,7 +4,7 @@ from .tracking import TrackedFolder, TrackedChannel
 from .content import Contact, Message, MessageContact, MessageEmbedding, VoiceNote
 from .sync import SyncState, ChannelSyncState, SyncBatchLog
 from .marketing import LeadSearch, Campaign, CampaignMessage
-from .system import ExtractionLog, Setting
+from .system import ExtractionLog, Setting, SystemProject
 
 __all__ = [
     "Base",
@@ -25,4 +25,5 @@ __all__ = [
     "CampaignMessage",
     "ExtractionLog",
     "Setting",
+    "SystemProject",
 ]

@@ -60,6 +60,10 @@ class AppSettings(BaseSettings):
     secret_key: str = Field("change-me-to-a-random-string")
     # API key for protecting all endpoints — set in production, leave empty for local dev
     api_key: str = Field("", description="Bearer token required on all /api/* requests. Empty = disabled (local dev only).")
+    # Fernet key for encrypting Telegram session data at rest.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Leave empty to store sessions unencrypted (backward-compatible default).
+    session_encryption_key: str = Field("", description="Fernet key for session-at-rest encryption.")
 
     # --- Observability ---
     enable_metrics: bool = Field(True)

@@ -1,4 +1,5 @@
 import uuid
+import sqlalchemy as sa
 from sqlalchemy import Column, String, Text, Boolean, DateTime, func, ForeignKey, ARRAY, Integer, Float, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -10,6 +11,20 @@ class Contact(Base):
     __table_args__ = (
         Index("ix_contact_telegram_id", "telegram_id"),
         Index("ix_contact_embedding_dirty", "embedding_dirty"),
+        # Partial unique indexes allow NULL duplicates while preventing
+        # duplicate non-NULL telegram_id / telegram_username entries
+        Index(
+            "uq_contact_telegram_id",
+            "telegram_id",
+            unique=True,
+            postgresql_where=sa.text("telegram_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_contact_telegram_username",
+            "telegram_username",
+            unique=True,
+            postgresql_where=sa.text("telegram_username IS NOT NULL"),
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -67,6 +82,8 @@ class Message(Base):
     __table_args__ = (
         UniqueConstraint("source_message_id", name="uq_message_source_id"),
         Index("ix_message_group_id", "group_id"),
+        # Fast filter for unprocessed messages — replaces expensive ExtractionLog subquery
+        Index("ix_message_is_extracted", "is_extracted"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -81,6 +98,8 @@ class Message(Base):
     group_name = Column(String(255), nullable=True)
     raw_json = Column(JSONB, nullable=True)
     timestamp = Column(DateTime(timezone=True), nullable=False)
+    # Set to True after LLM extraction completes — avoids expensive ExtractionLog correlated subquery
+    is_extracted = Column(Boolean, default=False, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     contact = relationship("Contact", back_populates="messages")

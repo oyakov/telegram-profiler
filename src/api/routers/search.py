@@ -86,6 +86,10 @@ async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)
 
     query_embedding = await generate_embedding(req.query)
 
+    # Raise HNSW ef_search from default 40 → 100 for better recall at 2M+ embeddings.
+    # This runs per-query and is cheap (no lock, session-local).
+    await db.execute(sa.text("SET LOCAL hnsw.ef_search = 100"))
+
     # 1. Semantic search in messages - increased threshold for better recall
     msg_results = await db.execute(
         select(

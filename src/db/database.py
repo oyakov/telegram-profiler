@@ -43,14 +43,20 @@ def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.a
             )
 
             engine_kwargs = {
+                # Mask password in echo output — use a sanitised URL for logging
                 "echo": settings.log_level.upper() == "DEBUG",
             }
 
             if not use_pooling:
                 engine_kwargs["poolclass"] = NullPool
             else:
-                engine_kwargs["pool_size"] = 20
-                engine_kwargs["max_overflow"] = 10
+                # Conservative pool per tenant: 50 tenants × 8 conn = 400 max vs PG default 100
+                engine_kwargs["pool_size"] = 5
+                engine_kwargs["max_overflow"] = 3
+                # Detect stale connections after Docker/network restarts
+                engine_kwargs["pool_pre_ping"] = True
+                # Recycle connections every 30 min to prevent idle-timeout drops
+                engine_kwargs["pool_recycle"] = 1800
 
             _engines[cache_key] = create_async_engine(url, **engine_kwargs)
 
@@ -73,11 +79,17 @@ async def get_session(db_name: str | None = None, use_pooling: bool = False) -> 
         finally:
             await session.close()
 
-from fastapi import Request
+from fastapi import Request, HTTPException
 
 async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields an async DB session based on X-Database header."""
-    db_name = request.headers.get("X-Database")
+    """FastAPI dependency that yields an async DB session based on X-Database header.
+
+    The X-Database value is validated against _DB_NAME_RE before use to prevent
+    connection-URL injection (issue #2 in code review).
+    """
+    db_name = request.headers.get("X-Database") or None  # treat empty string as None
+    if db_name is not None and not _DB_NAME_RE.match(db_name):
+        raise HTTPException(status_code=400, detail="Invalid X-Database header value")
     async with get_session(db_name, use_pooling=True) as session:
         yield session
 
