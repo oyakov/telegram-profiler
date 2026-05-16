@@ -66,7 +66,7 @@ async def distribute_orphaned_messages(db: AsyncSession) -> dict:
 
         if channel and channel.folder_id:
             msg.folder_id = channel.folder_id
-            msg.project_id = channel.folder.project_id  # Get project from folder
+            # TrackedFolder has no project_id — project assignment is handled separately
             distributed_count += 1
         elif channel:
             # Channel exists but not assigned to folder yet
@@ -82,9 +82,9 @@ async def distribute_orphaned_messages(db: AsyncSession) -> dict:
         logger.info("distribute_orphaned_messages", distributed=distributed_count)
 
     remaining_res = await db.execute(
-        select(Message).where(Message.folder_id.is_(None))
+        select(func.count(Message.id)).where(Message.folder_id.is_(None))
     )
-    remaining = len(remaining_res.scalars().all())
+    remaining = remaining_res.scalar() or 0
 
     return {"distributed": distributed_count, "remaining": remaining}
 
@@ -104,12 +104,13 @@ async def assign_contacts_to_projects(db: AsyncSession) -> dict:
 
     for contact in contacts:
         # Get most common project from this contact's messages
+        count_col = func.count(Message.id).label("msg_count")
         project_res = await db.execute(
-            select(Message.project_id, func.count(Message.id).label("count"))
+            select(Message.project_id, count_col)
             .where(Message.contact_id == contact.id)
             .where(Message.project_id.isnot(None))
             .group_by(Message.project_id)
-            .order_by("count".desc())
+            .order_by(count_col.desc())
             .limit(1)
         )
         result = project_res.one_or_none()

@@ -109,16 +109,22 @@ class TelegramConnector(BaseConnector):
 
             # Sync user profile on successful login
             await self._update_user_profile(client)
-            # Trigger project setup and auto-sync in background
-            task = asyncio.create_task(self._post_login_setup())
 
+            # Disconnect the login client *before* starting the background task so the
+            # background task's fresh client doesn't race against a closing connection.
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+            # Background setup uses its own independent client via _get_client()
             def _on_post_login_done(t: asyncio.Task) -> None:
                 if t.cancelled():
                     logger.warning("post_login_setup_cancelled")
                 elif exc := t.exception():
                     logger.error("post_login_setup_failed", error=str(exc), exc_info=exc)
 
-            task.add_done_callback(_on_post_login_done)
+            asyncio.create_task(self._post_login_setup()).add_done_callback(_on_post_login_done)
             return {"status": "success"}
         except SessionPasswordNeededError:
             return {"status": "requires_2fa"}
@@ -129,7 +135,7 @@ class TelegramConnector(BaseConnector):
             try:
                 await client.disconnect()
             except Exception:
-                pass
+                pass  # Idempotent — already disconnected on success path
 
     async def sign_in_2fa(self, password: str) -> dict:
         client = await self._get_client()
@@ -147,8 +153,13 @@ class TelegramConnector(BaseConnector):
 
             # Sync user profile on successful login
             await self._update_user_profile(client)
-            # Trigger project setup and auto-sync in background
-            task = asyncio.create_task(self._post_login_setup())
+
+            # Disconnect login client first so the background task's fresh client
+            # doesn't race against a closing connection.
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
 
             def _on_post_login_done_2fa(t: asyncio.Task) -> None:
                 if t.cancelled():
@@ -156,7 +167,7 @@ class TelegramConnector(BaseConnector):
                 elif exc := t.exception():
                     logger.error("post_login_setup_failed", error=str(exc), exc_info=exc)
 
-            task.add_done_callback(_on_post_login_done_2fa)
+            asyncio.create_task(self._post_login_setup()).add_done_callback(_on_post_login_done_2fa)
             return {"status": "success"}
         except Exception as e:
             logger.error("sign_in_2fa_error", error=str(e))
@@ -165,7 +176,7 @@ class TelegramConnector(BaseConnector):
             try:
                 await client.disconnect()
             except Exception:
-                pass
+                pass  # Idempotent — already disconnected on success path
 
     async def _update_user_profile(self, client):
         """Fetch current user info and update UserProfile in master DB."""
@@ -212,12 +223,12 @@ class TelegramConnector(BaseConnector):
     async def _download_photo(self, client, entity) -> str | None:
         """Download profile photo and return local path."""
         try:
-            output_dir = Path("uploads/avatars")
+            output_dir = Path("/app/uploads/avatars")
             output_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{entity.id}.jpg"
             file_path = output_dir / filename
             path = await client.download_profile_photo(entity, file=str(file_path))
-            if path: return f"uploads/avatars/{filename}"
+            if path: return f"/app/uploads/avatars/{filename}"
             return None
         except Exception as e:
             logger.warning("telegram_photo_download_error", entity_id=entity.id, error=str(e))
@@ -446,7 +457,9 @@ class TelegramConnector(BaseConnector):
                     peer_ids = [str(abs(get_peer_id(p))) for p in f.include_peers]
                     result.append({"name": title, "id": f.id, "channel_count": len(peer_ids), "peer_ids": peer_ids})
                 return result
-        except Exception as e: return []
+        except Exception as e:
+            logger.error("list_telegram_folders_error", error=str(e), error_type=type(e).__name__)
+            return []
 
     async def import_folder_channels(self, peer_ids: list[str]) -> list[dict]:
         from telethon.tl.types import Channel, Chat
@@ -468,7 +481,9 @@ class TelegramConnector(BaseConnector):
                     channels.append({"telegram_id": str(entity.id), "title": getattr(entity, "title", "Unknown"),
                                     "username": getattr(entity, "username", None), "entity_type": "channel" if is_channel else "group"})
                 return channels
-        except Exception: return []
+        except Exception as e:
+            logger.error("import_folder_channels_error", error=str(e), error_type=type(e).__name__)
+            return []
 
     async def sync_contacts(self) -> dict:
         from telethon.tl.functions.contacts import GetContactsRequest

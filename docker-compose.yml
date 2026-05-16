@@ -17,6 +17,9 @@ services:
       -c checkpoint_completion_target=0.9
       -c wal_buffers=8MB
       -c synchronous_commit=off
+    # NOTE: synchronous_commit=off — PostgreSQL acknowledges writes before WAL flush.
+    # Trade-off: up to ~200 ms of committed data can be lost on a hard crash.
+    # Acceptable here (Telegram messages can be re-synced); remove for full durability.
     # NO public port binding — internal network only
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -161,8 +164,10 @@ services:
         # Empty = use page origin (correct for production behind nginx)
         # Override in .env.local for local dev: VITE_API_URL=http://localhost:8000
         - VITE_API_URL=${VITE_API_URL:-}
-        # Passed at build time so the browser can authenticate with the backend
-        - VITE_API_KEY=${API_KEY:-}
+        # SECURITY: Use a SEPARATE VITE_API_KEY distinct from the backend API_KEY.
+        # Build args are baked into the image and visible via `docker inspect`.
+        # Set VITE_API_KEY in .env to a dedicated frontend token, not the server secret.
+        - VITE_API_KEY=${VITE_API_KEY:-}
     container_name: crm-frontend
     # NO public port — nginx proxies internally
     expose:

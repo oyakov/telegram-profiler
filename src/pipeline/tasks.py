@@ -165,6 +165,7 @@ def import_excel(self, file_path: str, db_name: str | None = None):
     """Import contacts/messages from an Excel or CSV file."""
     from src.db.database import get_session
     async def _do():
+        import asyncio
         import pandas as pd
         from pathlib import Path
         from src.db.models import Contact
@@ -172,7 +173,12 @@ def import_excel(self, file_path: str, db_name: str | None = None):
         if not path.exists():
             return {"status": "error", "reason": "file_not_found", "path": file_path}
         try:
-            df = pd.read_excel(path) if path.suffix in {".xlsx", ".xls"} else pd.read_csv(path)
+            # Run blocking pandas I/O in a thread to avoid stalling the event loop
+            loop = asyncio.get_running_loop()
+            if path.suffix in {".xlsx", ".xls"}:
+                df = await loop.run_in_executor(None, pd.read_excel, path)
+            else:
+                df = await loop.run_in_executor(None, pd.read_csv, path)
         except Exception as e:
             return {"status": "error", "reason": str(e)}
         imported = 0
@@ -190,7 +196,9 @@ def import_excel(self, file_path: str, db_name: str | None = None):
                 )
                 session.add(contact)
                 imported += 1
-            await session.commit()
+            # session.commit() is called by get_session context manager on clean exit.
+            # Only delete the file AFTER the session exits successfully so the file
+            # is still available for retry if the commit fails.
         try:
             path.unlink()
         except Exception:

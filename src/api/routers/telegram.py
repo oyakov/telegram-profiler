@@ -1,5 +1,7 @@
 import structlog
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from pydantic import BaseModel
+from typing import List
 from sqlalchemy import select
 from telethon.tl.types import Channel
 
@@ -8,6 +10,11 @@ from src.api.schemas import (
     TelegramSendCode, TelegramVerifyCode, TelegramTwoFA,
     DeepSyncRequest, DiscoveryJoinRequest
 )
+
+
+class FolderImportRequest(BaseModel):
+    folder_id: str
+    peer_ids: List[str]
 from src.connectors.telegram_connector import TelegramConnector
 from src.db.database import get_session
 from src.db.models import TrackedFolder, TrackedChannel
@@ -190,26 +197,22 @@ async def telegram_list_folders(request: Request):
 
 
 @router.post("/folders/import")
-async def telegram_import_folder(request: Request):
+async def telegram_import_folder(body: FolderImportRequest, request: Request):
     """Import channels from Telegram folder peers into a DB folder."""
-    from pydantic import BaseModel
-    from sqlalchemy import select
     from src.db.database import get_session
     from src.db.models import TrackedFolder, TrackedChannel
     from uuid import UUID
 
-    body = await request.json()
-    folder_id = body.get("folder_id")
-    peer_ids = body.get("peer_ids", [])
     db_name = request.headers.get("X-Database")
 
-    if not folder_id or not peer_ids:
+    folder_id_raw = body.folder_id
+    peer_ids = body.peer_ids
+
+    if not folder_id_raw or not peer_ids:
         raise HTTPException(400, "folder_id and peer_ids are required")
 
-    # Convert folder_id to UUID if it's a string
     try:
-        if isinstance(folder_id, str):
-            folder_id = UUID(folder_id)
+        folder_id = UUID(folder_id_raw)
     except ValueError:
         raise HTTPException(400, "Invalid folder_id format")
 

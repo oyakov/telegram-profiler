@@ -57,7 +57,6 @@ class AppSettings(BaseSettings):
     # --- Application ---
     app_port: int = Field(8000)
     log_level: str = Field("INFO")
-    secret_key: str = Field("change-me-to-a-random-string")
     # API key for protecting all endpoints — set in production, leave empty for local dev
     api_key: str = Field("", description="Bearer token required on all /api/* requests. Empty = disabled (local dev only).")
     # Fernet key for encrypting Telegram session data at rest.

@@ -34,10 +34,24 @@ class CampaignService:
         if not search:
             raise Exception("Search not found")
 
-        # 2. Find matching contacts — cap at _MAX_CAMPAIGN_RECIPIENTS
-        res = await self.session.execute(
-            select(Contact).limit(_MAX_CAMPAIGN_RECIPIENTS)
-        )
+        # 2. Find matching contacts using the search's profile_filter, capped at _MAX_CAMPAIGN_RECIPIENTS
+        # Build a query that applies any filters stored on the LeadSearch
+        contact_query = select(Contact).where(Contact.is_lead == True)
+        profile_filter = search.profile_filter or {}
+
+        if profile_filter.get("first_name"):
+            contact_query = contact_query.where(Contact.first_name.ilike(f"%{profile_filter['first_name']}%"))
+        if profile_filter.get("last_name"):
+            contact_query = contact_query.where(Contact.last_name.ilike(f"%{profile_filter['last_name']}%"))
+        if profile_filter.get("company"):
+            contact_query = contact_query.where(Contact.company.ilike(f"%{profile_filter['company']}%"))
+        if profile_filter.get("position"):
+            contact_query = contact_query.where(Contact.position.ilike(f"%{profile_filter['position']}%"))
+        if profile_filter.get("min_lead_score") is not None:
+            contact_query = contact_query.where(Contact.lead_score >= profile_filter["min_lead_score"])
+
+        contact_query = contact_query.limit(_MAX_CAMPAIGN_RECIPIENTS)
+        res = await self.session.execute(contact_query)
         contacts = res.scalars().all()
 
         # 3. Create CampaignMessages
@@ -99,8 +113,12 @@ class CampaignService:
                     failed += 1
                     continue
 
-                # 2. Build personalised text
-                text = campaign.message.replace("{name}", contact.first_name or "")
+                # 2. Build personalised text using safe replacement (no str.format injection)
+                text = campaign.message.replace("{name}", contact.first_name or "").replace(
+                    "{first_name}", contact.first_name or ""
+                ).replace("{last_name}", contact.last_name or "").replace(
+                    "{company}", contact.company or ""
+                )
 
                 # 3. Send via Telegram
                 success = await self.tg.send_message(contact.telegram_id, text)

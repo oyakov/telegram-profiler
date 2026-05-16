@@ -30,6 +30,9 @@ logger = structlog.get_logger()
 
 BATCH_SIZE = 100
 MAX_RETRIES_PER_CYCLE = 10
+# Cap how many batch tasks are queued per orchestrator cycle to avoid flooding the
+# connectors queue with thousands of tasks for large channels (e.g. 100k messages).
+MAX_BATCHES_PER_CYCLE = 50
 
 
 class SyncOrchestrator:
@@ -163,6 +166,7 @@ class SyncOrchestrator:
 
         except Exception as e:
             logger.error("sync_folders_error", error=str(e))
+            await session.rollback()  # Ensure partial writes don't silently persist
 
     async def _queue_new_channels(self, session):
         """
@@ -212,7 +216,8 @@ class SyncOrchestrator:
                         started_at=datetime.now(timezone.utc)
                     )
                     session.add(sync_state)
-                    await session.flush()
+                    # Commit BEFORE enqueueing so the Celery task always finds the row
+                    await session.commit()
 
                     # Queue ONLY metadata scan task - batch tasks queued later after metadata completes
                     logger.info("queuing_metadata_scan", channel=channel.title)
@@ -233,8 +238,7 @@ class SyncOrchestrator:
                         error=str(e)
                     )
 
-            if queued_count > 0:
-                await session.commit()
+            # queued_count commit removed — each channel commits individually above
 
             logger.info("queue_new_channels_complete", queued=queued_count)
 
@@ -290,8 +294,8 @@ class SyncOrchestrator:
                         batch_count=batch_count
                     )
 
-                    # Queue all batch tasks for this sync
-                    for batch_num in range(batch_count):
+                    # Queue batch tasks — capped per cycle to prevent queue flooding
+                    for batch_num in range(min(batch_count, MAX_BATCHES_PER_CYCLE)):
                         offset = batch_num * BATCH_SIZE
                         sync_channel_batch.apply_async(
                             kwargs={
@@ -405,7 +409,9 @@ class SyncOrchestrator:
                             "sync_state_id": str(sync_state.id),
                             "batch_number": batch.batch_number,
                             "offset": batch.requested_offset,
-                            "limit": batch.messages_in_batch or BATCH_SIZE,
+                            # Use the fixed BATCH_SIZE, not messages_in_batch (which
+                            # records how many were *saved*, not how many were requested).
+                            "limit": BATCH_SIZE,
                             "db_name": self.db_name
                         },
                         countdown=60 * batch.retry_attempt  # 1m, 2m, 3m delays
@@ -483,13 +489,17 @@ class SyncOrchestrator:
             logger.error("reconcile_completed_syncs_error", error=str(e))
 
 
-@celery_app.task(name="sync_orchestrator")
-def sync_orchestrator_task():
+from src.pipeline.base_task import AsyncDBTask
+
+@celery_app.task(name="sync_orchestrator", bind=True, base=AsyncDBTask)
+def sync_orchestrator_task(self):
     """
     Celery task - runs every 5 minutes via beat scheduler.
+    Uses run_async (fresh loop per execution) to avoid RuntimeError when
+    asyncio.run() is called inside an already-running loop.
     """
     orchestrator = SyncOrchestrator()
-    asyncio.run(orchestrator.run())
+    return self.run_async(orchestrator.run())
 
 
 # For direct testing

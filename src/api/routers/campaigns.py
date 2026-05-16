@@ -26,15 +26,25 @@ router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 
 def _render_message(message: str, contact: Contact) -> str:
-    """Render message template with contact variables."""
-    return message.format(
-        first_name=contact.first_name or "",
-        last_name=contact.last_name or "",
-        email=contact.email or "",
-        phone=contact.phone or "",
-        company=contact.company or "",
-        position=contact.position or "",
-    )
+    """Render message template with contact variables using safe string replacement.
+
+    Deliberately avoids str.format() to prevent format-string injection attacks
+    (e.g. `{first_name.__class__.__mro__}` exposing internals).
+    """
+    replacements = {
+        "{first_name}": contact.first_name or "",
+        "{last_name}": contact.last_name or "",
+        "{email}": contact.email or "",
+        "{phone}": contact.phone or "",
+        "{company}": contact.company or "",
+        "{position}": contact.position or "",
+        # Legacy single-brace alias still supported by campaign_service.py
+        "{name}": contact.first_name or "",
+    }
+    result = message
+    for placeholder, value in replacements.items():
+        result = result.replace(placeholder, value)
+    return result
 
 
 @router.post("", response_model=CampaignResponse)

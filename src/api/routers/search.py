@@ -23,6 +23,8 @@ async def _extract_evidence_batch(
     max_quotes: int = 3,
 ) -> dict:
     """Extract top N most relevant message quotes for multiple contacts (batch load)."""
+    # Cap results: max_quotes per contact, hard ceiling to avoid unbounded scans
+    row_limit = len(contact_ids) * max_quotes * 4  # 4× overshot to allow filtering
     results = await db.execute(
         select(
             Message.contact_id,
@@ -33,6 +35,7 @@ async def _extract_evidence_batch(
         .where(Message.contact_id.in_(contact_ids))
         .where(MessageEmbedding.chunk_text.isnot(None))
         .order_by(Message.contact_id, "distance")
+        .limit(row_limit)
     )
 
     evidence_by_contact = defaultdict(list)

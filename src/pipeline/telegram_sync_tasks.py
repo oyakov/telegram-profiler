@@ -81,63 +81,77 @@ def sync_channel_batch(
                 client = await connector._get_client()
                 await client.connect()
 
-                # 4. Resolve entity
-                peer_id = int(channel_id)
                 try:
-                    entity = await client.get_entity(peer_id)
-                except Exception:
-                    entity = await client.get_entity(int(f"-100{abs(peer_id)}"))
+                    # 4. Resolve entity
+                    peer_id = int(channel_id)
+                    try:
+                        entity = await client.get_entity(peer_id)
+                    except Exception:
+                        entity = await client.get_entity(int(f"-100{abs(peer_id)}"))
 
-                # 5. Fetch messages
-                messages = []
-                async for msg in client.iter_messages(entity, offset_id=0, add_offset=offset, limit=limit):
-                    messages.append(msg)
+                    # 5. Fetch messages — 120 s timeout guards against stalled Telegram responses
+                    messages = []
+                    try:
+                        async with asyncio.timeout(120):
+                            async for msg in client.iter_messages(entity, offset_id=0, add_offset=offset, limit=limit):
+                                messages.append(msg)
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "iter_messages_timeout",
+                            channel=channel_id, batch=batch_number, collected=len(messages)
+                        )
+                        # Continue processing whatever was collected before the timeout
 
-                # 6. Process and save
-                message_count = 0
-                for msg in messages:
-                    source_msg_id = f"{entity.id}_{msg.id}"
-                    
-                    # Sender resolution
-                    sender_entity = msg.sender or entity
-                    contact = await connector._get_or_create_contact(session, sender_entity)
-                    
-                    # Use repository to save
-                    msg_obj = await repo.save_telegram_message(
-                        contact_id=contact.id,
-                        source_message_id=source_msg_id,
-                        direction="outgoing" if msg.out else "incoming",
-                        content=msg.text or "",
-                        group_id=str(entity.id),
-                        group_name=getattr(entity, "title", "Unknown"),
-                        timestamp=msg.date
-                    )
-                    if msg_obj:
-                        message_count += 1
+                    # 6. Process and save
+                    message_count = 0
+                    for msg in messages:
+                        source_msg_id = f"{entity.id}_{msg.id}"
 
-                # 7. Update progress
-                sync_state.messages_synced += message_count
-                if sync_state.estimated_total_messages:
-                    sync_state.progress_percent = (
-                        sync_state.messages_synced / sync_state.estimated_total_messages * 100
-                    )
-                if sync_state.channel:
-                    sync_state.channel.last_sync_at = datetime.now(timezone.utc)
+                        # Sender resolution
+                        sender_entity = msg.sender or entity
+                        contact = await connector._get_or_create_contact(session, sender_entity)
 
-                # 8. Mark batch success
-                batch_log.status = "success"
-                batch_log.messages_in_batch = message_count
-                batch_log.completed_at = datetime.now(timezone.utc)
+                        # Use repository to save
+                        msg_obj = await repo.save_telegram_message(
+                            contact_id=contact.id,
+                            source_message_id=source_msg_id,
+                            direction="outgoing" if msg.out else "incoming",
+                            content=msg.text or "",
+                            group_id=str(entity.id),
+                            group_name=getattr(entity, "title", "Unknown"),
+                            timestamp=msg.date
+                        )
+                        if msg_obj:
+                            message_count += 1
 
-                await session.commit()
-                logger.info("batch_complete", channel=channel_id, batch=batch_number, synced=message_count)
-                await client.disconnect()
+                    # 7. Update progress
+                    sync_state.messages_synced += message_count
+                    if sync_state.estimated_total_messages:
+                        sync_state.progress_percent = (
+                            sync_state.messages_synced / sync_state.estimated_total_messages * 100
+                        )
+                    if sync_state.channel:
+                        sync_state.channel.last_sync_at = datetime.now(timezone.utc)
+
+                    # 8. Mark batch success
+                    batch_log.status = "success"
+                    batch_log.messages_in_batch = message_count
+                    batch_log.completed_at = datetime.now(timezone.utc)
+
+                    await session.commit()
+                    logger.info("batch_complete", channel=channel_id, batch=batch_number, synced=message_count)
+
+                finally:
+                    # Always disconnect, regardless of success or error
+                    try:
+                        await client.disconnect()
+                    except Exception:
+                        pass
 
             except FloodWaitError as e:
                 logger.warning("flood_wait", batch=batch_number, seconds=e.seconds)
-                batch_log.status = "failed"
-                batch_log.error_message = f"FloodWait: {e.seconds}s"
-                await session.commit()
+                # Do NOT commit here — get_session rolls back on exception, keeping
+                # the batch_log uncommitted. The retry creates a fresh batch_log entry.
                 raise self.retry(countdown=min(e.seconds * 2, 3600))
 
             except Exception as e:
@@ -145,7 +159,7 @@ def sync_channel_batch(
                 if batch_log:
                     batch_log.status = "failed"
                     batch_log.error_message = str(e)
-                await session.commit()
+                    await session.commit()
                 raise e
 
     return self.run_async(_sync_batch())

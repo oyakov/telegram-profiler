@@ -40,7 +40,9 @@ def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.a
             try:
                 asyncio.get_running_loop().create_task(old_engine.dispose())
             except RuntimeError:
-                pass  # No event loop (Celery sync context); GC will clean up
+                # No running event loop (Celery sync context) — dispose synchronously
+                # to prevent connection leaks when the engine cache overflows.
+                old_engine.sync_engine.dispose()
 
         # Use SQLAlchemy URL object so the password is redacted in repr/logs
         url = sa.engine.URL.create(

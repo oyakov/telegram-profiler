@@ -140,8 +140,14 @@ async def add_to_tracked(
     if not req.contact_ids:
         raise HTTPException(400, "No contact IDs provided")
 
+    from uuid import UUID as _UUID
+    try:
+        validated_ids = [_UUID(str(cid)) for cid in req.contact_ids]
+    except (ValueError, AttributeError) as e:
+        raise HTTPException(400, f"Invalid contact ID format: {e}")
+
     result = await db.execute(
-        select(Contact).where(Contact.id.in_(req.contact_ids))
+        select(Contact).where(Contact.id.in_(validated_ids))
     )
     contacts = result.scalars().all()
 

@@ -53,9 +53,15 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
                 context = "Фоновая задача"
                 progress = None
                 try:
-                    # Clean the args string to parse it safely
-                    clean_args = args_str.strip("()").split(",")
-                    target_id_raw = clean_args[0].strip(" '\"") if clean_args else None
+                    # Parse args safely; naive split(",") breaks on args containing commas
+                    import ast
+                    try:
+                        parsed_args = ast.literal_eval(args_str) if args_str and args_str.strip() not in ("()", "") else ()
+                        if not isinstance(parsed_args, tuple):
+                            parsed_args = (parsed_args,)
+                        target_id_raw = str(parsed_args[0]) if parsed_args else None
+                    except Exception:
+                        target_id_raw = None
                     
                     if target_id_raw:
                         # Find channel by any variant
@@ -102,7 +108,14 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
         }
     except Exception as e:
         logger.error("celery_tasks_error", error=str(e))
-        return {"running": [], "queued": [], "summary": {"total_running": 0, "total_queued": 0}}
+        # Return degraded response so the UI shows workers as unreachable rather than idle
+        return {
+            "running": [],
+            "queued": [],
+            "workers": {},
+            "summary": {"total_running": 0, "total_queued": 0, "total_workers": 0},
+            "error": "Worker inspection failed — workers may be unreachable",
+        }
 
 @router.post("/celery-tasks/purge")
 async def purge_celery_tasks():

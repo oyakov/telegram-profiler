@@ -116,7 +116,7 @@ async def get_ad_history_alias(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ):
-    return await get_lead_history(contact_id, db, page, page_size)
+    return await get_lead_history(contact_id=contact_id, db=db, page=page, page_size=page_size)
 
 @router.post("/process", status_code=202)
 async def trigger_lead_processing(request: Request):

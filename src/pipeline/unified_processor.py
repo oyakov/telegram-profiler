@@ -143,7 +143,7 @@ class MessageProcessor:
         new_lead_entry = {
             "message_id": str(original_msg.id),
             "group_id": original_msg.group_id,
-            "timestamp": original_msg.timestamp.isoformat(),
+            "timestamp": original_msg.timestamp.isoformat() if original_msg.timestamp else datetime.now(timezone.utc).isoformat(),
             "summary": lead_data.content_summary,
             "category": lead_data.category,
             "lead_type": lead_data.lead_type,
@@ -281,18 +281,27 @@ async def _maintenance_reindex_dirty_impl(session: AsyncSession, batch_size: int
     contacts = result.scalars().all()
     if not contacts: return stats
 
-    # Batch-load all recent messages for these contacts in one query (avoids N+1)
+    # Batch-load the 20 most recent messages per contact in one query (avoids N+1).
+    # ROW_NUMBER() window function ensures the per-contact cap is enforced in the DB,
+    # not in Python after fetching potentially millions of rows.
     contact_ids = [c.id for c in contacts]
-    msgs_result = await session.execute(
-        select(Message)
+    rn_col = func.row_number().over(
+        partition_by=Message.contact_id,
+        order_by=Message.timestamp.desc()
+    ).label("rn")
+    ranked_subq = (
+        select(Message.id, rn_col)
         .where(Message.contact_id.in_(contact_ids))
         .where(Message.content.isnot(None))
-        .order_by(Message.contact_id, Message.timestamp.desc())
+        .subquery()
+    )
+    msgs_result = await session.execute(
+        select(Message)
+        .join(ranked_subq, (Message.id == ranked_subq.c.id) & (ranked_subq.c.rn <= 20))
     )
     messages_by_contact: dict = defaultdict(list)
     for m in msgs_result.scalars().all():
-        if len(messages_by_contact[m.contact_id]) < 20:
-            messages_by_contact[m.contact_id].append(m)
+        messages_by_contact[m.contact_id].append(m)
 
     for contact in contacts:
         try:
@@ -329,10 +338,17 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
     from src.core.config import get_settings
 
     stats = {"processed": 0, "errors": 0, "tokens": 0}
-    processed_ids = select(MessageEmbedding.message_id)
+    # Use NOT EXISTS instead of NOT IN with a subquery — avoids the correlated
+    # scalar subquery anti-join which causes a full sequential scan on large tables.
+    already_embedded = (
+        select(MessageEmbedding.message_id)
+        .where(MessageEmbedding.message_id == Message.id)
+        .correlate(Message)
+        .exists()
+    )
     query = (
         select(Message)
-        .where(Message.id.not_in(processed_ids))
+        .where(~already_embedded)
         .where(Message.content.isnot(None))
         .where(func.length(Message.content) > 10)
         .limit(batch_size)

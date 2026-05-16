@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import structlog
 from pathlib import Path
 from typing import Optional
@@ -48,10 +49,13 @@ class WhisperClient:
         if lang:
             params["language"] = lang
 
+        # Read file bytes in a thread-pool executor to avoid blocking the event loop
+        loop = asyncio.get_running_loop()
+        audio_bytes = await loop.run_in_executor(None, file_path.read_bytes)
+
         async with httpx.AsyncClient(timeout=300.0) as client:
-            with open(file_path, "rb") as f:
-                files = {"audio_file": (file_path.name, f, "audio/mpeg")}
-                response = await client.post(url, params=params, files=files)
+            files = {"audio_file": (file_path.name, audio_bytes, "audio/mpeg")}
+            response = await client.post(url, params=params, files=files)
 
             response.raise_for_status()
             data = response.json()
