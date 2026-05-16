@@ -6,9 +6,24 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-crm}
       POSTGRES_USER: ${POSTGRES_USER:-crm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    # Tune for a 2 GB VPS (shared_buffers=25% RAM, realistic cache size)
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c max_connections=25
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=8MB
+      -c synchronous_commit=off
     # NO public port binding — internal network only
     volumes:
       - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm}"]
       interval: 5s
@@ -20,10 +35,20 @@ services:
   redis:
     image: redis:7-alpine
     container_name: crm-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set} --loglevel warning
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      --loglevel warning
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+      --save ""
     # NO public port binding — internal network only
     volumes:
       - redisdata:/data
+    deploy:
+      resources:
+        limits:
+          memory: 80M
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
@@ -44,6 +69,10 @@ services:
       - "8000:8000"
     expose:
       - "8000"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,11 +85,16 @@ services:
   worker-processing:
     build: .
     container_name: crm-worker-processing
-    command: celery -A src.pipeline.celery_app worker --loglevel=warning -Q processing -c 2
+    # -c 1: single process; --pool=solo avoids fork overhead on a 2 GB VPS
+    command: celery -A src.pipeline.celery_app worker --loglevel=warning -Q processing -c 1 --pool=solo
     env_file: .env
     volumes:
       - session_data:/app/sessions
       - uploads_data:/app/uploads
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,11 +107,16 @@ services:
   worker-connectors:
     build: .
     container_name: crm-worker-connectors
-    command: celery -A src.pipeline.celery_app worker --loglevel=warning -Q connectors -c 1
+    # --pool=solo: no subprocess forking, lower memory on a small VPS
+    command: celery -A src.pipeline.celery_app worker --loglevel=warning -Q connectors -c 1 --pool=solo
     env_file: .env
     volumes:
       - session_data:/app/sessions
       - uploads_data:/app/uploads
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     depends_on:
       postgres:
         condition: service_healthy
@@ -151,9 +190,12 @@ services:
     restart: unless-stopped
 
   # --- Observability (internal only) ---
+  # Start manually when needed: docker-compose --profile monitoring up -d prometheus
+  # Access via SSH tunnel: ssh -L 9090:localhost:9090 root@<vps>
   prometheus:
     image: prom/prometheus:latest
     container_name: crm-prometheus
+    profiles: ["monitoring"]
     volumes:
       - ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -162,7 +204,6 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-    # NO public port — access via SSH tunnel if needed: ssh -L 9090:localhost:9090 ...
     networks:
       - crm-net
     restart: unless-stopped

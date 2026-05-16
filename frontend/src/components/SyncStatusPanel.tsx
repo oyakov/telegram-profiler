@@ -149,7 +149,7 @@ const BatchLogModal: React.FC<{
   const { data } = useSWR(
     `/api/sync/channel/${channelId}/status`,
     fetcher,
-    { refreshInterval: 2000 }
+    { refreshInterval: 8000 }
   );
 
   const batches: BatchLog[] = data?.batches || [];
@@ -195,7 +195,7 @@ export const SyncStatusPanel: React.FC = () => {
   const { data, error, isLoading } = useSWR(
     '/api/sync/status',
     fetcher,
-    { refreshInterval: 3000 }  // Refresh every 3 seconds
+    { refreshInterval: 10000 }
   );
 
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);

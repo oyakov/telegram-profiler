@@ -30,7 +30,7 @@ const TopBar: React.FC = () => {
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [savedPhones, setSavedPhones] = useState<string[]>([]);
   
-  const { data: telegramStatus, mutate: mutateStatus } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 5000 });
+  const { data: telegramStatus, mutate: mutateStatus } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 30000 });
   const { data: telegramUser } = useSWR(telegramStatus?.authorized ? '/api/telegram/user' : null, fetcher);
 
   // Load saved phones from localStorage

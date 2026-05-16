@@ -8,8 +8,8 @@ import './TaskMonitoring.css';
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 const TaskMonitoring: React.FC = () => {
-  const { data: embeddingStats, error: embeddingError } = useSWR('/api/stats/embeddings', fetcher, { refreshInterval: 3000 });
-  const { data: workerStats, error: workerError } = useSWR('/api/stats/workers', fetcher, { refreshInterval: 3000 });
+  const { data: embeddingStats, error: embeddingError } = useSWR('/api/stats/embeddings', fetcher, { refreshInterval: 15000 });
+  const { data: workerStats, error: workerError } = useSWR('/api/stats/workers', fetcher, { refreshInterval: 15000 });
   const [isReindexing, setIsReindexing] = useState(false);
 
   const handleReindex = async () => {

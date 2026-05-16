@@ -3,7 +3,6 @@ import useSWR from 'swr';
 import api from '../services/api';
 import { RefreshCw, Activity, Database, Zap, Cpu } from 'lucide-react';
 import { DataFlowTree, SystemFlow } from '../components/DataFlowExplorer';
-import { DataQualityMetrics, SyncHealthMetrics, BusinessMetrics } from '../components/MetricsPanel';
 import './Monitoring.css';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
@@ -85,11 +84,8 @@ function EmbeddingsManager() {
 }
 
 const Monitoring: React.FC = () => {
-  const { data: treeData, mutate: mutateTrees } = useSWR('/api/stats/tree', fetcher, { refreshInterval: 5000 });
-  const { data: metricsData } = useSWR('/api/stats/prometheus', fetcher, { refreshInterval: 5000 });
-  const { data: dataQualityData } = useSWR('/api/stats/data-quality', fetcher, { refreshInterval: 10000 });
-  const { data: syncHealthData } = useSWR('/api/stats/sync-health', fetcher, { refreshInterval: 10000 });
-  const { data: businessMetricsData } = useSWR('/api/stats/business-metrics', fetcher, { refreshInterval: 10000 });
+  const { data: treeData, mutate: mutateTrees } = useSWR('/api/stats/tree', fetcher, { refreshInterval: 20000 });
+  const { data: metricsData } = useSWR('/api/stats/prometheus', fetcher, { refreshInterval: 30000 });
 
   const handleStartSync = async (folderId: string) => {
     try {
@@ -132,39 +128,6 @@ const Monitoring: React.FC = () => {
       </div>
 
       <EmbeddingsManager />
-
-      <div style={{ marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '1.25rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Activity size={20} className="text-blue" />
-          System Metrics
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
-          {dataQualityData ? (
-            <DataQualityMetrics data={dataQualityData} />
-          ) : (
-            <div className="loading serpent-card" style={{ padding: '40px', textAlign: 'center' }}>
-              <Activity size={32} className="spin text-blue" style={{ marginBottom: '16px' }} />
-              <p>Loading data quality metrics...</p>
-            </div>
-          )}
-          {syncHealthData ? (
-            <SyncHealthMetrics data={syncHealthData} />
-          ) : (
-            <div className="loading serpent-card" style={{ padding: '40px', textAlign: 'center' }}>
-              <Activity size={32} className="spin text-blue" style={{ marginBottom: '16px' }} />
-              <p>Loading sync health metrics...</p>
-            </div>
-          )}
-          {businessMetricsData ? (
-            <BusinessMetrics data={businessMetricsData} />
-          ) : (
-            <div className="loading serpent-card" style={{ padding: '40px', textAlign: 'center' }}>
-              <Activity size={32} className="spin text-blue" style={{ marginBottom: '16px' }} />
-              <p>Loading business metrics...</p>
-            </div>
-          )}
-        </div>
-      </div>
 
       <style>{`
         .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; }

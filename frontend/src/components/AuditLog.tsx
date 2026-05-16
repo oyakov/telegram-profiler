@@ -32,8 +32,8 @@ interface CeleryTasksResponse {
 }
 
 const AuditLog: React.FC = () => {
-  const { data, error, mutate } = useSWR('/api/stats/celery-tasks', fetcher, { refreshInterval: 2000 });
-  const { data: metricsData } = useSWR('/api/stats/prometheus', fetcher, { refreshInterval: 5000 });
+  const { data, error, mutate } = useSWR('/api/stats/celery-tasks', fetcher, { refreshInterval: 10000 });
+  const { data: metricsData } = useSWR('/api/stats/prometheus', fetcher, { refreshInterval: 30000 });
   const [isPurging, setIsPurging] = useState(false);
 
   const handlePurge = async () => {

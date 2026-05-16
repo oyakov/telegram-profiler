@@ -17,7 +17,7 @@ const PrometheusMetrics: React.FC = () => {
   const { data: metricsData, error: metricsError } = useSWR(
     `/api/stats/prometheus?range=${timeRange}`,
     fetcher,
-    { refreshInterval: 5000, revalidateOnFocus: false }
+    { refreshInterval: 30000, revalidateOnFocus: false }
   );
 
   const formatMetricsForChart = (data: MetricPoint[] | undefined) => {
