@@ -190,6 +190,19 @@ async def get_prometheus_metrics(db: AsyncSession = Depends(get_db)):
     metrics["throughput"] = {"ingestion": ingest, "extraction": 0, "embeddings": 0, "timestamp": now.isoformat()}
     return metrics
 
+@router.post("/embeddings/reindex")
+async def trigger_embeddings_reindex(request: Request):
+    """Dispatch generate_all_embeddings Celery task for the current tenant DB."""
+    db_name = getattr(request.state, "db_name", None) or get_settings().postgres_db
+    try:
+        from src.pipeline.tasks import generate_all_embeddings
+        generate_all_embeddings.delay(batch_size=500, db_name=db_name)
+        logger.info("embeddings_reindex_queued", db_name=db_name)
+        return {"status": "queued", "db_name": db_name}
+    except Exception as e:
+        logger.error("embeddings_reindex_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/embeddings")
 async def get_embeddings_stats(db: AsyncSession = Depends(get_db)):
     """Full EmbeddingsStats compatibility."""
@@ -200,6 +213,38 @@ async def get_embeddings_stats(db: AsyncSession = Depends(get_db)):
         "messages_needing_embeddings": max(0, total_msg - total_emb),
         "total_embeddings": total_emb, "progress_percent": (total_emb / total_msg * 100) if total_msg > 0 else 0
     }
+
+@router.get("/workers")
+async def get_workers_stats():
+    """Return active Celery worker details for the Task Monitoring UI."""
+    from src.pipeline.celery_app import celery_app
+    try:
+        inspect = celery_app.control.inspect(timeout=3.0)
+        active_map   = inspect.active()   or {}
+        reserved_map = inspect.reserved() or {}
+        stats_map    = inspect.stats()    or {}
+
+        workers = []
+        all_worker_names = set(active_map) | set(stats_map)
+        for name in all_worker_names:
+            active_tasks  = active_map.get(name, [])
+            worker_stats  = stats_map.get(name, {})
+            pool          = worker_stats.get("pool", {})
+            registered    = worker_stats.get("total", {})  # task → count dict
+            max_concurrency = pool.get("max-concurrency") or pool.get("processes") or len(pool.get("processes", [])) or 1
+            workers.append({
+                "name": name,
+                "status": "online",
+                "active_tasks": len(active_tasks),
+                "max_concurrency": max_concurrency,
+                "registered_tasks_count": len(registered),
+                "tasks": [{"name": t.get("name", "unknown")} for t in active_tasks[:5]],
+            })
+
+        return {"workers": workers}
+    except Exception as e:
+        logger.error("workers_stats_error", error=str(e))
+        return {"workers": []}
 
 @router.get("/data-quality")
 async def get_data_quality_metrics(db: AsyncSession = Depends(get_db)):
