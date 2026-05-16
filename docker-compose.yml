@@ -39,7 +39,9 @@ services:
     volumes:
       - session_data:/app/sessions
       - uploads_data:/app/uploads
-    # NO public port — nginx proxies internally
+    # Port 8000 exposed to host for local Vite dev proxy
+    ports:
+      - "8000:8000"
     expose:
       - "8000"
     depends_on:
@@ -117,7 +119,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-/api}
+        # Empty = use page origin (correct for production behind nginx)
+        # Override in .env.local for local dev: VITE_API_URL=http://localhost:8000
+        - VITE_API_URL=${VITE_API_URL:-}
+        # Passed at build time so the browser can authenticate with the backend
+        - VITE_API_KEY=${API_KEY:-}
     container_name: crm-frontend
     # NO public port — nginx proxies internally
     expose:
