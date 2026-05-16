@@ -59,24 +59,38 @@ class TelegramConnector(BaseConnector):
         logger.info("telegram_session_deleted_from_postgres")
 
     async def send_code_request(self, phone: str) -> str:
-        client = await self._get_client()
-        try:
-            await client.connect()
-            if not client.is_connected():
-                logger.warning("telegram_connection_failed", phone=phone)
-                raise Exception("Failed to connect to Telegram servers")
-
-            result = await client.send_code_request(phone)
-            await self._save_session()  # Save session after successful request
-            return result.phone_code_hash
-        except Exception as e:
-            logger.error("send_code_request_error", phone=phone, error=str(e))
-            raise
-        finally:
+        from telethon.errors import AuthRestartError, AuthKeyUnregisteredError
+        for attempt in range(2):
+            client = await self._get_client()
             try:
-                await client.disconnect()
-            except Exception:
-                pass
+                await client.connect()
+                if not client.is_connected():
+                    logger.warning("telegram_connection_failed", phone=phone)
+                    raise Exception("Failed to connect to Telegram servers")
+
+                result = await client.send_code_request(phone)
+                await self._save_session()  # Save session after successful request
+                return result.phone_code_hash
+            except (AuthRestartError, AuthKeyUnregisteredError) as e:
+                logger.warning(
+                    "telegram_stale_session_detected",
+                    phone=phone,
+                    error=str(e),
+                    attempt=attempt,
+                )
+                # Wipe the stale session so the next attempt starts fresh
+                await self._cleanup_stale_session()
+                self.pg_session.clear_cache()
+                if attempt == 1:
+                    raise Exception("Telegram session is invalid. Please try again.") from e
+            except Exception as e:
+                logger.error("send_code_request_error", phone=phone, error=str(e))
+                raise
+            finally:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
 
     async def sign_in(self, phone: str, code: str, phone_code_hash: str) -> dict:
         from telethon.errors import SessionPasswordNeededError
@@ -434,7 +448,10 @@ class TelegramConnector(BaseConnector):
                 if not await client.is_user_authorized(): return []
                 channels = []
                 for pid in peer_ids:
-                    try: entity = await client.get_entity(int(f"-100{pid}"))
+                    # peer_ids from get_folders already include the 100-prefix for supergroups
+                    # (e.g. "1001528034935"), so just negate to get the correct Telegram ID.
+                    # Fall back to raw positive int for regular chats / users.
+                    try: entity = await client.get_entity(-int(pid))
                     except Exception:
                         try: entity = await client.get_entity(int(pid))
                         except Exception: continue
