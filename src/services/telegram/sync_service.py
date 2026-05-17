@@ -3,7 +3,7 @@
 import asyncio
 import structlog
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 from sqlalchemy import select, update
 from telethon.tl.types import Channel
 from src.db.database import get_session

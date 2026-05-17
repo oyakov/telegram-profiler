@@ -6,7 +6,10 @@ from collections import defaultdict
 from src.db.database import get_db
 from src.db.models import Contact, MessageEmbedding, Message
 from src.api.schemas import SearchRequest
-from src.api.routers.contacts import _contact_to_response
+from src.services.contact_service import ContactService
+
+def _contact_to_response(contact):
+    return ContactService.map_to_response(contact)
 
 router = APIRouter(prefix="/search", tags=["Search"])
 

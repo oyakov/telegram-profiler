@@ -17,12 +17,19 @@ def _make_session():
     return session
 
 
+def _make_service(session):
+    """Return a CampaignService with a mock delivery provider (avoids abstract TelegramConnector)."""
+    mock_delivery = AsyncMock()
+    mock_delivery.send_message = AsyncMock(return_value=True)
+    return CampaignService(session, delivery_provider=mock_delivery)
+
+
 @pytest.mark.asyncio
 async def test_create_messages_from_search_raises_when_search_missing():
     session = _make_session()
     session.get = AsyncMock(return_value=None)
 
-    svc = CampaignService(session)
+    svc = _make_service(session)
     with pytest.raises(Exception, match="Search not found"):
         await svc.create_messages_from_search(uuid4(), uuid4())
 
@@ -42,7 +49,7 @@ async def test_create_messages_from_search_creates_entries():
     session.execute = AsyncMock(return_value=mock_result)
 
     campaign_id = uuid4()
-    svc = CampaignService(session)
+    svc = _make_service(session)
     count = await svc.create_messages_from_search(campaign_id, search.id)
 
     assert count == 2
@@ -81,9 +88,8 @@ async def test_run_campaign_marks_completed_and_returns_stats():
     mock_result.scalars.return_value.all.return_value = [cm]
     session.execute = AsyncMock(return_value=mock_result)
 
-    svc = CampaignService(session)
-    # Mock TelegramConnector.send_message so we don't hit the network
-    svc.tg.send_message = AsyncMock(return_value=True)
+    svc = _make_service(session)
+    svc.delivery.send_message = AsyncMock(return_value=True)
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         result = await svc.run_campaign(campaign_id)
@@ -118,8 +124,8 @@ async def test_run_campaign_handles_send_failure():
     mock_result.scalars.return_value.all.return_value = [cm]
     session.execute = AsyncMock(return_value=mock_result)
 
-    svc = CampaignService(session)
-    svc.tg.send_message = AsyncMock(return_value=False)
+    svc = _make_service(session)
+    svc.delivery.send_message = AsyncMock(return_value=False)
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         result = await svc.run_campaign(campaign_id)
@@ -127,14 +133,15 @@ async def test_run_campaign_handles_send_failure():
     assert result["sent"] == 0
     assert result["failed"] == 1
     assert cm.status == "failed"
-    assert cm.error_message == "Telegram delivery failed"
+    assert cm.error_message == "Delivery provider failed"
 
 
 @pytest.mark.asyncio
-async def test_run_campaign_returns_none_for_missing_campaign():
+async def test_run_campaign_returns_skipped_for_missing_campaign():
     session = _make_session()
     session.get = AsyncMock(return_value=None)
 
-    svc = CampaignService(session)
+    svc = _make_service(session)
     result = await svc.run_campaign(uuid4())
-    assert result is None
+    # New service returns {"status": "skipped"} rather than None when campaign not found
+    assert result == {"status": "skipped"}

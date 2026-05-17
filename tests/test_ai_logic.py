@@ -50,35 +50,28 @@ def test_cosine_similarity_known_value():
 
 @pytest.mark.asyncio
 async def test_generate_embedding_returns_vector():
-    """generate_embedding should return the vector from the API response."""
+    """generate_embedding should return the vector from the provider."""
     fake_vector = [0.1] * 768
 
-    mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=fake_vector)]
+    mock_provider = AsyncMock()
+    mock_provider.generate_embedding = AsyncMock(return_value=fake_vector)
 
-    mock_client = AsyncMock()
-    mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-    with patch("src.ai.analysis.AsyncOpenAI", return_value=mock_client):
+    with patch("src.ai.analysis.get_embedding_provider", return_value=mock_provider):
         result = await generate_embedding("hello world")
 
     assert result == fake_vector
-    mock_client.embeddings.create.assert_awaited_once()
+    mock_provider.generate_embedding.assert_awaited_once_with("hello world")
 
 
 @pytest.mark.asyncio
 async def test_generate_embedding_passes_text_to_api():
-    """generate_embedding should forward the text to the embeddings endpoint."""
+    """generate_embedding should forward the text to the provider."""
     fake_vector = [0.0] * 512
 
-    mock_response = MagicMock()
-    mock_response.data = [MagicMock(embedding=fake_vector)]
+    mock_provider = AsyncMock()
+    mock_provider.generate_embedding = AsyncMock(return_value=fake_vector)
 
-    mock_client = AsyncMock()
-    mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-
-    with patch("src.ai.analysis.AsyncOpenAI", return_value=mock_client):
+    with patch("src.ai.analysis.get_embedding_provider", return_value=mock_provider):
         await generate_embedding("specific query text")
 
-    call_kwargs = mock_client.embeddings.create.call_args
-    assert call_kwargs.kwargs["input"] == "specific query text"
+    mock_provider.generate_embedding.assert_awaited_once_with("specific query text")
