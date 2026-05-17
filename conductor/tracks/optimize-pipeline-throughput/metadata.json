@@ -1,0 +1,8 @@
+{
+  "id": "optimize-pipeline-throughput",
+  "title": "Optimize: Pipeline Throughput",
+  "status": "done",
+  "priority": "medium",
+  "tags": ["optimization", "performance", "pipeline"],
+  "description": "Improve message processing speed via bulk DB operations and optimized AI extraction flows."
+}

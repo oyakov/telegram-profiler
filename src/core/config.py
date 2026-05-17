@@ -92,6 +92,41 @@ def get_settings() -> AppSettings:
     return AppSettings()
 
 
+class ConfigurationProvider:
+    """Unified configuration interface: Env defaults with DB overrides."""
+
+    def __init__(self, session: Optional[AsyncSession] = None):
+        self.env = get_settings()
+        self.session = session
+        self._cache = {}
+
+    async def get(self, key: str, default: Any = None) -> Any:
+        """
+        Get a setting value.
+        Precedence: DB Setting > Environment Variable > AppSettings Default.
+        """
+        if key in self._cache:
+            return self._cache[key]
+
+        # 1. Try DB override if session is available
+        if self.session:
+            from src.db.models import Setting
+            result = await self.session.execute(select(Setting).where(Setting.key == key))
+            setting = result.scalar_one_or_none()
+            if setting:
+                val = setting.get_typed_value()
+                self._cache[key] = val
+                return val
+
+        # 2. Try AppSettings/Environment
+        if hasattr(self.env, key):
+            val = getattr(self.env, key)
+            self._cache[key] = val
+            return val
+
+        return default
+
+
 class SettingsService:
     """CRUD operations for the settings table. DB values override .env."""
 
@@ -99,14 +134,9 @@ class SettingsService:
         self.session = session
 
     async def get(self, key: str, default: Any = None) -> Any:
-        """Get a setting value, cast to its declared type."""
-        from src.db.models import Setting
-
-        result = await self.session.execute(select(Setting).where(Setting.key == key))
-        setting = result.scalar_one_or_none()
-        if setting is None:
-            return default
-        return setting.get_typed_value()
+        """Get a setting value, falling back to environment defaults."""
+        provider = ConfigurationProvider(self.session)
+        return await provider.get(key, default)
 
     async def set(
         self,

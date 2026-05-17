@@ -1,122 +1,48 @@
 #!/usr/bin/env python3
 """
 Load COMPLETE message history from all channels - no time limits.
-Fetches ALL available messages from the very beginning.
+Refactored to use PipelineService.
 """
 
 import asyncio
 import sys
-from datetime import datetime, timezone
-import structlog
+import os
 
-logger = structlog.get_logger()
+# Add project root to sys.path
+sys.path.append(os.getcwd())
 
-async def load_complete_history(connector, channels: list, session) -> dict:
-    """
-    Load COMPLETE history from all channels.
-    Uses sync with massive limit to fetch everything.
-    """
-    from sqlalchemy import select, func
-    from src.db.models import Message
-
-    # Count before
-    before_result = await session.execute(select(func.count(Message.id)))
-    before_count = before_result.scalar() or 0
-
-    print(f"Messages before load: {before_count:,}")
-
-    try:
-        # Call sync with VERY high limit (1 million) to get all messages
-        # sync() will iterate through all channels with this limit
-        result = await connector.sync(
-            chat_ids=[int(ch.telegram_id) for ch in channels],
-            limit=1000000,  # Load up to 1M per channel
-            offset_date=None  # No time restriction - load everything
-        )
-
-        # Count after
-        after_result = await session.execute(select(func.count(Message.id)))
-        after_count = after_result.scalar() or 0
-        new_messages = after_count - before_count
-
-        logger.info(
-            "complete_load_complete",
-            messages_fetched=result.messages_fetched,
-            new_messages=new_messages,
-            total_messages=after_count
-        )
-
-        return {
-            "status": "success",
-            "before": before_count,
-            "after": after_count,
-            "loaded": result.messages_fetched,
-            "new": new_messages
-        }
-
-    except Exception as e:
-        logger.error(
-            "complete_load_failed",
-            error=str(e)
-        )
-        return {
-            "status": "failed",
-            "error": str(e),
-            "before": before_count
-        }
-
+from src.services.pipeline_service import PipelineService
+from src.core.config import get_settings
 
 async def main():
     """Load complete history from all channels."""
-    from src.db.database import get_session
-    from src.db.models import TrackedChannel
-    from src.connectors.telegram_connector import TelegramConnector
-    from sqlalchemy import select
+    settings = get_settings()
+    db_name = os.getenv("POSTGRES_DB", settings.postgres_db)
 
     print("=" * 70)
-    print("LOADING COMPLETE MESSAGE HISTORY FROM ALL CHANNELS")
+    print(f"LOADING COMPLETE MESSAGE HISTORY FROM ALL CHANNELS (DB: {db_name})")
     print("(No time limits - fetching everything from the beginning)")
     print("=" * 70)
 
-    async with get_session(db_name="crm") as session:
-        # Check Telegram auth
-        connector = TelegramConnector(db_name="crm")
-        is_auth = await connector.is_authorized()
+    service = PipelineService(db_name=db_name)
+    result = await service.run_complete_history_load()
 
-        if not is_auth:
-            print("[ERROR] Telegram not authenticated!")
-            return 1
+    # Print summary
+    print("\n" + "=" * 70)
+    print("SUMMARY")
+    print("=" * 70)
 
-        print("[OK] Telegram authenticated\n")
-
-        # Get all active channels
-        result = await session.execute(
-            select(TrackedChannel).where(TrackedChannel.is_active == True)
-        )
-        channels = result.scalars().all()
-
-        print(f"Found {len(channels)} active channels")
-        print("Starting complete history load (may take a while)...\n")
-
-        # Load complete history from ALL channels at once
-        result = await load_complete_history(connector, channels, session)
-
-        # Print summary
-        print("\n" + "=" * 70)
-        print("SUMMARY")
+    if result["status"] == "success":
+        print(f"Messages before:     {result['before']:,}")
+        print(f"Messages after:      {result['after']:,}")
+        print(f"Messages loaded:     {result['messages_loaded']:,}")
+        print(f"New messages:        {result['new']:,}")
         print("=" * 70)
-
-        if result["status"] == "success":
-            print(f"Messages before:     {result['before']:,}")
-            print(f"Messages after:      {result['after']:,}")
-            print(f"Messages loaded:     {result['loaded']:,}")
-            print(f"New messages:        {result['new']:,}")
-            print("=" * 70)
-            return 0
-        else:
-            print(f"FAILED - {result.get('error', 'Unknown error')}")
-            print("=" * 70)
-            return 1
+        return 0
+    else:
+        print(f"FAILED - {result.get('reason', result.get('error', 'Unknown error'))}")
+        print("=" * 70)
+        return 1
 
 
 if __name__ == "__main__":

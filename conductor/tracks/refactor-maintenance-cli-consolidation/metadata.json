@@ -1,0 +1,8 @@
+{
+  "id": "refactor-maintenance-cli-consolidation",
+  "title": "Refactor: Maintenance CLI Consolidation",
+  "status": "done",
+  "priority": "low",
+  "tags": ["cleanup", "cli", "scripts"],
+  "description": "Consolidate redundant maintenance scripts into a single unified CLI utility."
+}

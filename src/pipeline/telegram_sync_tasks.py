@@ -13,7 +13,8 @@ from telethon.errors import FloodWaitError
 from src.db.database import get_session
 from src.pipeline.base_task import AsyncDBTask
 from src.db.repository import MessageRepository
-from src.connectors.telegram_connector import TelegramConnector
+from src.services.telegram.client_factory import TelegramClientFactory
+from src.services.telegram.entity_service import TelegramEntityService
 
 logger = structlog.get_logger()
 
@@ -43,13 +44,16 @@ def sync_channel_batch(
         from sqlalchemy import select, update, func
         from sqlalchemy.orm import joinedload
         from src.db.models import ChannelSyncState, SyncBatchLog, Message, MessageContact, Contact
-        from src.connectors.telegram_connector import TelegramConnector
         from datetime import datetime, timezone
         from uuid import UUID
 
         batch_log = None
         from src.core.config import get_settings
         db_name_actual = db_name or get_settings().postgres_db
+        
+        factory = TelegramClientFactory(db_name=db_name_actual)
+        entity_service = TelegramEntityService(factory)
+        
         async with get_session(db_name=db_name_actual) as session:
             try:
                 repo = MessageRepository(session)
@@ -77,8 +81,7 @@ def sync_channel_batch(
                 await session.flush()
 
                 # 3. Get Telethon client
-                connector = TelegramConnector(db_name=db_name_actual)
-                client = await connector._get_client()
+                client = await factory.get_client()
                 await client.connect()
 
                 try:
@@ -89,7 +92,7 @@ def sync_channel_batch(
                     except Exception:
                         entity = await client.get_entity(int(f"-100{abs(peer_id)}"))
 
-                    # 5. Fetch messages — 120 s timeout guards against stalled Telegram responses
+                    # 5. Fetch messages
                     messages = []
                     try:
                         async with asyncio.timeout(120):
@@ -100,16 +103,17 @@ def sync_channel_batch(
                             "iter_messages_timeout",
                             channel=channel_id, batch=batch_number, collected=len(messages)
                         )
-                        # Continue processing whatever was collected before the timeout
 
                     # 6. Process and save
                     message_count = 0
+                    is_channel = getattr(entity, 'broadcast', False)
+                    
                     for msg in messages:
                         source_msg_id = f"{entity.id}_{msg.id}"
 
-                        # Sender resolution
-                        sender_entity = msg.sender or entity
-                        contact = await connector._get_or_create_contact(session, sender_entity)
+                        # Sender resolution via specialized service
+                        sender_entity = msg.sender or entity if not is_channel else entity
+                        contact = await entity_service.get_or_create_contact(session, sender_entity, is_channel=is_channel)
 
                         # Use repository to save
                         msg_obj = await repo.save_telegram_message(
@@ -142,7 +146,6 @@ def sync_channel_batch(
                     logger.info("batch_complete", channel=channel_id, batch=batch_number, synced=message_count)
 
                 finally:
-                    # Always disconnect, regardless of success or error
                     try:
                         await client.disconnect()
                     except Exception:
@@ -150,8 +153,6 @@ def sync_channel_batch(
 
             except FloodWaitError as e:
                 logger.warning("flood_wait", batch=batch_number, seconds=e.seconds)
-                # Do NOT commit here — get_session rolls back on exception, keeping
-                # the batch_log uncommitted. The retry creates a fresh batch_log entry.
                 raise self.retry(countdown=min(e.seconds * 2, 3600))
 
             except Exception as e:
@@ -168,10 +169,7 @@ def sync_channel_batch(
 @shared_task(bind=True, base=AsyncDBTask, queue="connectors")
 def scan_channel_metadata(self, channel_id: str, sync_state_id: Optional[str] = None, db_name: Optional[str] = None) -> dict:
     """
-    Scan channel metadata to determine:
-    - Earliest message date
-    - Estimated total message count
-    - Batch count and ETA
+    Scan channel metadata to determine history depth.
     """
 
     async def _scan():
@@ -179,28 +177,21 @@ def scan_channel_metadata(self, channel_id: str, sync_state_id: Optional[str] = 
         from sqlalchemy import update
         from telethon.tl.functions.messages import GetHistoryRequest
 
-        # Get Telethon client
         from src.core.config import get_settings
         db_name_actual = db_name or get_settings().postgres_db
-        connector = TelegramConnector(db_name=db_name_actual)
-        client = await connector._get_client()
+        
+        factory = TelegramClientFactory(db_name=db_name_actual)
+        client = await factory.get_client()
 
         try:
             await client.connect()
 
-            # Resolve entity (handling -100 prefix and type conversion)
             peer_id = int(channel_id)
             try:
                 entity = await client.get_entity(peer_id)
             except Exception:
-                try:
-                    # Try with -100 prefix for channels
-                    entity = await client.get_entity(int(f"-100{abs(peer_id)}"))
-                except Exception as e:
-                    logger.error("entity_resolution_failed", channel_id=channel_id, error=str(e))
-                    raise e
+                entity = await client.get_entity(int(f"-100{abs(peer_id)}"))
 
-            # Get first (oldest) message to get total count
             result = await client(GetHistoryRequest(
                 peer=entity,
                 offset_id=0,
@@ -230,8 +221,6 @@ def scan_channel_metadata(self, channel_id: str, sync_state_id: Optional[str] = 
                 channel_id=channel_id,
                 total_messages=total_count,
                 batches=batch_count,
-                result_count=getattr(result, 'count', 'N/A'),
-                result_total=getattr(result, 'total', 'N/A'),
                 sync_state_id=sync_state_id
             )
 
@@ -242,24 +231,18 @@ def scan_channel_metadata(self, channel_id: str, sync_state_id: Optional[str] = 
                 "eta_seconds": eta_seconds
             }
 
-            # If sync_state_id provided, update DB and queue batches
             if sync_state_id:
-                try:
-                    from sqlalchemy import update
-                    async with get_session(db_name=db_name_actual) as session:
-                        await session.execute(
-                            update(ChannelSyncState).where(ChannelSyncState.id == UUID(sync_state_id)).values(
-                                phase="syncing",
-                                earliest_message_date=earliest_date,
-                                estimated_total_messages=total_count,
-                                eta_minutes=int(eta_seconds / 60),
-                                started_at=datetime.now(timezone.utc)
-                            )
+                async with get_session(db_name=db_name_actual) as session:
+                    await session.execute(
+                        update(ChannelSyncState).where(ChannelSyncState.id == UUID(sync_state_id)).values(
+                            phase="syncing",
+                            earliest_message_date=earliest_date,
+                            estimated_total_messages=total_count,
+                            eta_minutes=int(eta_seconds / 60),
+                            started_at=datetime.now(timezone.utc)
                         )
-                        await session.commit()
-                        logger.info("metadata_updated", sync_state_id=sync_state_id, total_messages=total_count, batch_count=batch_count)
-                except Exception as e:
-                    logger.error("metadata_update_failed", sync_state_id=sync_state_id, error=str(e))
+                    )
+                    await session.commit()
             
             return res_data
 
@@ -285,23 +268,18 @@ def scan_channel_metadata(self, channel_id: str, sync_state_id: Optional[str] = 
 @shared_task(bind=True, base=AsyncDBTask, queue="connectors")
 def reconcile_channel_sync(self, sync_state_id: str, db_name: Optional[str] = None):
     """
-    Post-sync reconciliation:
-    1. Detect gaps in message sequence
-    2. Re-download gap ranges
-    3. Mark sync complete
+    Post-sync reconciliation.
     """
 
     async def _reconcile():
         from src.core.config import get_settings
         db_name_actual = db_name or get_settings().postgres_db
         async with get_session(db_name=db_name_actual) as session:
-            from sqlalchemy import select
             from src.db.models import ChannelSyncState
 
             sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
             if not sync_state: return
 
-            # TODO: detect message ID gaps and re-queue missing ranges
             sync_state.phase = "complete"
             sync_state.completed_at = datetime.now(timezone.utc)
             await session.commit()

@@ -16,4 +16,16 @@
 | [refactor-cleanup-admin](./tracks/refactor-cleanup-admin/index.md) | Refactor: Cleanup & Admin Utilities | `[x]` |
 | [refactor-batch-processing](./tracks/refactor-batch-processing/index.md) | Refactor: Batch AI Processing & Repositories | `[x]` |
 | [refactor-service-layer](./tracks/refactor-service-layer/index.md) | Refactor: Pipeline Service & Task Cleanup | `[x]` |
+| [refactor-telegram-connector-v2](./tracks/refactor-telegram-connector-v2/metadata.json) | Refactor: Telegram Connector Decoupling | `[x]` |
+| [refactor-embedding-provider-pattern](./tracks/refactor-embedding-provider-pattern/metadata.json) | Refactor: Embedding Provider Pattern | `[x]` |
+| [optimize-pipeline-throughput](./tracks/optimize-pipeline-throughput/metadata.json) | Optimize: Pipeline Throughput | `[x]` |
+| [refactor-orchestrator-consolidation](./tracks/refactor-orchestrator-consolidation/metadata.json) | Refactor: Sync Orchestrator Consolidation | `[x]` |
+| [refactor-campaign-service-modularization](./tracks/refactor-campaign-service-modularization/metadata.json) | Refactor: Campaign Service Modularization | `[x]` |
+| [unify-configuration-management](./tracks/unify-configuration-management/metadata.json) | Unify: Configuration Management | `[x]` |
+| [final-service-alignment](./tracks/final-service-alignment/metadata.json) | Final: Service Layer Alignment | `[x]` |
+| [api-layer-streamlining](./tracks/api-layer-streamlining/metadata.json) | Streamline: API Layer | `[x]` |
+| [script-consolidation](./tracks/script-consolidation/metadata.json) | Consolidate: Legacy Scripts | `[x]` |
+| [refactor-router-streamlining](./tracks/refactor-router-streamlining/metadata.json) | Refactor: Router Streamlining | `[x]` |
+| [refactor-celery-task-pureness](./tracks/refactor-celery-task-pureness/metadata.json) | Refactor: Celery Task Pureness | `[x]` |
+| [refactor-maintenance-cli-consolidation](./tracks/refactor-maintenance-cli-consolidation/metadata.json) | Refactor: Maintenance CLI Consolidation | `[x]` |
 | [belgrade-discovery](./tracks/belgrade-discovery/index.md) | Belgrade Discovery & Ingestion | `[ ]` |

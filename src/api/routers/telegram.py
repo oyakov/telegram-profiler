@@ -15,7 +15,10 @@ from src.api.schemas import (
 class FolderImportRequest(BaseModel):
     folder_id: str
     peer_ids: List[str]
-from src.connectors.telegram_connector import TelegramConnector
+from src.services.telegram.client_factory import TelegramClientFactory
+from src.services.telegram.auth_service import TelegramAuthService
+from src.services.telegram.management_service import TelegramManagementService
+from src.services.telegram.entity_service import TelegramEntityService
 from src.db.database import get_session
 from src.db.models import TrackedFolder, TrackedChannel
 from src.pipeline.tasks import deep_sync_telegram
@@ -23,94 +26,27 @@ from src.pipeline.tasks import deep_sync_telegram
 logger = structlog.get_logger()
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
 
-@router.get("/search")
-async def telegram_search(query: str, request: Request, limit: int = 50):
-    """Search for public communities by keyword."""
+def get_telegram_services(request: Request):
     db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
-    results = await connector.search_communities(query, limit=limit)
-    return {"results": results}
-
-@router.post("/join")
-async def telegram_join(req: DiscoveryJoinRequest, request: Request):
-    """Join a community, add to whitelist, and optionally trigger deep sync."""
-    db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
-    
-    # 1. Join
-    success, entity = await connector.join_community(req.chat_id, username=req.username)
-    if not success or not entity:
-        raise HTTPException(400, "Failed to join community. See logs for details.")
-    
-    # 2. Add to TrackedChannels automatically
-    async with get_session(db_name=db_name) as session:
-        svc = SettingsService(session)
-        folder_name = await svc.get("default_folder_name", "Imported")
-
-        res = await session.execute(select(TrackedFolder).where(TrackedFolder.name == folder_name))
-        folder = res.scalar_one_or_none()
-        if not folder:
-            folder = TrackedFolder(name=folder_name)
-            session.add(folder); await session.flush()
-            
-        tg_id = str(entity.id)
-        res = await session.execute(select(TrackedChannel).where(TrackedChannel.telegram_id == tg_id))
-        chan = res.scalar_one_or_none()
-        
-        if not chan:
-            e_type = "channel" if isinstance(entity, Channel) and entity.broadcast else "group"
-            chan = TrackedChannel(
-                telegram_id=tg_id,
-                folder_id=folder.id,
-                title=getattr(entity, 'title', 'Unknown'),
-                username=getattr(entity, 'username', None),
-                entity_type=e_type
-            )
-            session.add(chan)
-            logger.info("telegram_auto_tracked", chat_id=tg_id, folder=folder_name, db=db_name)
-            await session.commit()
-    
-    # 3. Trigger Deep Sync if requested
-    if req.deep_sync_days > 0:
-        # Use the canonical ID
-        deep_sync_telegram.delay(
-            chat_ids=[entity.id],
-            limit=5000, 
-            days=req.deep_sync_days,
-            db_name=db_name
-        )
-        
+    factory = TelegramClientFactory(db_name=db_name)
     return {
-        "status": "success", 
-        "joined_id": entity.id, 
-        "whitelisted": True,
-        "sync_queued": req.deep_sync_days > 0
+        "auth": TelegramAuthService(factory),
+        "mgmt": TelegramManagementService(factory),
+        "entity": TelegramEntityService(factory),
+        "db_name": db_name
     }
-
-@router.post("/deep-sync")
-async def telegram_deep_sync(req: DeepSyncRequest, request: Request):
-    """Trigger a deep history sync for specific channels."""
-    db_name = request.headers.get("X-Database")
-    task = deep_sync_telegram.delay(
-        chat_ids=req.chat_ids,
-        limit=req.limit,
-        days=req.days,
-        db_name=db_name
-    )
-    return {"status": "queued", "task_id": task.id}
 
 @router.get("/auth/status")
 async def telegram_auth_status(request: Request):
     """Check if Telegram is currently authorized and return profile info."""
     from src.db.models import UserProfile
-    db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
+    services = get_telegram_services(request)
     try:
-        is_auth = await connector.is_authorized()
+        is_auth = await services["auth"].is_authorized()
         profile_data = None
         
         if is_auth:
-            async with get_session(db_name=db_name) as session:
+            async with get_session(db_name=services["db_name"]) as session:
                 res = await session.execute(select(UserProfile).limit(1))
                 profile = res.scalar_one_or_none()
                 if profile:
@@ -128,102 +64,69 @@ async def telegram_auth_status(request: Request):
     except Exception as e:
         return {"authorized": False, "error": str(e)}
 
-@router.get("/user")
-async def telegram_get_user(request: Request):
-    """Get the currently logged-in Telegram user profile."""
-    from src.db.models import UserProfile
-    db_name = request.headers.get("X-Database")
-    async with get_session(db_name=db_name) as session:
-        res = await session.execute(select(UserProfile).limit(1))
-        profile = res.scalar_one_or_none()
-        if not profile:
-            raise HTTPException(404, "User profile not found")
-        
-        return {
-            "telegram_id": profile.telegram_id,
-            "first_name": profile.first_name,
-            "last_name": profile.last_name,
-            "username": profile.username,
-            "phone": profile.phone,
-            "bio": profile.bio,
-            "photo": profile.profile_photo_path
-        }
-
 @router.post("/auth/send_code")
 async def telegram_send_code(req: TelegramSendCode, request: Request):
     """Request a verification code."""
-    db_name = request.headers.get("X-Database")
-    settings = get_settings()
-    if not settings.telegram_api_id or not settings.telegram_api_hash:
-        raise HTTPException(400, "TELEGRAM_API_ID or TELEGRAM_API_HASH is not configured")
-    
-    connector = TelegramConnector(db_name=db_name)
+    services = get_telegram_services(request)
     try:
-        phone_code_hash = await connector.send_code_request(req.phone)
+        phone_code_hash = await services["auth"].send_code_request(req.phone)
         return {"status": "success", "phone_code_hash": phone_code_hash}
     except Exception as e:
         raise HTTPException(400, f"Failed to send code: {str(e)}")
 
 @router.post("/auth/verify")
-async def telegram_verify_code(req: TelegramVerifyCode, request: Request, force_sync: bool = False):
+async def telegram_verify_code(req: TelegramVerifyCode, request: Request):
     """Verify the code and log in."""
-    db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
-    result = await connector.sign_in(req.phone, req.code, req.phone_code_hash)
+    services = get_telegram_services(request)
+    result = await services["auth"].sign_in(req.phone, req.code, req.phone_code_hash)
     if result["status"] == "error":
         raise HTTPException(400, result.get("message", "Verification failed"))
     
-    # If user manually checked the box or it is enabled in settings, auto_sync handles it
-    # We don't need to change sign_in signature because it calls auto_sync internally
+    # Post-login: update profile
+    if result["status"] == "success":
+        await services["entity"].update_user_profile()
+        
     return result
 
 @router.post("/auth/2fa")
 async def telegram_verify_2fa(req: TelegramTwoFA, request: Request):
     """Complete 2FA if required."""
-    db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
-    result = await connector.sign_in_2fa(req.password)
+    services = get_telegram_services(request)
+    result = await services["auth"].sign_in_2fa(req.password)
     if result["status"] == "error":
         raise HTTPException(400, result.get("message", "2FA failed"))
+    
+    if result["status"] == "success":
+        await services["entity"].update_user_profile()
+        
     return result
 
 @router.get("/folders")
 async def telegram_list_folders(request: Request):
     """List Telegram dialog filters (folders) with channel counts."""
-    db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
-    folders = await connector.list_telegram_folders()
+    services = get_telegram_services(request)
+    folders = await services["mgmt"].list_folders()
     return {"folders": folders}
-
 
 @router.post("/folders/import")
 async def telegram_import_folder(body: FolderImportRequest, request: Request):
     """Import channels from Telegram folder peers into a DB folder."""
-    from src.db.database import get_session
-    from src.db.models import TrackedFolder, TrackedChannel
     from uuid import UUID
-
-    db_name = request.headers.get("X-Database")
-
-    folder_id_raw = body.folder_id
-    peer_ids = body.peer_ids
-
-    if not folder_id_raw or not peer_ids:
-        raise HTTPException(400, "folder_id and peer_ids are required")
+    services = get_telegram_services(request)
+    db_name = services["db_name"]
 
     try:
-        folder_id = UUID(folder_id_raw)
+        folder_id = UUID(body.folder_id)
     except ValueError:
         raise HTTPException(400, "Invalid folder_id format")
 
-    connector = TelegramConnector(db_name=db_name)
     try:
-        channels = await connector.import_folder_channels(peer_ids)
+        channels = await services["mgmt"].import_folder_channels(body.peer_ids)
     except Exception as e:
         raise HTTPException(500, f"Failed to fetch channels from Telegram: {str(e)}")
 
     added = 0
-    skipped = 0
+    moved = 0
     async with get_session(db_name=db_name) as session:
         res = await session.execute(select(TrackedFolder).where(TrackedFolder.id == folder_id))
         folder = res.scalar_one_or_none()
@@ -231,35 +134,33 @@ async def telegram_import_folder(body: FolderImportRequest, request: Request):
             raise HTTPException(404, "Folder not found")
 
         for ch in channels:
-            existing = await session.execute(
+            res = await session.execute(
                 select(TrackedChannel).where(TrackedChannel.telegram_id == ch["telegram_id"])
             )
-            existing_chan = existing.scalar_one_or_none()
+            existing_chan = res.scalar_one_or_none()
             if existing_chan:
                 existing_chan.folder_id = folder.id
-                skipped += 1
+                moved += 1
             else:
-                new_chan = TrackedChannel(
+                session.add(TrackedChannel(
                     folder_id=folder.id,
                     telegram_id=ch["telegram_id"],
                     title=ch["title"],
                     username=ch["username"],
                     entity_type=ch["entity_type"],
-                )
-                session.add(new_chan)
+                    is_active=True
+                ))
                 added += 1
         await session.commit()
 
-    return {"status": "success", "added": added, "moved": skipped, "total": len(channels)}
-
+    return {"status": "success", "added": added, "moved": moved, "total": len(channels)}
 
 @router.post("/auth/logout")
 async def telegram_logout(request: Request):
     """Log out from Telegram."""
-    db_name = request.headers.get("X-Database")
-    connector = TelegramConnector(db_name=db_name)
+    services = get_telegram_services(request)
     try:
-        await connector.logout()
+        await services["auth"].logout()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(400, f"Logout failed: {str(e)}")

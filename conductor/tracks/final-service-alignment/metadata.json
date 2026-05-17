@@ -1,0 +1,8 @@
+{
+  "id": "final-service-alignment",
+  "title": "Final: Service Layer Alignment",
+  "status": "done",
+  "priority": "high",
+  "tags": ["refactor", "service-layer", "ai"],
+  "description": "Align PipelineService and ExtractionService with new providers and hierarchical configuration."
+}

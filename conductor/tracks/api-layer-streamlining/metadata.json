@@ -1,0 +1,8 @@
+{
+  "id": "api-layer-streamlining",
+  "title": "Streamline: API Layer",
+  "status": "done",
+  "priority": "medium",
+  "tags": ["refactor", "api", "fastapi"],
+  "description": "Remove business logic from FastAPI routers and delegate to specialized services."
+}

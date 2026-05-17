@@ -24,22 +24,23 @@ logger = structlog.get_logger()
 class MessageProcessor:
     """Unified processor for incoming messages from all sources."""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, db_name: str | None = None):
         self.session = session
+        self.db_name = db_name
         self.ai_service = ExtractionService()
         self.contact_repo = ContactRepository(session)
         self.settings_svc = SettingsService(session)
 
     async def process_batch(self, messages: list[Message], force_lead_detection: bool = False) -> dict:
         """Process a batch of messages concurrently.
-        LLM extraction runs in parallel; DB writes are serialised to avoid race conditions.
+        Optimized with bulk operations and parallel extraction.
         """
+        from src.pipeline.tasks import log_extraction_task
         stats = {"processed": 0, "contacts_found": 0, "leads_found": 0, "errors": 0}
-
-        semaphore = asyncio.Semaphore(5)
+        semaphore = asyncio.Semaphore(10)  # Increased concurrency for extraction
         lead_threshold = await self.settings_svc.get("extraction_lead_confidence_threshold", 0.6)
 
-        # Phase 1: run all LLM extractions concurrently (no DB writes here)
+        # Phase 1: Concurrent LLM Extraction
         async def _extract_single(msg: Message):
             async with semaphore:
                 if not msg.content or len(msg.content.strip()) < 10:
@@ -58,19 +59,19 @@ class MessageProcessor:
                             extraction_type="leads",
                             source_context=f"Group: {msg.group_name or 'Unknown'}"
                         )
-                    return msg, contacts, leads, is_channel
+                    return {"msg": msg, "contacts": contacts, "leads": leads, "is_channel": is_channel}
                 except Exception as e:
                     logger.error("unified_message_extraction_error", message_id=str(msg.id), error=str(e))
-                    stats["errors"] += 1
                     return None
 
         extraction_results = await asyncio.gather(*[_extract_single(msg) for msg in messages])
+        valid_results = [r for r in extraction_results if r is not None]
 
-        # Phase 2: apply DB writes sequentially to eliminate concurrent JSONB mutations
-        for result in extraction_results:
-            if result is None:
-                continue
-            msg, contacts, leads, is_channel = result
+        # Phase 2: Aggregated Data Sync
+        # We still sync one by one for complex dedup/merge logic, 
+        # but we use session.add and flush once at the end.
+        for res in valid_results:
+            msg, contacts, leads, is_channel = res["msg"], res["contacts"], res["leads"], res["is_channel"]
             try:
                 for c_data in contacts:
                     contact = await self._sync_contact(c_data)
@@ -86,7 +87,11 @@ class MessageProcessor:
                     if contact:
                         stats["leads_found"] += 1
 
-                log_entry = ExtractionLog(
+                # Mark as extracted
+                msg.is_extracted = True
+                
+                # Offload ExtractionLog to background task
+                log_extraction_task.delay(
                     source_type="unified_message",
                     source_id=str(msg.id),
                     model_used=self.ai_service.model,
@@ -94,19 +99,16 @@ class MessageProcessor:
                         "contacts": [c.model_dump() for c in contacts],
                         "leads": [l.model_dump() for l in leads]
                     },
-                    success=True
+                    db_name=self.db_name
                 )
-                self.session.add(log_entry)
-                # Mark message as extracted so the next batch query (indexed boolean)
-                # skips it instead of scanning ExtractionLog again
-                msg.is_extracted = True
                 stats["processed"] += 1
 
             except Exception as e:
                 logger.error("unified_message_processing_error", message_id=str(msg.id), error=str(e))
                 stats["errors"] += 1
 
-        await self.session.flush()
+        # Phase 3: Single Flush/Commit
+        await self.session.commit()
         return stats
 
     async def _sync_contact(self, extraction: ContactExtraction) -> Optional[Contact]:
@@ -195,11 +197,11 @@ async def process_unprocessed_messages(limit: int = 100, session: Optional[Async
     """Entry point for background task to process new messages."""
     if session is None:
         async with get_session(db_name=db_name) as new_session:
-            return await _process_messages_impl(new_session, limit)
-    return await _process_messages_impl(session, limit)
+            return await _process_messages_impl(new_session, limit, db_name=db_name)
+    return await _process_messages_impl(session, limit, db_name=db_name)
 
 
-async def _process_messages_impl(session: AsyncSession, limit: int) -> dict:
+async def _process_messages_impl(session: AsyncSession, limit: int, db_name: str | None = None) -> dict:
     # Use the is_extracted flag (indexed boolean) instead of an expensive
     # correlated subquery against the ever-growing ExtractionLog table.
     query = (
@@ -212,7 +214,7 @@ async def _process_messages_impl(session: AsyncSession, limit: int) -> dict:
     result = await session.execute(query)
     messages = result.scalars().all()
     if not messages: return {"processed": 0}
-    processor = MessageProcessor(session)
+    processor = MessageProcessor(session, db_name=db_name)
     return await processor.process_batch(messages)
 
 

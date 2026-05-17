@@ -21,6 +21,12 @@ from src.db.models import (
     SyncBatchLog, UserProfile
 )
 from src.connectors.telegram_connector import TelegramConnector
+from src.db.repository import MessageRepository, ContactRepository, SyncStateRepository
+from src.services.telegram.client_factory import TelegramClientFactory
+from src.services.telegram.auth_service import TelegramAuthService
+from src.services.telegram.management_service import TelegramManagementService
+from src.services.telegram.sync_service import TelegramSyncService
+from src.services.telegram.entity_service import TelegramEntityService
 from src.pipeline.telegram_sync_tasks import (
     sync_channel_batch, scan_channel_metadata, reconcile_channel_sync
 )
@@ -41,6 +47,15 @@ class SyncOrchestrator:
     def __init__(self, db_name: str | None = None):
         from src.core.config import get_settings
         self.db_name = db_name or get_settings().postgres_db
+        
+        # Initialize Telegram Services
+        self.factory = TelegramClientFactory(db_name=self.db_name)
+        self.auth = TelegramAuthService(self.factory)
+        self.entity = TelegramEntityService(self.factory)
+        self.sync_svc = TelegramSyncService(self.factory, self.entity)
+        self.mgmt = TelegramManagementService(self.factory)
+        
+        # Keep connector facade for backward compatibility in some tasks if necessary
         self.connector = TelegramConnector(db_name=self.db_name)
 
     async def run(self):
@@ -49,8 +64,9 @@ class SyncOrchestrator:
 
         async with get_session(db_name=self.db_name) as session:
             try:
+                self.sync_repo = SyncStateRepository(session)
                 # Step 1: Check Telegram auth status
-                is_auth = await self.connector.is_authorized()
+                is_auth = await self.auth.is_authorized()
                 if not is_auth:
                     logger.warning("telegram_not_authenticated")
                     return
@@ -87,7 +103,7 @@ class SyncOrchestrator:
 
         try:
             # Get list of Telegram folders (returns folder with peer_ids)
-            tg_folders = await self.connector.list_telegram_folders()
+            tg_folders = await self.mgmt.list_folders()
 
             for tg_folder in tg_folders:
                 folder_id = tg_folder.get("id")
@@ -114,7 +130,7 @@ class SyncOrchestrator:
                 # Get full channel info from peer_ids
                 peer_ids = tg_folder.get("peer_ids", [])
                 if peer_ids:
-                    tg_channels = await self.connector.import_folder_channels(peer_ids)
+                    tg_channels = await self.mgmt.import_folder_channels(peer_ids)
                 else:
                     tg_channels = []
 
@@ -336,30 +352,10 @@ class SyncOrchestrator:
         logger.info("update_active_syncs_start")
 
         try:
-            result = await session.execute(
-                select(ChannelSyncState).where(
-                    ChannelSyncState.phase.in_(["metadata", "syncing"])
-                )
-            )
-            active_syncs = result.scalars().all()
+            active_syncs = await self.sync_repo.get_active_syncs()
 
             for sync_state in active_syncs:
-                if sync_state.started_at and sync_state.estimated_total_messages:
-                    elapsed = datetime.now(timezone.utc) - sync_state.started_at
-                    elapsed_seconds = elapsed.total_seconds()
-
-                    if elapsed_seconds > 0:
-                        # Calculate rate (messages per second)
-                        rate = sync_state.messages_synced / elapsed_seconds
-
-                        if rate > 0:
-                            remaining = sync_state.estimated_total_messages - sync_state.messages_synced
-                            eta_seconds = remaining / rate
-
-                            sync_state.eta_minutes = int(eta_seconds / 60)
-                            sync_state.estimated_completion = (
-                                datetime.now(timezone.utc) + timedelta(seconds=eta_seconds)
-                            )
+                await self.sync_repo.update_eta(sync_state)
 
             await session.commit()
             logger.info("update_active_syncs_complete", count=len(active_syncs))
@@ -375,16 +371,7 @@ class SyncOrchestrator:
         logger.info("retry_failed_batches_start")
 
         try:
-            result = await session.execute(
-                select(SyncBatchLog).where(
-                    and_(
-                        SyncBatchLog.status == "failed",
-                        SyncBatchLog.retry_attempt < 3
-                    )
-                ).order_by(SyncBatchLog.updated_at.desc())
-                .limit(MAX_RETRIES_PER_CYCLE)
-            )
-            failed_batches = result.scalars().all()
+            failed_batches = await self.sync_repo.get_failed_batches(limit=MAX_RETRIES_PER_CYCLE)
 
             for batch in failed_batches:
                 try:
@@ -447,41 +434,29 @@ class SyncOrchestrator:
             syncing_states = result.scalars().all()
 
             for sync_state in syncing_states:
-                # Only reconcile if at least one batch log exists (batches have actually started)
-                total_batch_result = await session.execute(
-                    select(func.count(SyncBatchLog.id)).where(
-                        SyncBatchLog.sync_state_id == sync_state.id
-                    )
-                )
-                total_batches = total_batch_result.scalar() or 0
-
-                if total_batches == 0:
-                    # Batches haven't started yet (just queued), skip
-                    continue
-
                 # Count pending/processing batches
-                batch_result = await session.execute(
-                    select(SyncBatchLog).where(
-                        and_(
-                            SyncBatchLog.sync_state_id == sync_state.id,
-                            SyncBatchLog.status.in_(["pending", "processing", "running"])
+                pending_batches = await self.sync_repo.get_pending_batches(sync_state.id)
+
+                # If no pending batches trigger reconciliation
+                if not pending_batches:
+                    # Also ensure at least one batch exists so we don't reconcile
+                    # a sync that hasn't even queued its batches yet.
+                    total_batch_result = await session.execute(
+                        select(func.count(SyncBatchLog.id)).where(
+                            SyncBatchLog.sync_state_id == sync_state.id
                         )
                     )
-                )
-                pending_batches = batch_result.scalars().all()
+                    if total_batch_result.scalar() or 0 > 0:
+                        logger.info("triggering_reconciliation", sync_state=sync_state.id)
 
-                # If no pending batches and at least one batch exists, trigger reconciliation
-                if not pending_batches:
-                    logger.info("triggering_reconciliation", sync_state=sync_state.id)
+                        sync_state.phase = "reconciling"
+                        await session.commit()
 
-                    sync_state.phase = "reconciling"
-                    await session.commit()
-
-                    # Queue reconciliation task
-                    reconcile_channel_sync.apply_async(
-                        args=[str(sync_state.id)],
-                        kwargs={"db_name": self.db_name}
-                    )
+                        # Queue reconciliation task
+                        reconcile_channel_sync.apply_async(
+                            args=[str(sync_state.id)],
+                            kwargs={"db_name": self.db_name}
+                        )
 
             logger.info("reconcile_completed_syncs_complete")
 

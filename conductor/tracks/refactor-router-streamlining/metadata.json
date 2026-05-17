@@ -1,0 +1,8 @@
+{
+  "id": "refactor-router-streamlining",
+  "title": "Refactor: Router Streamlining",
+  "status": "done",
+  "priority": "high",
+  "tags": ["refactor", "api", "service-layer"],
+  "description": "Remove business logic from Leads and Contacts routers, introducing specialized services and unified response mappers."
+}

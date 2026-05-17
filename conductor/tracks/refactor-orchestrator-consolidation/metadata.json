@@ -1,0 +1,8 @@
+{
+  "id": "refactor-orchestrator-consolidation",
+  "title": "Refactor: Sync Orchestrator Consolidation",
+  "status": "done",
+  "priority": "high",
+  "tags": ["refactor", "pipeline", "orchestration"],
+  "description": "Refactor SyncOrchestrator to utilize the newly decoupled Telegram services and centralize sync state management."
+}

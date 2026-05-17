@@ -8,7 +8,8 @@ from typing import Any, Optional
 
 import tiktoken
 
-from src.ai.llm_client import structured_extraction
+from src.ai.providers.factory import get_llm_provider
+from src.core.config import ConfigurationProvider
 from src.ai.schemas import (
     ContactExtraction,
     LeadExtraction,
@@ -24,15 +25,23 @@ logger = structlog.get_logger()
 class ExtractionService:
     """Service for running various LLM-based extractions on text."""
 
-    def __init__(self):
-        from src.core.config import get_settings
-        settings = get_settings()
-        self.model = settings.google_llm_model if settings.llm_provider == "google" else settings.lmstudio_llm_model
+    def __init__(self, session: Optional[Any] = None):
+        self.config = ConfigurationProvider(session)
+        self._provider = None
 
-    def _chunk_text(self, text: str, max_tokens: int = 3000, overlap_tokens: int = 200) -> list[str]:
+    async def _get_provider(self):
+        if not self._provider:
+            self._provider = get_llm_provider()
+        return self._provider
+
+    async def _get_model_name(self):
+        provider = await self._get_provider()
+        return provider.model_name
+
+    def _chunk_text(self, text: str, model_name: str, max_tokens: int = 3000, overlap_tokens: int = 200) -> list[str]:
         """Split text into overlapping chunks using tiktoken."""
         try:
-            enc = tiktoken.encoding_for_model(self.model)
+            enc = tiktoken.encoding_for_model(model_name)
         except Exception:
             enc = tiktoken.get_encoding("cl100k_base")
 
@@ -40,7 +49,6 @@ class ExtractionService:
         if len(tokens) <= max_tokens:
             return [text]
 
-        # Ensure overlap < step so start always advances
         step = max(max_tokens - overlap_tokens, 1)
         chunks = []
         start = 0
@@ -75,21 +83,25 @@ class ExtractionService:
         if not system_prompt:
             raise ValueError(f"Unknown extraction type: {extraction_type}")
 
-        chunks = self._chunk_text(text, max_tokens=max_chunk_tokens)
+        model_name = await self._get_model_name()
+        chunks = self._chunk_text(text, model_name, max_tokens=max_chunk_tokens)
+        
         all_items = []
         metadata = {
             "chunks": len(chunks),
             "tokens": 0,
             "time_ms": 0,
-            "model": self.model,
+            "model": model_name,
         }
+
+        provider = await self._get_provider()
 
         async def _extract_chunk(chunk_text: str) -> dict[str, Any]:
             user_content = chunk_text
             if source_context:
                 user_content = f"[Source: {source_context}]\n\n{chunk_text}"
             
-            return await structured_extraction(
+            return await provider.structured_extraction(
                 system_prompt=system_prompt,
                 user_content=user_content,
             )
@@ -104,7 +116,6 @@ class ExtractionService:
                 continue
 
             try:
-                # Dynamic model validation
                 data = result.get("data", {})
                 items_raw = data.get("items", [])
                 
@@ -118,7 +129,7 @@ class ExtractionService:
                 item_schema = schemas[extraction_type]
                 for item_data in items_raw:
                     try:
-                        # Fix for legacy ad_content_summary -> content_summary
+                        # Standardize legacy field names
                         if "ad_content_summary" in item_data and "content_summary" not in item_data:
                             item_data["content_summary"] = item_data.pop("ad_content_summary")
                         
@@ -131,6 +142,5 @@ class ExtractionService:
                 
             except Exception as e:
                 logger.error("extraction_result_parsing_failed", error=str(e), extraction_type=extraction_type)
-                continue
 
         return all_items, metadata

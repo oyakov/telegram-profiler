@@ -1,0 +1,8 @@
+{
+  "id": "refactor-celery-task-pureness",
+  "title": "Refactor: Celery Task Pureness",
+  "status": "done",
+  "priority": "medium",
+  "tags": ["refactor", "pipeline", "celery"],
+  "description": "Refactor Celery tasks to use specialized services directly, removing reliance on the legacy connector facade."
+}

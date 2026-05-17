@@ -1,0 +1,8 @@
+{
+  "id": "refactor-telegram-connector-v2",
+  "title": "Refactor: Telegram Connector Decoupling",
+  "status": "done",
+  "priority": "high",
+  "tags": ["refactor", "telegram", "architecture"],
+  "description": "Split the monolithic TelegramConnector into specialized services for Auth, Sync, and Contact Management."
+}

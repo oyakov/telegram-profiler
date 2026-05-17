@@ -1,0 +1,8 @@
+{
+  "id": "refactor-embedding-provider-pattern",
+  "title": "Refactor: Embedding Provider Pattern",
+  "status": "done",
+  "priority": "medium",
+  "tags": ["refactor", "ai", "embeddings"],
+  "description": "Formalize the embedding provider pattern to match the LLM provider structure."
+}

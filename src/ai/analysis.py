@@ -18,68 +18,18 @@ from src.db.models import Contact
 logger = structlog.get_logger()
 
 
-# ========== Embedding Generation ==========
-
-
-def _get_embed_client() -> tuple[AsyncOpenAI, str, int]:
-    """Return (client, model_name, dimensions) based on provider config."""
-    settings = get_settings()
-
-    if settings.embed_provider == "lmstudio":
-        client = AsyncOpenAI(
-            base_url=settings.lmstudio_base_url,
-            api_key="lm-studio",
-            timeout=300.0,
-        )
-        model = settings.lmstudio_embed_model
-    else:
-        client = AsyncOpenAI(
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            api_key=settings.google_api_key,
-            timeout=300.0,
-        )
-        model = settings.google_embed_model
-
-    return client, model, settings.embed_dimensions
-
+from src.ai.providers.factory import get_embedding_provider
 
 async def generate_embedding(text: str) -> list[float]:
     """Generate a single embedding vector for the given text."""
-    client, model, dimensions = _get_embed_client()
-
-    response = await client.embeddings.create(
-        model=model,
-        input=text,
-        dimensions=dimensions,
-    )
-
-    vector = response.data[0].embedding
-    logger.debug("embedding_generated", model=model, dimensions=len(vector))
-    return vector
+    provider = get_embedding_provider()
+    return await provider.generate_embedding(text)
 
 
 async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings for a batch of texts."""
-    if not texts:
-        return []
-
-    client, model, dimensions = _get_embed_client()
-
-    all_vectors = []
-    batch_size = 100
-
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
-        response = await client.embeddings.create(
-            model=model,
-            input=batch,
-            dimensions=dimensions,
-        )
-        sorted_data = sorted(response.data, key=lambda x: x.index)
-        all_vectors.extend([d.embedding for d in sorted_data])
-
-    logger.info("embeddings_batch_generated", count=len(all_vectors), model=model)
-    return all_vectors
+    provider = get_embedding_provider()
+    return await provider.generate_embeddings_batch(texts)
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

@@ -1,0 +1,8 @@
+{
+  "id": "script-consolidation",
+  "title": "Consolidate: Legacy Scripts",
+  "status": "done",
+  "priority": "low",
+  "tags": ["cleanup", "scripts", "dev-experience"],
+  "description": "Refactor or remove redundant scripts in /scripts to use the unified service layer."
+}

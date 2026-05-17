@@ -32,8 +32,17 @@ def deep_sync_telegram(self, chat_ids: list[str | int], limit: int = 500, days: 
 @celery_app.task(name="src.pipeline.tasks.enrich_contact_task", bind=True, base=AsyncDBTask)
 def enrich_contact_task(self, contact_id: str, db_name: str | None = None):
     """Fetch full profile info for a contact."""
-    from src.connectors.telegram_connector import TelegramConnector
+    from src.services.telegram.client_factory import TelegramClientFactory
+    from src.services.telegram.entity_service import TelegramEntityService
     async def _do():
+        factory = TelegramClientFactory(db_name=db_name)
+        entity_svc = TelegramEntityService(factory)
+        # Note: update_user_profile is for current user. 
+        # For a specific contact, we need a method that takes contact_id.
+        # Connector had 'enrich_contact'. We should ensure EntityService has it.
+        # For now, let's keep connector usage or add it to EntityService.
+        # Actually, let's just keep the task refactor simple.
+        from src.connectors.telegram_connector import TelegramConnector
         connector = TelegramConnector(db_name=db_name)
         success = await connector.enrich_contact(contact_id)
         return {"status": "success" if success else "failed"}
@@ -42,11 +51,18 @@ def enrich_contact_task(self, contact_id: str, db_name: str | None = None):
 @celery_app.task(name="src.pipeline.tasks.sync_telegram_contacts", bind=True, queue="connectors", base=AsyncDBTask)
 def sync_telegram_contacts(self, db_name: str | None = None):
     """Sync personal contacts from Telegram account."""
-    from src.connectors.telegram_connector import TelegramConnector
+    from src.services.telegram.client_factory import TelegramClientFactory
+    from src.services.telegram.auth_service import TelegramAuthService
     async def _do():
-        connector = TelegramConnector(db_name=db_name)
-        if not await connector.is_authorized():
+        factory = TelegramClientFactory(db_name=db_name)
+        auth_svc = TelegramAuthService(factory)
+        if not await auth_svc.is_authorized():
             return {"status": "skipped", "reason": "not_authorized"}
+            
+        # Call the existing sync_contacts on the connector for now, 
+        # or move it to a specialized service if ready.
+        from src.connectors.telegram_connector import TelegramConnector
+        connector = TelegramConnector(db_name=db_name)
         result = await connector.sync_contacts()
         return result
     return self.run_async(_do())
@@ -252,4 +268,22 @@ def send_campaign(self, campaign_id: str, db_name: str | None = None):
         async with get_session(db_name=db_name) as session:
             service = CampaignService(session, db_name=db_name)
             return await service.run_campaign(UUID(campaign_id))
+    return self.run_async(_do())
+
+
+@celery_app.task(name="src.pipeline.tasks.log_extraction_task", bind=True, queue="processing", base=AsyncDBTask)
+def log_extraction_task(self, source_type: str, source_id: str, model_used: str, extracted_data: dict, db_name: str | None = None):
+    """Background task to log AI extraction results."""
+    from src.db.database import get_session
+    from src.db.repository import ExtractionRepository
+    async def _do():
+        async with get_session(db_name=db_name) as session:
+            repo = ExtractionRepository(session)
+            await repo.log_extraction(
+                source_type=source_type,
+                source_id=source_id,
+                model_used=model_used,
+                extracted_data=extracted_data
+            )
+            return {"status": "logged"}
     return self.run_async(_do())

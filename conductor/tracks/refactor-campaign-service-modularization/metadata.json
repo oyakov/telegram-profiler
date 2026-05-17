@@ -1,0 +1,8 @@
+{
+  "id": "refactor-campaign-service-modularization",
+  "title": "Refactor: Campaign Service Modularization",
+  "status": "done",
+  "priority": "medium",
+  "tags": ["refactor", "marketing", "architecture"],
+  "description": "Decouple CampaignService by introducing delivery providers and personalizer utilities."
+}

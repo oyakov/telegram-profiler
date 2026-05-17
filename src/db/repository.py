@@ -2,10 +2,10 @@ from __future__ import annotations
 import structlog
 from typing import List, Optional, Union
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.models import Message, MessageContact, Contact, ExtractionLog
+from src.db.models import Message, MessageContact, Contact, ExtractionLog, ChannelSyncState, SyncBatchLog, SyncState, Campaign, CampaignMessage, LeadSearch
 
 logger = structlog.get_logger()
 
@@ -70,12 +70,53 @@ class MessageRepository:
         result = await self.session.execute(stmt)
         return {row[0] for row in result.all()}
 
+    async def bulk_save_messages(self, messages_data: List[dict]) -> List[Message]:
+        """Bulk upsert messages using ON CONFLICT."""
+        if not messages_data:
+            return []
+            
+        from sqlalchemy.dialects.postgresql import insert
+        
+        stmt = insert(Message).values(messages_data)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Message.source_message_id],
+            set_={
+                "content": stmt.excluded.content,
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ).returning(Message)
+        
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
 
 class ContactRepository:
     """Repository for managing Contact operations and deduplication."""
 
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def bulk_upsert_contacts(self, contacts_data: List[dict]) -> List[Contact]:
+        """Bulk upsert contacts based on telegram_id or email."""
+        if not contacts_data:
+            return []
+            
+        from sqlalchemy.dialects.postgresql import insert
+        
+        stmt = insert(Contact).values(contacts_data)
+        # We assume telegram_id is the primary unique identifier for sync
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Contact.telegram_id],
+            set_={
+                "first_name": stmt.excluded.first_name,
+                "last_name": stmt.excluded.last_name,
+                "telegram_username": stmt.excluded.telegram_username,
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ).returning(Contact)
+        
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def find_duplicate(
         self,
@@ -202,3 +243,122 @@ class ExtractionRepository:
         )
         self.session.add(log_entry)
         return log_entry
+
+
+class SyncStateRepository:
+    """Repository for managing sync states and batch logs."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_or_create_connector_state(self, connector_name: str) -> SyncState:
+        """Get or create the global sync state for a connector."""
+        result = await self.session.execute(
+            select(SyncState).where(SyncState.connector == connector_name)
+        )
+        state = result.scalar_one_or_none()
+        if not state:
+            state = SyncState(connector=connector_name, status="idle")
+            self.session.add(state)
+            await self.session.flush()
+        return state
+
+    async def update_eta(self, sync_state: ChannelSyncState) -> None:
+        """Calculate and update ETA and sync rate for an active sync."""
+        if sync_state.started_at and sync_state.estimated_total_messages:
+            elapsed = datetime.now(timezone.utc) - sync_state.started_at
+            elapsed_seconds = elapsed.total_seconds()
+
+            if elapsed_seconds > 0:
+                # Calculate rate (messages per second)
+                rate = sync_state.messages_synced / elapsed_seconds
+
+                if rate > 0:
+                    remaining = sync_state.estimated_total_messages - sync_state.messages_synced
+                    eta_seconds = remaining / rate
+
+                    sync_state.eta_minutes = int(eta_seconds / 60)
+                    sync_state.estimated_completion = (
+                        datetime.now(timezone.utc) + timedelta(seconds=eta_seconds)
+                    )
+        
+    async def get_active_syncs(self) -> List[ChannelSyncState]:
+        """Get all sync states currently in progress."""
+        result = await self.session.execute(
+            select(ChannelSyncState).where(
+                ChannelSyncState.phase.in_(["metadata", "syncing"])
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_pending_batches(self, sync_state_id: UUID) -> List[SyncBatchLog]:
+        """Get batches that are pending or running for a given sync."""
+        result = await self.session.execute(
+            select(SyncBatchLog).where(
+                and_(
+                    SyncBatchLog.sync_state_id == sync_state_id,
+                    SyncBatchLog.status.in_(["pending", "processing", "running"])
+                )
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_failed_batches(self, limit: int = 10) -> List[SyncBatchLog]:
+        """Get recently failed batches for retry."""
+        result = await self.session.execute(
+            select(SyncBatchLog).where(
+                and_(
+                    SyncBatchLog.status == "failed",
+                    SyncBatchLog.retry_attempt < 3
+                )
+            ).order_by(SyncBatchLog.updated_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+
+class CampaignRepository:
+    """Repository for managing marketing Campaigns and Messages."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_pending_messages(self, campaign_id: UUID, limit: int = 100) -> List[CampaignMessage]:
+        """Get pending messages for a campaign."""
+        result = await self.session.execute(
+            select(CampaignMessage)
+            .where(
+                and_(
+                    CampaignMessage.campaign_id == campaign_id,
+                    CampaignMessage.status == "pending"
+                )
+            )
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+
+class LeadSearchRepository:
+    """Repository for managing Lead Searches and contact filtering."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_matching_contacts(self, profile_filter: dict, limit: int = 200) -> List[Contact]:
+        """Find contacts matching a complex profile filter."""
+        stmt = select(Contact).where(Contact.is_lead == True)
+        
+        if profile_filter.get("first_name"):
+            stmt = stmt.where(Contact.first_name.ilike(f"%{profile_filter['first_name']}%"))
+        if profile_filter.get("last_name"):
+            stmt = stmt.where(Contact.last_name.ilike(f"%{profile_filter['last_name']}%"))
+        if profile_filter.get("company"):
+            stmt = stmt.where(Contact.company.ilike(f"%{profile_filter['company']}%"))
+        if profile_filter.get("position"):
+            stmt = stmt.where(Contact.position.ilike(f"%{profile_filter['position']}%"))
+        if profile_filter.get("min_lead_score") is not None:
+            stmt = stmt.where(Contact.lead_score >= profile_filter["min_lead_score"])
+
+        stmt = stmt.limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
