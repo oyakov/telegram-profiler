@@ -254,7 +254,7 @@ class SyncOrchestrator:
                         error=str(e)
                     )
 
-            # queued_count commit removed — each channel commits individually above
+            # Each channel commits individually inside the loop above (commit-before-enqueue pattern)
 
             logger.info("queue_new_channels_complete", queued=queued_count)
 
@@ -446,7 +446,7 @@ class SyncOrchestrator:
                             SyncBatchLog.sync_state_id == sync_state.id
                         )
                     )
-                    if total_batch_result.scalar() or 0 > 0:
+                    if (total_batch_result.scalar() or 0) > 0:
                         logger.info("triggering_reconciliation", sync_state=sync_state.id)
 
                         sync_state.phase = "reconciling"

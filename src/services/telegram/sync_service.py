@@ -84,71 +84,80 @@ class TelegramSyncService(TelegramSyncInterface):
 
     async def _sync_chat_impl(self, chat_id, limit, offset_date, session, ignore_last_id) -> int:
         client = await self.factory.get_client()
-        # Note: client is NOT entered here, assuming it's managed by the caller 
+        # Note: client is NOT entered here, assuming it's managed by the caller
         # (e.g. sync_recent) or we need to manage it if called independently.
         # For simplicity, we ensure connection if not already.
         if not client.is_connected():
             await client.connect()
 
         try:
-            entity = await client.get_entity(chat_id)
-        except Exception:
-            # Handle common Telegram ID quirks
-            if isinstance(chat_id, int) and chat_id > 0:
-                try: entity = await client.get_entity(int(f"-100{chat_id}"))
-                except Exception: entity = await client.get_entity(str(chat_id))
-            else: raise
+            try:
+                entity = await client.get_entity(chat_id)
+            except Exception:
+                # Handle common Telegram ID quirks
+                if isinstance(chat_id, int) and chat_id > 0:
+                    try: entity = await client.get_entity(int(f"-100{chat_id}"))
+                    except Exception: entity = await client.get_entity(str(chat_id))
+                else: raise
 
-        is_channel = isinstance(entity, Channel) and entity.broadcast
-        messages_synced = 0
-        batch_size = 1000
-        
-        # Get last_id from TrackedChannel or similar if available
-        last_id = 0
-        if not ignore_last_id:
-            # Check if this is a tracked channel
-            res = await session.execute(select(TrackedChannel).where(TrackedChannel.telegram_id == str(entity.id)))
-            tracked = res.scalar_one_or_none()
-            
-            repo = SyncStateRepository(session)
-            state = await repo.get_or_create_connector_state("telegram")
-            last_id = (state.metadata_json or {}).get(f"chat_{entity.id}_last_id", 0)
+            is_channel = isinstance(entity, Channel) and entity.broadcast
+            messages_synced = 0
+            batch_size = 1000
 
-        existing_rows = await session.execute(
-            select(Message.source_message_id).where(Message.group_id == str(entity.id))
-        )
-        existing_ids = {r[0] for r in existing_rows if r[0]}
+            # Get last_id from TrackedChannel or similar if available
+            last_id = 0
+            if not ignore_last_id:
+                # Check if this is a tracked channel
+                res = await session.execute(select(TrackedChannel).where(TrackedChannel.telegram_id == str(entity.id)))
+                tracked = res.scalar_one_or_none()
 
-        async for msg in client.iter_messages(entity, limit=limit, min_id=last_id, offset_date=offset_date):
-            source_id = f"{entity.id}_{msg.id}"
-            if source_id in existing_ids: continue
-            
-            sender_entity = msg.sender or entity if not is_channel else entity
-            contact = await self.entity_service.get_or_create_contact(session, sender_entity, is_channel=is_channel)
-            
-            message = Message(
-                contact_id=contact.id,
-                source="telegram",
-                source_message_id=source_id,
-                direction="outgoing" if msg.out else "incoming",
-                content=msg.text or "",
-                group_id=str(entity.id),
-                group_name=getattr(entity, "title", "Unknown"),
-                timestamp=msg.date
+                repo = SyncStateRepository(session)
+                state = await repo.get_or_create_connector_state("telegram")
+                last_id = (state.metadata_json or {}).get(f"chat_{entity.id}_last_id", 0)
+
+            existing_rows = await session.execute(
+                select(Message.source_message_id)
+                .where(Message.group_id == str(entity.id))
+                .order_by(Message.source_message_id.desc())
+                .limit(50000)
             )
-            session.add(message)
-            session.add(MessageContact(message=message, contact=contact, role="sender"))
-            existing_ids.add(source_id)
-            messages_synced += 1
+            existing_ids = {r[0] for r in existing_rows if r[0]}
 
-            if messages_synced % batch_size == 0:
-                await session.commit()
+            async for msg in client.iter_messages(entity, limit=limit, min_id=last_id, offset_date=offset_date):
+                source_id = f"{entity.id}_{msg.id}"
+                if source_id in existing_ids: continue
 
-        # Update last sync timestamp for channel
-        await session.execute(
-            update(TrackedChannel)
-            .where(TrackedChannel.telegram_id == str(entity.id))
-            .values(last_sync_at=datetime.now(timezone.utc))
-        )
-        await session.commit()
-        return messages_synced
+                sender_entity = msg.sender or entity if not is_channel else entity
+                contact = await self.entity_service.get_or_create_contact(session, sender_entity, is_channel=is_channel)
+
+                message = Message(
+                    contact_id=contact.id,
+                    source="telegram",
+                    source_message_id=source_id,
+                    direction="outgoing" if msg.out else "incoming",
+                    content=msg.text or "",
+                    group_id=str(entity.id),
+                    group_name=getattr(entity, "title", "Unknown"),
+                    timestamp=msg.date
+                )
+                session.add(message)
+                session.add(MessageContact(message=message, contact=contact, role="sender"))
+                existing_ids.add(source_id)
+                messages_synced += 1
+
+                if messages_synced % batch_size == 0:
+                    await session.commit()
+
+            # Update last sync timestamp for channel
+            await session.execute(
+                update(TrackedChannel)
+                .where(TrackedChannel.telegram_id == str(entity.id))
+                .values(last_sync_at=datetime.now(timezone.utc))
+            )
+            await session.commit()
+            return messages_synced
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass

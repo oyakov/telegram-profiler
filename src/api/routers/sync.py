@@ -161,11 +161,12 @@ async def get_channel_sync_status(channel_id: str, db: AsyncSession = Depends(ge
 
     sync_state = channel.sync_state
 
-    # Get batch logs
+    # Get batch logs (capped to avoid returning thousands of rows)
     batch_result = await db.execute(
         select(SyncBatchLog)
         .where(SyncBatchLog.sync_state_id == sync_state.id)
         .order_by(SyncBatchLog.batch_number)
+        .limit(500)
     )
     batches = batch_result.scalars().all()
 

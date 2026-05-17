@@ -54,7 +54,6 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
                 progress = None
                 try:
                     # Parse args safely; naive split(",") breaks on args containing commas
-                    import ast
                     try:
                         parsed_args = ast.literal_eval(args_str) if args_str and args_str.strip() not in ("()", "") else ()
                         if not isinstance(parsed_args, tuple):
@@ -79,7 +78,8 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
                             context = f"Канал: {ch.title}"
                             if ch.sync_state:
                                 progress = round(ch.sync_state.progress_percent or 0, 1)
-                except: pass
+                except Exception as _exc:
+                    logger.debug("task_context_enrich_failed", error=str(_exc))
                 running_tasks.append({
                     "id": task.get("id"), "name": name, "worker": worker_name, "status": "running", 
                     "context": context, "progress": progress, "queue": "connectors", "timestamp": task.get("time_start")

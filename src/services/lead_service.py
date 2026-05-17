@@ -102,27 +102,25 @@ class LeadService:
         """Search leads by profile criteria."""
         page = profile_filter.get("page", 1)
         page_size = profile_filter.get("page_size", 50)
-        
-        contacts = await self.repo.get_matching_contacts(profile_filter, limit=1000) # Get larger set for count
-        total = len(contacts)
-        
-        # Apply pagination manually if repo doesn't support it yet or refactor repo
-        # For now, let's just return what the repo gives us and assume repo limit handled it
-        # Actually, let's refactor the repo to handle pagination if needed, but for now we'll just slice.
-        
-        start = (page - 1) * page_size
-        end = start + page_size
-        paged_contacts = contacts[start:end]
+        offset = (page - 1) * page_size
+
+        # Count query — DB-level, no Python-side slice
+        total = await self.repo.count_matching_contacts(profile_filter)
+
+        # Paged data query
+        contacts = await self.repo.get_matching_contacts(
+            profile_filter, limit=page_size, offset=offset
+        )
 
         return {
-            "contacts": [self.contact_svc.map_to_response(c) for c in paged_contacts],
+            "contacts": [self.contact_svc.map_to_response(c) for c in contacts],
             "total": total,
             "page": page,
             "page_size": page_size,
             "pages": (total + page_size - 1) // page_size if total else 0
         }
 
-    async def create_lead_search(self, data: dict) -> dict:
+    async def create_lead_search(self, data: dict) -> LeadSearch:
         """Save a new tracked lead search."""
         lead_search = LeadSearch(
             name=data["name"],
@@ -132,6 +130,15 @@ class LeadService:
         self.session.add(lead_search)
         await self.session.flush()
         return lead_search
+
+    async def list_searches(self, active_only: bool = True) -> list:
+        """List saved lead searches."""
+        query = select(LeadSearch)
+        if active_only:
+            query = query.where(LeadSearch.is_active == True)
+        query = query.order_by(LeadSearch.created_at.desc())
+        result = await self.session.execute(query)
+        return result.scalars().all()
 
     async def run_saved_search(self, search_id: str) -> dict:
         """Run a saved lead search and return results."""

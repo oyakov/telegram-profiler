@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional
+from uuid import UUID
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, func, delete
@@ -96,7 +97,11 @@ async def update_folder(folder_id: str, req: UpdateFolderRequest, db: AsyncSessi
 
 @router.delete("/folders/{folder_id}")
 async def delete_folder(folder_id: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(TrackedFolder).where(TrackedFolder.id == folder_id))
+    try:
+        folder_uuid = UUID(folder_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid folder ID format")
+    res = await db.execute(select(TrackedFolder).where(TrackedFolder.id == folder_uuid))
     folder = res.scalar_one_or_none()
     if not folder:
         raise HTTPException(404, "Folder not found")
@@ -188,7 +193,11 @@ async def toggle_contact_tracking(contact_id: str, db: AsyncSession = Depends(ge
 
 @router.delete("/channels/{channel_id}")
 async def delete_channel(channel_id: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(TrackedChannel).where(TrackedChannel.id == channel_id))
+    try:
+        channel_uuid = UUID(channel_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid channel ID format")
+    res = await db.execute(select(TrackedChannel).where(TrackedChannel.id == channel_uuid))
     chan = res.scalar_one_or_none()
     if not chan:
         raise HTTPException(404, "Channel not found")
@@ -199,7 +208,11 @@ async def delete_channel(channel_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/channels/{channel_id}/toggle")
 async def toggle_channel(channel_id: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(TrackedChannel).where(TrackedChannel.id == channel_id))
+    try:
+        channel_uuid = UUID(channel_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid channel ID format")
+    res = await db.execute(select(TrackedChannel).where(TrackedChannel.id == channel_uuid))
     chan = res.scalar_one_or_none()
     if not chan:
         raise HTTPException(404, "Not found")

@@ -169,9 +169,9 @@ def orchestrate_massive_sync():
     settings = get_settings()
     db_name = settings.postgres_db
     task_chain = chain(
-        load_complete_history.s(db_name=db_name),
-        generate_all_embeddings.s(batch_size=500, db_name=db_name),
-        reindex_dirty_contacts.s(batch_size=50, db_name=db_name)
+        load_complete_history.si(db_name=db_name),
+        generate_all_embeddings.si(batch_size=500, db_name=db_name),
+        reindex_dirty_contacts.si(batch_size=50, db_name=db_name)
     )
     result = task_chain.apply_async()
     return {"status": "dispatched", "chain_id": str(result.id)}

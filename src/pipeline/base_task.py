@@ -35,6 +35,6 @@ class AsyncDBTask(Task):
         from src.core.config import get_settings
         return db_name or get_settings().postgres_db
 
-    async def session_scope(self, db_name=None):
-        """Shortcut for getting an async session."""
+    def get_session_context(self, db_name: str | None = None):
+        """Return an async session context manager. Use as: async with self.get_session_context() as session:"""
         return get_session(db_name=db_name or self.get_db_name())

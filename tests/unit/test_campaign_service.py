@@ -81,12 +81,15 @@ async def test_run_campaign_marks_completed_and_returns_stats():
         status="pending"
     )
 
-    # get() returns campaign on first call, contact on subsequent
-    session.get = AsyncMock(side_effect=[campaign, contact])
+    # get() returns campaign only (contact is now bulk-loaded via execute)
+    session.get = AsyncMock(return_value=campaign)
 
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [cm]
-    session.execute = AsyncMock(return_value=mock_result)
+    # First execute call returns pending messages; second returns the contacts bulk-load
+    pending_result = MagicMock()
+    pending_result.scalars.return_value.all.return_value = [cm]
+    contacts_result = MagicMock()
+    contacts_result.scalars.return_value.all.return_value = [contact]
+    session.execute = AsyncMock(side_effect=[pending_result, contacts_result])
 
     svc = _make_service(session)
     svc.delivery.send_message = AsyncMock(return_value=True)
@@ -119,10 +122,12 @@ async def test_run_campaign_handles_send_failure():
         status="pending"
     )
 
-    session.get = AsyncMock(side_effect=[campaign, contact])
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [cm]
-    session.execute = AsyncMock(return_value=mock_result)
+    session.get = AsyncMock(return_value=campaign)
+    pending_result = MagicMock()
+    pending_result.scalars.return_value.all.return_value = [cm]
+    contacts_result = MagicMock()
+    contacts_result.scalars.return_value.all.return_value = [contact]
+    session.execute = AsyncMock(side_effect=[pending_result, contacts_result])
 
     svc = _make_service(session)
     svc.delivery.send_message = AsyncMock(return_value=False)

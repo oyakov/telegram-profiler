@@ -7,7 +7,6 @@ import structlog
 import math
 from typing import Optional
 
-from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession

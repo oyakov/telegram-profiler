@@ -10,11 +10,7 @@ from src.api.schemas import (
     TelegramSendCode, TelegramVerifyCode, TelegramTwoFA,
     DeepSyncRequest, DiscoveryJoinRequest
 )
-
-
-class FolderImportRequest(BaseModel):
-    folder_id: str
-    peer_ids: List[str]
+from src.connectors.telegram_connector import TelegramConnector
 from src.services.telegram.client_factory import TelegramClientFactory
 from src.services.telegram.auth_service import TelegramAuthService
 from src.services.telegram.management_service import TelegramManagementService
@@ -22,6 +18,11 @@ from src.services.telegram.entity_service import TelegramEntityService
 from src.db.database import get_session
 from src.db.models import TrackedFolder, TrackedChannel
 from src.pipeline.tasks import deep_sync_telegram
+
+
+class FolderImportRequest(BaseModel):
+    folder_id: str
+    peer_ids: List[str]
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
@@ -62,7 +63,8 @@ async def telegram_auth_status(request: Request):
         
         return {"authorized": is_auth, "profile": profile_data}
     except Exception as e:
-        return {"authorized": False, "error": str(e)}
+        logger.error("telegram_auth_status_error", error=str(e))
+        return {"authorized": False, "error": "Could not check authorization status"}
 
 @router.post("/auth/send_code")
 async def telegram_send_code(req: TelegramSendCode, request: Request):
@@ -72,7 +74,8 @@ async def telegram_send_code(req: TelegramSendCode, request: Request):
         phone_code_hash = await services["auth"].send_code_request(req.phone)
         return {"status": "success", "phone_code_hash": phone_code_hash}
     except Exception as e:
-        raise HTTPException(400, f"Failed to send code: {str(e)}")
+        logger.error("telegram_send_code_error", error=str(e))
+        raise HTTPException(400, "Failed to send verification code")
 
 @router.post("/auth/verify")
 async def telegram_verify_code(req: TelegramVerifyCode, request: Request):
@@ -123,7 +126,8 @@ async def telegram_import_folder(body: FolderImportRequest, request: Request):
     try:
         channels = await services["mgmt"].import_folder_channels(body.peer_ids)
     except Exception as e:
-        raise HTTPException(500, f"Failed to fetch channels from Telegram: {str(e)}")
+        logger.error("telegram_import_folder_error", error=str(e))
+        raise HTTPException(500, "Failed to fetch channels from Telegram")
 
     added = 0
     moved = 0

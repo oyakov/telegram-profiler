@@ -104,10 +104,11 @@ async def list_campaigns(
     if status:
         query = query.where(Campaign.status == status)
 
-    # Get total count
-    count_result = await db.execute(
-        select(func.count(Campaign.id))
-    )
+    # Get total count (must apply the same status filter)
+    count_query = select(func.count(Campaign.id))
+    if status:
+        count_query = count_query.where(Campaign.status == status)
+    count_result = await db.execute(count_query)
     total = count_result.scalar()
 
     # Get paginated results
@@ -116,7 +117,7 @@ async def list_campaigns(
     campaigns = result.scalars().all()
 
     return {
-        "campaigns": [CampaignListResponse.from_orm(c) for c in campaigns],
+        "campaigns": [CampaignListResponse.model_validate(c) for c in campaigns],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -245,7 +246,7 @@ async def get_campaign_messages(
     messages = result.scalars().all()
 
     return {
-        "messages": [CampaignMessageResponse.from_orm(m) for m in messages],
+        "messages": [CampaignMessageResponse.model_validate(m) for m in messages],
         "total": total,
         "page": page,
         "page_size": page_size,

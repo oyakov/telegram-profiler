@@ -94,7 +94,7 @@ class MessageProcessor:
                 log_extraction_task.delay(
                     source_type="unified_message",
                     source_id=str(msg.id),
-                    model_used=self.ai_service.model,
+                    model_used=await self.ai_service._get_model_name(),
                     extracted_data={
                         "contacts": [c.model_dump() for c in contacts],
                         "leads": [l.model_dump() for l in leads]
@@ -108,7 +108,12 @@ class MessageProcessor:
                 stats["errors"] += 1
 
         # Phase 3: Single Flush/Commit
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except Exception as e:
+            logger.error("process_batch_commit_failed", error=str(e))
+            await self.session.rollback()
+            raise
         return stats
 
     async def _sync_contact(self, extraction: ContactExtraction) -> Optional[Contact]:

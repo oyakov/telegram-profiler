@@ -51,6 +51,14 @@ COLUMN_MAP = {
     "контекст": "context",
 }
 
+# Whitelist of fields safe to import from untrusted spreadsheets.
+# Security-sensitive fields (is_lead, lead_score, is_tracked, etc.) are excluded.
+_EXCEL_IMPORT_FIELDS = frozenset([
+    "first_name", "last_name", "company", "position",
+    "email", "phone", "telegram_username", "linkedin_url",
+    "notes", "context",
+])
+
 
 class ExcelConnector(BaseConnector):
     """Import contacts from Excel/CSV/TSV files."""
@@ -138,7 +146,7 @@ class ExcelConnector(BaseConnector):
         for i in range(0, len(df), batch_size):
             batch = df.iloc[i : i + batch_size]
             for _, row in batch.iterrows():
-                data = {k: v for k, v in row.to_dict().items() if pd.notna(v) and k in Contact.__table__.columns.keys()}
+                data = {k: v for k, v in row.to_dict().items() if pd.notna(v) and k in _EXCEL_IMPORT_FIELDS}
 
                 if not data.get("first_name") and not data.get("email"):
                     continue  # Skip rows with no name or email

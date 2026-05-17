@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import threading
+import structlog
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -13,6 +14,8 @@ from sqlalchemy.pool import NullPool
 import asyncpg
 
 from src.core.config import get_settings
+
+logger = structlog.get_logger()
 
 settings = get_settings()
 _engines: dict[str, AsyncEngine] = {}
@@ -36,13 +39,9 @@ def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.a
         if len(_engines) >= 50:
             oldest_key = next(iter(_engines))
             old_engine = _engines.pop(oldest_key)
-            import asyncio
-            try:
-                asyncio.get_running_loop().create_task(old_engine.dispose())
-            except RuntimeError:
-                # No running event loop (Celery sync context) — dispose synchronously
-                # to prevent connection leaks when the engine cache overflows.
-                old_engine.sync_engine.dispose()
+            # Always dispose synchronously — avoids race where another coroutine
+            # uses the engine between create_task() and actual disposal.
+            old_engine.sync_engine.dispose()
 
         # Use SQLAlchemy URL object so the password is redacted in repr/logs
         url = sa.engine.URL.create(
@@ -128,7 +127,7 @@ async def ensure_database_exists(db_name: str):
         if not exists:
             # CREATE DATABASE cannot be executed in a transaction block
             await conn.execute(f'CREATE DATABASE "{db_name}"')
-            print(f"Created database: {db_name}")
+            logger.info("database_created", db_name=db_name)
     finally:
         await conn.close()
 
@@ -142,7 +141,7 @@ async def init_database_schema(db_name: str):
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)
     await engine.dispose()
-    print(f"Initialized schema for database: {db_name}")
+    logger.info("schema_initialized", db_name=db_name)
 
 async def list_tenant_databases() -> list[str]:
     """Scan Postgres for all databases starting with 'crm_' or return configured default."""

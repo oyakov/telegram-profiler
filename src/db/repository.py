@@ -82,7 +82,6 @@ class MessageRepository:
             index_elements=[Message.source_message_id],
             set_={
                 "content": stmt.excluded.content,
-                "updated_at": datetime.now(timezone.utc)
             }
         ).returning(Message)
         
@@ -107,6 +106,7 @@ class ContactRepository:
         # We assume telegram_id is the primary unique identifier for sync
         stmt = stmt.on_conflict_do_update(
             index_elements=[Contact.telegram_id],
+            index_where=Contact.telegram_id.isnot(None),
             set_={
                 "first_name": stmt.excluded.first_name,
                 "last_name": stmt.excluded.last_name,
@@ -344,10 +344,10 @@ class LeadSearchRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_matching_contacts(self, profile_filter: dict, limit: int = 200) -> List[Contact]:
+    async def get_matching_contacts(self, profile_filter: dict, limit: int = 200, offset: int = 0) -> List[Contact]:
         """Find contacts matching a complex profile filter."""
         stmt = select(Contact).where(Contact.is_lead == True)
-        
+
         if profile_filter.get("first_name"):
             stmt = stmt.where(Contact.first_name.ilike(f"%{profile_filter['first_name']}%"))
         if profile_filter.get("last_name"):
@@ -359,6 +359,22 @@ class LeadSearchRepository:
         if profile_filter.get("min_lead_score") is not None:
             stmt = stmt.where(Contact.lead_score >= profile_filter["min_lead_score"])
 
-        stmt = stmt.limit(limit)
+        stmt = stmt.offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_matching_contacts(self, profile_filter: dict) -> int:
+        """Count contacts matching a profile filter."""
+        stmt = select(func.count(Contact.id)).where(Contact.is_lead == True)
+        if profile_filter.get("first_name"):
+            stmt = stmt.where(Contact.first_name.ilike(f"%{profile_filter['first_name']}%"))
+        if profile_filter.get("last_name"):
+            stmt = stmt.where(Contact.last_name.ilike(f"%{profile_filter['last_name']}%"))
+        if profile_filter.get("company"):
+            stmt = stmt.where(Contact.company.ilike(f"%{profile_filter['company']}%"))
+        if profile_filter.get("position"):
+            stmt = stmt.where(Contact.position.ilike(f"%{profile_filter['position']}%"))
+        if profile_filter.get("min_lead_score") is not None:
+            stmt = stmt.where(Contact.lead_score >= profile_filter["min_lead_score"])
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0

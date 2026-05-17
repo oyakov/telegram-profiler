@@ -90,14 +90,8 @@ async def list_lead_searches(
     active_only: bool = Query(True),
 ):
     """List saved lead searches."""
-    from src.db.models import LeadSearch
-    from sqlalchemy import select
-    query = select(LeadSearch)
-    if active_only:
-        query = query.where(LeadSearch.is_active == True)
-    query = query.order_by(LeadSearch.created_at.desc())
-    result = await db.execute(query)
-    searches = result.scalars().all()
+    service = LeadService(db)
+    searches = await service.list_searches(active_only=active_only)
 
     return [
         LeadSearchResponse(

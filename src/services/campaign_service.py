@@ -5,6 +5,7 @@ import structlog
 from uuid import UUID
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Campaign, CampaignMessage, LeadSearch, Contact
@@ -75,13 +76,20 @@ class CampaignService:
         await self.session.commit()
 
         messages = await self.campaign_repo.get_pending_messages(campaign_id, limit=_MAX_CAMPAIGN_RECIPIENTS)
-        
+
+        # Bulk-load all contacts for the campaign messages to avoid N+1 queries
+        contact_ids = [cm.contact_id for cm in messages]
+        contacts_result = await self.session.execute(
+            select(Contact).where(Contact.id.in_(contact_ids))
+        )
+        contacts_map = {c.id: c for c in contacts_result.scalars().all()}
+
         sent = 0
         failed = 0
 
         for cm in messages:
             try:
-                contact = await self.session.get(Contact, cm.contact_id)
+                contact = contacts_map.get(cm.contact_id)
                 if not contact or not contact.telegram_id:
                     cm.status = "skipped"
                     cm.error_message = "No delivery identifier (telegram_id)"

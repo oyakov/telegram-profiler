@@ -34,7 +34,7 @@ async def import_excel_file(file: UploadFile = File(...)):
     filepath = upload_dir / filename
 
     contents = await file.read()
-    await asyncio.get_event_loop().run_in_executor(None, filepath.write_bytes, contents)
+    await asyncio.get_running_loop().run_in_executor(None, filepath.write_bytes, contents)
 
     from src.pipeline.tasks import import_excel
     result = import_excel.delay(file_path=str(filepath))
@@ -54,7 +54,7 @@ async def import_audio_file(file: UploadFile = File(...), contact_id: Optional[s
     filepath = upload_dir / filename
 
     contents = await file.read()
-    await asyncio.get_event_loop().run_in_executor(None, filepath.write_bytes, contents)
+    await asyncio.get_running_loop().run_in_executor(None, filepath.write_bytes, contents)
 
     from src.connectors.audio import AudioProcessor
     processor = AudioProcessor()
