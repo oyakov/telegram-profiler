@@ -30,4 +30,8 @@ USER appuser
 
 EXPOSE 8000
 
+# Health check — nginx depends_on only waits for container start, not uvicorn
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8000/api/stats/health || exit 1
+
 CMD ["scripts/entrypoint.sh"]
