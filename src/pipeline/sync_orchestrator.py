@@ -208,9 +208,11 @@ class SyncOrchestrator:
                         stuck_time = datetime.now(timezone.utc) - channel.sync_state.started_at
                         if stuck_time < timedelta(minutes=2):
                             continue  # Still processing, skip
-                    # Re-queue metadata for stuck channels
+                    # Re-queue metadata for stuck channels.
+                    # Commit the delete first so the subsequent INSERT doesn't
+                    # race against a non-deferrable unique constraint on channel_id.
                     await session.delete(channel.sync_state)
-                    await session.flush()
+                    await session.commit()
                     channel.sync_state = None
 
                 # Skip if in other in-progress phases
@@ -256,12 +258,19 @@ class SyncOrchestrator:
                             sync_state_id=str(sync_state.id),
                             error=str(enqueue_err)
                         )
-                        from sqlalchemy import delete as _sa_delete
-                        async with get_session(db_name=self.db_name) as cleanup:
-                            await cleanup.execute(
-                                _sa_delete(ChannelSyncState).where(
-                                    ChannelSyncState.id == sync_state.id
+                        try:
+                            from sqlalchemy import delete as _sa_delete
+                            async with get_session(db_name=self.db_name) as cleanup:
+                                await cleanup.execute(
+                                    _sa_delete(ChannelSyncState).where(
+                                        ChannelSyncState.id == sync_state.id
+                                    )
                                 )
+                        except Exception as cleanup_err:
+                            logger.error(
+                                "sync_state_cleanup_failed",
+                                sync_state_id=str(sync_state.id),
+                                error=str(cleanup_err)
                             )
 
                 except Exception as e:
@@ -328,24 +337,34 @@ class SyncOrchestrator:
                     )
 
                     # Queue batch tasks — capped per cycle to prevent queue flooding
+                    dispatched = 0
                     for batch_num in range(min(batch_count, MAX_BATCHES_PER_CYCLE)):
                         offset = batch_num * BATCH_SIZE
-                        sync_channel_batch.apply_async(
-                            kwargs={
-                                "channel_id": channel.telegram_id,
-                                "sync_state_id": str(sync_state.id),
-                                "batch_number": batch_num,
-                                "offset": offset,
-                                "limit": BATCH_SIZE,
-                                "db_name": self.db_name
-                            },
-                            countdown=batch_num * 1,  # 1s delay per batch
-                            queue="connectors",
-                            priority=0  # LOW priority - only after metadata completes
-                        )
+                        try:
+                            sync_channel_batch.apply_async(
+                                kwargs={
+                                    "channel_id": channel.telegram_id,
+                                    "sync_state_id": str(sync_state.id),
+                                    "batch_number": batch_num,
+                                    "offset": offset,
+                                    "limit": BATCH_SIZE,
+                                    "db_name": self.db_name
+                                },
+                                countdown=batch_num * 1,  # 1s delay per batch
+                                queue="connectors",
+                                priority=0  # LOW priority - only after metadata completes
+                            )
+                            dispatched += 1
+                        except Exception as enqueue_err:
+                            logger.error(
+                                "batch_task_enqueue_failed",
+                                sync_state=sync_state.id,
+                                batch_num=batch_num,
+                                error=str(enqueue_err)
+                            )
+                            break  # Stop queueing on broker failure
 
-                    # Track actually-dispatched count (capped), not estimated total
-                    queued_count += min(batch_count, MAX_BATCHES_PER_CYCLE)
+                    queued_count += dispatched
 
                 except Exception as e:
                     logger.error(
@@ -470,11 +489,21 @@ class SyncOrchestrator:
                         sync_state.phase = "reconciling"
                         await session.commit()
 
-                        # Queue reconciliation task
-                        reconcile_channel_sync.apply_async(
-                            args=[str(sync_state.id)],
-                            kwargs={"db_name": self.db_name}
-                        )
+                        # Queue reconciliation task; roll back phase on broker failure.
+                        try:
+                            reconcile_channel_sync.apply_async(
+                                args=[str(sync_state.id)],
+                                kwargs={"db_name": self.db_name}
+                            )
+                        except Exception as enqueue_err:
+                            logger.error(
+                                "reconcile_enqueue_failed",
+                                sync_state=sync_state.id,
+                                error=str(enqueue_err)
+                            )
+                            # Revert phase so the next cycle can retry.
+                            sync_state.phase = "syncing"
+                            await session.commit()
 
             logger.info("reconcile_completed_syncs_complete")
 

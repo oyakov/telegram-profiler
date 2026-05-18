@@ -43,7 +43,10 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
         inspect = celery_app.control.inspect(timeout=3.0)
         active_tasks_map = inspect.active() or {}
         
-        channels_res = await db.execute(select(TrackedChannel))
+        from sqlalchemy.orm import selectinload
+        channels_res = await db.execute(
+            select(TrackedChannel).options(selectinload(TrackedChannel.sync_state))
+        )
         channels_map = {str(c.telegram_id): c for c in channels_res.scalars().all()}
         uuid_map = {str(c.id): c for c in channels_map.values()}
 
@@ -121,12 +124,15 @@ async def get_celery_tasks(db: AsyncSession = Depends(get_db)):
 
 @router.post("/celery-tasks/purge")
 async def purge_celery_tasks():
-    import redis as redis_lib
+    """Purge all Celery task queues via async Redis."""
     settings = get_settings()
     try:
-        r = redis_lib.from_url(settings.redis_url, socket_timeout=2)
-        for q in ["connectors", "processing", "celery"]:
-            r.delete(f"celery/queue/{q}" if q != "celery" else "celery")
+        r = aioredis.from_url(settings.redis_url, socket_timeout=2)
+        try:
+            for q in ["connectors", "processing", "celery"]:
+                await r.delete(f"celery/queue/{q}" if q != "celery" else "celery")
+        finally:
+            await r.aclose()
         return {"status": "success"}
     except Exception as e:
         logger.error("purge_celery_tasks_failed", error=str(e))
@@ -145,14 +151,17 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
 
         # Cache the heavy GROUP BY aggregation in Redis so repeated page loads
         # don't trigger a full sequential scan on the messages table.
+        # Open Redis connection lazily — only after confirming we need to read/write.
+        import json
         counts_map: dict = {}
         settings = get_settings()
         _redis = None
+
+        # 1. Try cache read — open connection only if we expect Redis to be up.
         try:
             _redis = aioredis.from_url(settings.redis_url, socket_timeout=1, decode_responses=True)
             cached = await _redis.get(_TREE_COUNTS_CACHE_KEY)
             if cached:
-                import json
                 counts_map = json.loads(cached)
         except Exception:
             pass  # Redis unavailable — fall through to DB query
@@ -162,7 +171,6 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
             counts_map = {str(row[0]): row[1] for row in counts_res.all()}
             if _redis is not None:
                 try:
-                    import json
                     await _redis.set(_TREE_COUNTS_CACHE_KEY, json.dumps(counts_map), ex=_TREE_COUNTS_TTL_S)
                 except Exception:
                     pass

@@ -70,8 +70,12 @@ class MessageProcessor:
         valid_results = [r for r in extraction_results if r is not None]
 
         # Phase 2: Aggregated Data Sync
-        # We still sync one by one for complex dedup/merge logic, 
+        # We still sync one by one for complex dedup/merge logic,
         # but we use session.add and flush once at the end.
+        # Collect log-task kwargs to dispatch AFTER commit so we never fire a
+        # background log for data that was rolled back (duplicate logs on retry).
+        pending_log_tasks: list[dict] = []
+
         for res in valid_results:
             msg, contacts, leads, is_channel = res["msg"], res["contacts"], res["leads"], res["is_channel"]
             try:
@@ -91,18 +95,17 @@ class MessageProcessor:
 
                 # Mark as extracted
                 msg.is_extracted = True
-                
-                # Offload ExtractionLog to background task
-                log_extraction_task.delay(
-                    source_type="unified_message",
-                    source_id=str(msg.id),
-                    model_used=await self.ai_service._get_model_name(),
-                    extracted_data={
+
+                # Collect log task args — dispatched after commit below.
+                pending_log_tasks.append({
+                    "source_type": "unified_message",
+                    "source_id": str(msg.id),
+                    "model_used": await self.ai_service._get_model_name(),
+                    "extracted_data": {
                         "contacts": [c.model_dump() for c in contacts],
-                        "leads": [l.model_dump() for l in leads]
+                        "leads": [l.model_dump() for l in leads],
                     },
-                    db_name=self.db_name
-                )
+                })
                 stats["processed"] += 1
 
             except Exception as e:
@@ -116,6 +119,15 @@ class MessageProcessor:
             logger.error("process_batch_commit_failed", error=str(e))
             await self.session.rollback()
             raise
+
+        # Phase 4: Dispatch log tasks only after successful commit.
+        # This prevents duplicate log entries when a rollback is later retried.
+        for log_kwargs in pending_log_tasks:
+            try:
+                log_extraction_task.delay(**log_kwargs, db_name=self.db_name)
+            except Exception as log_err:
+                logger.warning("log_extraction_task_dispatch_failed", error=str(log_err))
+
         return stats
 
     async def _sync_contact(self, extraction: ContactExtraction) -> Optional[Contact]:

@@ -155,10 +155,13 @@ class LeadService:
         if not search:
             raise ValueError("Search not found")
 
-        # Execute the search using the stored filter
+        # Execute the search using the stored filter.
+        # Use the saved page_size, or a generous default of 200 so that
+        # last_result_count reflects a realistic count rather than always ≤ 50.
         profile_filter = search.profile_filter
-        contacts = await self.repo.get_matching_contacts(profile_filter, limit=50)
-        
+        run_limit = profile_filter.get("page_size", 200) if isinstance(profile_filter, dict) else 200
+        contacts = await self.repo.get_matching_contacts(profile_filter, limit=run_limit)
+
         # Update search metadata
         search.last_run_at = datetime.now(timezone.utc)
         search.last_result_count = len(contacts)

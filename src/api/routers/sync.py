@@ -1,5 +1,6 @@
 """API endpoints for Telegram channel synchronization."""
 
+import structlog
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, joinedload
@@ -12,6 +13,7 @@ from src.db.models import ChannelSyncState, SyncBatchLog, TrackedChannel, Tracke
 from src.pipeline.telegram_sync_tasks import scan_channel_metadata, sync_channel_batch, reconcile_channel_sync
 from src.pipeline.sync_orchestrator import SyncOrchestrator
 
+logger = structlog.get_logger()
 router = APIRouter(prefix="/sync", tags=["Sync"])
 
 BATCH_SIZE = 100
@@ -98,7 +100,7 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
     try:
         channel_uuid = UUID(channel_id)
     except (ValueError, AttributeError):
-        raise HTTPException(422, f"Invalid channel_id: {channel_id!r}")
+        raise HTTPException(422, "Invalid channel ID format")
 
     result = await db.execute(
         select(TrackedChannel).where(TrackedChannel.id == channel_uuid)
@@ -118,15 +120,21 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
         started_at=datetime.now(timezone.utc)
     )
     db.add(sync_state)
-    await db.flush()
-
-    # Queue metadata scan task
-    scan_channel_metadata.apply_async(
-        args=[channel.telegram_id, str(sync_state.id)],
-        task_id=f"metadata_{sync_state.id}"
-    )
-
+    # Commit before enqueue so the Celery task always finds the DB row.
     await db.commit()
+
+    # Queue metadata scan task; clean up on broker failure.
+    try:
+        scan_channel_metadata.apply_async(
+            args=[channel.telegram_id, str(sync_state.id)],
+            task_id=f"metadata_{sync_state.id}"
+        )
+    except Exception as enqueue_err:
+        logger.error("start_channel_sync_enqueue_failed", channel_id=channel_id, error=str(enqueue_err))
+        from sqlalchemy import delete as _sa_delete
+        async with __import__("src.db.database", fromlist=["get_session"]).get_session() as cleanup:
+            await cleanup.execute(_sa_delete(ChannelSyncState).where(ChannelSyncState.id == sync_state.id))
+        raise HTTPException(503, "Task queue unavailable. Please retry.")
 
     return {
         "status": "queued",
@@ -142,7 +150,7 @@ async def get_channel_sync_status(channel_id: str, db: AsyncSession = Depends(ge
     try:
         channel_uuid = UUID(channel_id)
     except (ValueError, AttributeError):
-        raise HTTPException(422, f"Invalid channel_id: {channel_id!r}")
+        raise HTTPException(422, "Invalid channel ID format")
 
     result = await db.execute(
         select(TrackedChannel).where(TrackedChannel.id == channel_uuid)
@@ -202,14 +210,12 @@ async def get_channel_sync_status(channel_id: str, db: AsyncSession = Depends(ge
 @router.post("/folder/{folder_id}/start")
 async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
     """Start sync for all channels in a folder."""
-    import structlog
-    logger = structlog.get_logger()
     logger.info("start_folder_sync_request", folder_id=folder_id)
 
     try:
         folder_uuid = UUID(folder_id)
     except (ValueError, AttributeError):
-        raise HTTPException(422, f"Invalid folder_id: {folder_id!r}")
+        raise HTTPException(422, "Invalid folder ID format")
 
     result = await db.execute(
         select(TrackedFolder).where(TrackedFolder.id == folder_uuid).options(
@@ -284,6 +290,5 @@ async def trigger_manual_sync(db: AsyncSession = Depends(get_db)):
             "message": "Folders and personal contacts synchronized"
         }
     except Exception as e:
-        import structlog
-        structlog.get_logger().error("manual_sync_error", error=str(e), exc_info=True)
+        logger.error("manual_sync_error", error_type=type(e).__name__, exc_info=True)
         raise HTTPException(500, "Sync failed. Check server logs for details.")

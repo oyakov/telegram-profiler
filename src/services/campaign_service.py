@@ -133,7 +133,9 @@ class CampaignService:
             except Exception as e:
                 logger.error("campaign_message_error", campaign_id=str(campaign_id), error=str(e))
                 cm.status = "failed"
-                cm.error_message = str(e)
+                # Store a generic message — str(e) may contain internal stack details
+                # that would be exposed via the GET /campaigns/{id}/messages API.
+                cm.error_message = "Internal delivery error"
                 failed += 1
 
             # Update stats and throttle

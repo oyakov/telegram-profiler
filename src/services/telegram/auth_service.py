@@ -69,8 +69,10 @@ class TelegramAuthService(TelegramAuthInterface):
         except SessionPasswordNeededError:
             return {"status": "requires_2fa"}
         except Exception as e:
-            logger.error("sign_in_error", phone=phone, error=str(e))
-            return {"status": "error", "message": str(e)}
+            # Log error_type only — str(e) may include the phone number or
+            # Telethon FloodWait details which constitute PII in log aggregators.
+            logger.error("sign_in_error", error_type=type(e).__name__)
+            return {"status": "error", "message": "Authentication failed. Please try again."}
         finally:
             await client.disconnect()
 
@@ -86,8 +88,9 @@ class TelegramAuthService(TelegramAuthInterface):
             
             return {"status": "success", "user_id": me.id}
         except Exception as e:
-            logger.error("sign_in_2fa_error", error=str(e))
-            return {"status": "error", "message": str(e)}
+            # Log type only — 2FA errors can carry session/hash identifiers.
+            logger.error("sign_in_2fa_error", error_type=type(e).__name__)
+            return {"status": "error", "message": "2FA authentication failed. Please try again."}
         finally:
             await client.disconnect()
 

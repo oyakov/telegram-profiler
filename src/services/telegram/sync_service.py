@@ -54,14 +54,20 @@ class TelegramSyncService(TelegramSyncInterface):
                         logger.error("sync_task_error", target_id=tid, error=str(e))
                         return 0
 
-            results = await asyncio.gather(*[_sync_task(tid) for tid in target_ids])
-            total_fetched = sum(results)
+            total_fetched = 0
+            try:
+                results = await asyncio.gather(*[_sync_task(tid) for tid in target_ids])
+                total_fetched = sum(results)
+                final_status = "idle"
+            except Exception as e:
+                logger.error("sync_recent_gather_failed", error=str(e))
+                final_status = "idle"  # Always reset to idle so the connector isn't stuck
 
             async with get_session(db_name=self.db_name) as session:
                 repo = SyncStateRepository(session)
                 state = await repo.get_or_create_connector_state("telegram")
                 state.last_sync_at = datetime.now(timezone.utc)
-                state.status = "idle"
+                state.status = final_status
                 await session.commit()
 
             return {"status": "success", "fetched": total_fetched}
@@ -84,13 +90,11 @@ class TelegramSyncService(TelegramSyncInterface):
 
     async def _sync_chat_impl(self, chat_id, limit, offset_date, session, ignore_last_id) -> int:
         client = await self.factory.get_client()
-        # Note: client is NOT entered here, assuming it's managed by the caller
-        # (e.g. sync_recent) or we need to manage it if called independently.
-        # For simplicity, we ensure connection if not already.
-        if not client.is_connected():
-            await client.connect()
-
+        # connect() is inside the try block so the finally clause always runs and
+        # the session file is never left in a locked state on unexpected errors.
         try:
+            if not client.is_connected():
+                await client.connect()
             try:
                 entity = await client.get_entity(chat_id)
             except Exception:
@@ -115,11 +119,12 @@ class TelegramSyncService(TelegramSyncInterface):
                 state = await repo.get_or_create_connector_state("telegram")
                 last_id = (state.metadata_json or {}).get(f"chat_{entity.id}_last_id", 0)
 
+            # Load all known source_message_ids for this entity into a Python set for
+            # O(1) dedup during the iter_messages loop.  Each ID is ~25 bytes; even a
+            # 500k-message channel adds only ~12 MB — well within the container limit.
             existing_rows = await session.execute(
                 select(Message.source_message_id)
                 .where(Message.group_id == str(entity.id))
-                .order_by(Message.source_message_id.desc())
-                .limit(50000)
             )
             existing_ids = {r[0] for r in existing_rows if r[0]}
 

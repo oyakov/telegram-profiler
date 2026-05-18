@@ -40,7 +40,8 @@ celery_app.conf.update(
         "src.pipeline.telegram_sync_tasks.sync_channel_batch": {"queue": "connectors"},
         "src.pipeline.telegram_sync_tasks.scan_channel_metadata": {"queue": "connectors"},
         "src.pipeline.telegram_sync_tasks.reconcile_channel_sync": {"queue": "connectors"},
-        "sync_orchestrator": {"queue": "processing"},
+        # sync_orchestrator issues Telegram API calls — must run on the connectors queue.
+        "sync_orchestrator": {"queue": "connectors"},
         "src.pipeline.tasks.orchestrate_multi_db_sync": {"queue": "processing"},
         "src.pipeline.tasks.orchestrate_multi_db_message_processing": {"queue": "processing"},
         "src.pipeline.tasks.process_message_embeddings": {"queue": "processing"},

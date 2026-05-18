@@ -189,7 +189,8 @@ class TelegramConnector(BaseConnector):
                     await session.commit()
                 return {"status": "success"}
             except Exception as e:
-                return {"status": "error", "message": str(e)}
+                logger.error("sync_contacts_failed", error_type=type(e).__name__, error=str(e))
+                return {"status": "error", "message": "Contact sync failed. Please try again."}
 
     # Legacy method stubs or pending refactor
     async def _get_client(self):

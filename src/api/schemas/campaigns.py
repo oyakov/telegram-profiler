@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CampaignMessageResponse(BaseModel):
@@ -25,8 +25,8 @@ class CampaignMessageResponse(BaseModel):
 class CampaignCreate(BaseModel):
     """Request to create a new campaign."""
     name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
-    message: str = Field(..., min_length=1)
+    description: Optional[str] = Field(default=None, max_length=2048)
+    message: str = Field(..., min_length=1, max_length=4096)
     contact_ids: List[UUID] = Field(...)
 
 
@@ -76,10 +76,28 @@ class CampaignDetailResponse(CampaignResponse):
     messages: Optional[List[CampaignMessageResponse]] = None
 
 
+_PREVIEW_CONTACT_FIELDS = frozenset({"first_name", "last_name", "email", "phone", "company", "position"})
+_PREVIEW_FIELD_MAX_LEN = 255
+
+
 class CampaignPreviewRequest(BaseModel):
     """Request to preview a message with variable substitution."""
-    message: str = Field(..., min_length=1)
-    sample_contact: dict[str, str] = Field(default_factory=dict)  # first_name, last_name, email, etc.
+    message: str = Field(..., min_length=1, max_length=4096)
+    # Only whitelisted contact fields are accepted; values are length-capped by the validator.
+    sample_contact: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def sanitize_sample_contact(cls, data: dict) -> dict:
+        """Strip unknown keys and cap value lengths in sample_contact."""
+        sc = data.get("sample_contact", {}) or {}
+        if sc:
+            data["sample_contact"] = {
+                k: str(v)[:_PREVIEW_FIELD_MAX_LEN]
+                for k, v in sc.items()
+                if k in _PREVIEW_CONTACT_FIELDS
+            }
+        return data
 
 
 class CampaignPreviewResponse(BaseModel):

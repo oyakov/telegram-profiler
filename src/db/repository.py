@@ -4,6 +4,7 @@ from typing import List, Optional, Union
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select, func, or_, and_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.models import Message, MessageContact, Contact, ExtractionLog, ChannelSyncState, SyncBatchLog, SyncState, Campaign, CampaignMessage, LeadSearch
 
@@ -123,12 +124,12 @@ class ContactRepository:
         try:
             result = await self.session.execute(stmt)
             return list(result.scalars().all())
-        except Exception as exc:
-            exc_str = str(exc).lower()
-            if "unique" in exc_str or "duplicate" in exc_str:
+        except IntegrityError as exc:
+            # Narrow to unique violations only; re-raise FK and other integrity errors.
+            orig_str = str(getattr(exc, "orig", exc)).lower()
+            if "unique" in orig_str or "duplicate" in orig_str:
                 logger.warning(
                     "bulk_upsert_contacts_unique_conflict",
-                    error=str(exc),
                     hint="Secondary unique index (e.g. telegram_username) conflict; batch skipped",
                 )
                 await self.session.rollback()
@@ -378,10 +379,13 @@ class LeadSearchRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_matching_contacts(self, profile_filter: dict, limit: int = 200, offset: int = 0) -> List[Contact]:
-        """Find contacts matching a complex profile filter."""
-        stmt = select(Contact).where(Contact.is_lead == True)
+    @staticmethod
+    def _apply_profile_filter(stmt, profile_filter: dict):
+        """Apply shared WHERE clauses for profile_filter to a SQLAlchemy statement.
 
+        Used by both get_matching_contacts and count_matching_contacts to keep
+        filter logic in a single place and prevent silent divergence.
+        """
         if profile_filter.get("first_name"):
             stmt = stmt.where(Contact.first_name.ilike(f"%{profile_filter['first_name']}%"))
         if profile_filter.get("last_name"):
@@ -392,7 +396,12 @@ class LeadSearchRepository:
             stmt = stmt.where(Contact.position.ilike(f"%{profile_filter['position']}%"))
         if profile_filter.get("min_lead_score") is not None:
             stmt = stmt.where(Contact.lead_score >= profile_filter["min_lead_score"])
+        return stmt
 
+    async def get_matching_contacts(self, profile_filter: dict, limit: int = 200, offset: int = 0) -> List[Contact]:
+        """Find contacts matching a complex profile filter."""
+        stmt = select(Contact).where(Contact.is_lead == True)
+        stmt = self._apply_profile_filter(stmt, profile_filter)
         stmt = stmt.offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -400,15 +409,6 @@ class LeadSearchRepository:
     async def count_matching_contacts(self, profile_filter: dict) -> int:
         """Count contacts matching a profile filter."""
         stmt = select(func.count(Contact.id)).where(Contact.is_lead == True)
-        if profile_filter.get("first_name"):
-            stmt = stmt.where(Contact.first_name.ilike(f"%{profile_filter['first_name']}%"))
-        if profile_filter.get("last_name"):
-            stmt = stmt.where(Contact.last_name.ilike(f"%{profile_filter['last_name']}%"))
-        if profile_filter.get("company"):
-            stmt = stmt.where(Contact.company.ilike(f"%{profile_filter['company']}%"))
-        if profile_filter.get("position"):
-            stmt = stmt.where(Contact.position.ilike(f"%{profile_filter['position']}%"))
-        if profile_filter.get("min_lead_score") is not None:
-            stmt = stmt.where(Contact.lead_score >= profile_filter["min_lead_score"])
+        stmt = self._apply_profile_filter(stmt, profile_filter)
         result = await self.session.execute(stmt)
         return result.scalar() or 0

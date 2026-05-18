@@ -57,8 +57,8 @@ async def get_lead_history(
     service = LeadService(db)
     try:
         return await service.get_lead_history(contact_id, page, page_size)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
+    except ValueError:
+        raise HTTPException(404, "Contact not found")
 
 @router.post("/process", status_code=202)
 async def trigger_lead_processing(request: Request):
@@ -119,5 +119,5 @@ async def run_lead_search(
         result = await service.run_saved_search(search_id)
         await db.commit()
         return result
-    except ValueError as e:
-        raise HTTPException(404, str(e))
+    except ValueError:
+        raise HTTPException(404, "Search not found")

@@ -11,6 +11,16 @@ from src.db.repository import ContactRepository
 
 logger = structlog.get_logger()
 
+# Fields that callers are permitted to set via update_contact.
+# Excludes internal/computed columns: id, created_at, updated_at, source,
+# embedding, embedding_dirty, lead_score, is_lead, lead_context, etc.
+_ALLOWED_UPDATE_FIELDS = frozenset({
+    "first_name", "last_name", "company", "position",
+    "email", "phone", "telegram_id", "telegram_username",
+    "linkedin_url", "notes", "context", "bio",
+    "interests", "skills", "is_tracked", "is_personal",
+})
+
 class ContactService:
     """Service for managing Contact operations and API response mapping."""
 
@@ -95,7 +105,11 @@ class ContactService:
 
     async def get_contact(self, contact_id: str) -> dict:
         """Get a single contact by ID."""
-        result = await self.session.execute(select(Contact).where(Contact.id == contact_id))
+        try:
+            contact_uuid = UUID(contact_id)
+        except (ValueError, AttributeError):
+            raise ValueError("Contact not found")
+        result = await self.session.execute(select(Contact).where(Contact.id == contact_uuid))
         contact = result.scalar_one_or_none()
         if not contact:
             raise ValueError("Contact not found")
@@ -110,12 +124,20 @@ class ContactService:
 
     async def update_contact(self, contact_id: str, data: dict) -> dict:
         """Update an existing contact."""
-        result = await self.session.execute(select(Contact).where(Contact.id == contact_id))
+        try:
+            contact_uuid = UUID(contact_id)
+        except (ValueError, AttributeError):
+            raise ValueError("Contact not found")
+        result = await self.session.execute(select(Contact).where(Contact.id == contact_uuid))
         contact = result.scalar_one_or_none()
         if not contact:
             raise ValueError("Contact not found")
 
+        # Apply server-side field whitelist to prevent mass-assignment of internal columns.
         for field, value in data.items():
+            if field not in _ALLOWED_UPDATE_FIELDS:
+                logger.warning("contact_update_rejected_field", field=field, contact_id=contact_id)
+                continue
             setattr(contact, field, value)
 
         contact.embedding_dirty = True
@@ -124,7 +146,11 @@ class ContactService:
 
     async def delete_contact(self, contact_id: str) -> None:
         """Delete a contact."""
-        result = await self.session.execute(select(Contact).where(Contact.id == contact_id))
+        try:
+            contact_uuid = UUID(contact_id)
+        except (ValueError, AttributeError):
+            raise ValueError("Contact not found")
+        result = await self.session.execute(select(Contact).where(Contact.id == contact_uuid))
         contact = result.scalar_one_or_none()
         if not contact:
             raise ValueError("Contact not found")

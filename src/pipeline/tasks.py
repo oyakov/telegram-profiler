@@ -193,7 +193,7 @@ def import_excel(self, file_path: str, db_name: str | None = None):
             logger.error("import_excel_path_rejected", file_path=file_path)
             return {"status": "error", "reason": "invalid_path"}
         if not path.exists():
-            return {"status": "error", "reason": "file_not_found", "path": file_path}
+            return {"status": "error", "reason": "file_not_found"}
         try:
             # Run blocking pandas I/O in a thread to avoid stalling the event loop
             loop = asyncio.get_running_loop()
@@ -202,7 +202,8 @@ def import_excel(self, file_path: str, db_name: str | None = None):
             else:
                 df = await loop.run_in_executor(None, pd.read_csv, path)
         except Exception as e:
-            return {"status": "error", "reason": str(e)}
+            logger.error("import_excel_read_failed", error_type=type(e).__name__, error=str(e))
+            return {"status": "error", "reason": "file_read_error"}
         imported = 0
         async with get_session(db_name=db_name) as session:
             for _, row in df.iterrows():
