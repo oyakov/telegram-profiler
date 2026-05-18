@@ -277,7 +277,7 @@ def send_campaign(self, campaign_id: str, db_name: str | None = None):
     from uuid import UUID
     async def _do():
         async with get_session(db_name=db_name) as session:
-            service = CampaignService(session, db_name=db_name)
+            service = CampaignService(session)
             return await service.run_campaign(UUID(campaign_id))
     return self.run_async(_do())
 

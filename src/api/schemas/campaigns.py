@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -32,9 +32,9 @@ class CampaignCreate(BaseModel):
 
 class CampaignUpdate(BaseModel):
     """Request to update a campaign (only draft)."""
-    name: Optional[str] = None
-    description: Optional[str] = None
-    message: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=2048)
+    message: Optional[str] = Field(default=None, min_length=1, max_length=4096)
 
 
 class CampaignResponse(BaseModel):

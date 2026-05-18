@@ -80,7 +80,10 @@ class MessageRepository:
         
         stmt = insert(Message).values(messages_data)
         stmt = stmt.on_conflict_do_update(
-            index_elements=[Message.source_message_id],
+            # Use the named constraint rather than index_elements so PostgreSQL can
+            # match it regardless of how the unique constraint was created (CONSTRAINT
+            # vs INDEX). index_elements only works when the DB has a matching unique index.
+            constraint="uq_message_source_id",
             set_={
                 "content": stmt.excluded.content,
             }

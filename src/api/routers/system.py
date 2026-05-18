@@ -138,11 +138,10 @@ async def purge_celery_tasks():
         logger.error("purge_celery_tasks_failed", error=str(e))
         raise HTTPException(500, "Failed to purge task queue")
 
-_TREE_COUNTS_CACHE_KEY = "tree:msg_counts"
 _TREE_COUNTS_TTL_S = 30  # Refresh at most every 30 s; GROUP BY on millions of rows is expensive
 
 @router.get("/tree")
-async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
+async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get_db)):
     """Hierarchical tree with factual progress."""
     try:
         folders = (await db.execute(select(TrackedFolder).order_by(TrackedFolder.created_at))).scalars().all()
@@ -151,16 +150,19 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
 
         # Cache the heavy GROUP BY aggregation in Redis so repeated page loads
         # don't trigger a full sequential scan on the messages table.
-        # Open Redis connection lazily — only after confirming we need to read/write.
+        # Key is scoped per tenant so different DBs never share each other's counts.
         import json
         counts_map: dict = {}
         settings = get_settings()
         _redis = None
+        # Resolve tenant DB name from header (already validated by get_db dependency upstream).
+        _db_name = request.headers.get("X-Database") or settings.postgres_db
+        _tree_counts_cache_key = f"tree:msg_counts:{_db_name}"
 
         # 1. Try cache read — open connection only if we expect Redis to be up.
         try:
             _redis = aioredis.from_url(settings.redis_url, socket_timeout=1, decode_responses=True)
-            cached = await _redis.get(_TREE_COUNTS_CACHE_KEY)
+            cached = await _redis.get(_tree_counts_cache_key)
             if cached:
                 counts_map = json.loads(cached)
         except Exception:
@@ -171,7 +173,7 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
             counts_map = {str(row[0]): row[1] for row in counts_res.all()}
             if _redis is not None:
                 try:
-                    await _redis.set(_TREE_COUNTS_CACHE_KEY, json.dumps(counts_map), ex=_TREE_COUNTS_TTL_S)
+                    await _redis.set(_tree_counts_cache_key, json.dumps(counts_map), ex=_TREE_COUNTS_TTL_S)
                 except Exception:
                     pass
         if _redis is not None:
@@ -249,14 +251,18 @@ async def get_prometheus_metrics(db: AsyncSession = Depends(get_db)):
 @router.post("/embeddings/reindex")
 async def trigger_embeddings_reindex(request: Request):
     """Dispatch generate_all_embeddings Celery task for the current tenant DB."""
-    db_name = request.headers.get("X-Database") or get_settings().postgres_db
+    from src.db.database import _DB_NAME_RE
+    raw_db_name = request.headers.get("X-Database") or None
+    if raw_db_name is not None and not _DB_NAME_RE.match(raw_db_name):
+        raise HTTPException(status_code=400, detail="Invalid X-Database header value")
+    db_name = raw_db_name or get_settings().postgres_db
     try:
         from src.pipeline.tasks import generate_all_embeddings
         generate_all_embeddings.delay(batch_size=500, db_name=db_name)
         logger.info("embeddings_reindex_queued", db_name=db_name)
         return {"status": "queued", "db_name": db_name}
     except Exception as e:
-        logger.error("embeddings_reindex_failed", error=str(e))
+        logger.error("embeddings_reindex_failed", error_type=type(e).__name__)
         raise HTTPException(status_code=500, detail="Failed to queue reindex task.")
 
 @router.get("/embeddings")

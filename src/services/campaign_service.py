@@ -80,7 +80,10 @@ class CampaignService:
     async def run_campaign(self, campaign_id: UUID) -> Dict[str, Any]:
         """Execute the campaign: personalize and deliver messages."""
         campaign = await self.session.get(Campaign, campaign_id)
-        if not campaign or campaign.status in ("running", "completed"):
+        # Skip only fully completed campaigns — allow retry of "running" campaigns
+        # so a worker crash mid-delivery doesn't permanently strand the campaign.
+        # Pending CampaignMessages are re-fetched below, so already-sent ones are skipped.
+        if not campaign or campaign.status == "completed":
             logger.warning("campaign_skip_execution", campaign_id=str(campaign_id), status=getattr(campaign, 'status', 'None'))
             return {"status": "skipped"}
 

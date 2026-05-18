@@ -451,11 +451,15 @@ async def full_reindex(db_name: str | None = None) -> dict:
         await session.execute(delete(MessageEmbedding))
     
     stats = {"contacts_reindexed": 0, "errors": 0}
-    while True:
+    # Cap iterations so this never runs forever if dirty contacts are produced
+    # faster than they are processed (e.g. by concurrent sync tasks).
+    _MAX_REINDEX_ITERATIONS = 2000
+    for _ in range(_MAX_REINDEX_ITERATIONS):
         result = await maintenance_reindex_dirty(batch_size=50, db_name=db_name)
         stats["contacts_reindexed"] += result["processed"]
         stats["errors"] += result["errors"]
-        if result["processed"] == 0: break
+        if result["processed"] == 0:
+            break
     return stats
 
 

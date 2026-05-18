@@ -192,6 +192,63 @@ class TelegramConnector(BaseConnector):
                 logger.error("sync_contacts_failed", error_type=type(e).__name__, error=str(e))
                 return {"status": "error", "message": "Contact sync failed. Please try again."}
 
+    async def enrich_contact(self, contact_id: str) -> bool:
+        """Fetch fresh Telegram entity data for a contact and update the DB record.
+
+        Returns True on success, False if the contact has no telegram_id or the
+        entity cannot be resolved.
+        """
+        from src.db.database import get_session
+        from src.db.models import Contact
+        from sqlalchemy import select
+
+        async with get_session(db_name=self.db_name) as session:
+            try:
+                from uuid import UUID
+                contact_uuid = UUID(contact_id)
+            except (ValueError, AttributeError):
+                logger.warning("enrich_contact_invalid_uuid", contact_id=str(contact_id)[:64])
+                return False
+
+            res = await session.execute(select(Contact).where(Contact.id == contact_uuid))
+            contact = res.scalar_one_or_none()
+            if not contact or not contact.telegram_id:
+                return False
+
+            client = await self.factory.get_client()
+            try:
+                async with client:
+                    entity = await client.get_entity(int(contact.telegram_id))
+                    if hasattr(entity, "first_name"):
+                        contact.first_name = entity.first_name or contact.first_name
+                        contact.last_name = getattr(entity, "last_name", None) or contact.last_name
+                    if hasattr(entity, "username"):
+                        contact.telegram_username = entity.username or contact.telegram_username
+                    contact.embedding_dirty = True
+                    await session.commit()
+                return True
+            except Exception as e:
+                logger.error("enrich_contact_fetch_failed", contact_id=contact_id, error_type=type(e).__name__)
+                return False
+
+    async def sync_deep_history_chunk(self, telegram_id: str, entity_type: str, limit: int = 100) -> int:
+        """Sync a chunk of historical messages for a tracked entity.
+
+        Delegates to TelegramSyncService.sync_historical so the two implementations
+        stay in sync.  Returns the number of messages synced.
+        """
+        try:
+            chat_id = int(telegram_id)
+        except (ValueError, TypeError):
+            logger.warning("sync_deep_history_chunk_invalid_id", telegram_id=str(telegram_id)[:64])
+            return 0
+
+        try:
+            return await self.sync_svc.sync_historical(chat_id, limit=limit)
+        except Exception as e:
+            logger.error("sync_deep_history_chunk_failed", telegram_id=telegram_id, error_type=type(e).__name__)
+            return 0
+
     # Legacy method stubs or pending refactor
     async def _get_client(self):
         return await self.factory.get_client()

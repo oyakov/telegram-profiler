@@ -2,7 +2,7 @@
 
 from uuid import UUID
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,9 +92,13 @@ async def create_campaign(
     return campaign
 
 
+_CampaignStatus = Literal["draft", "sending", "completed", "failed"]
+_CampaignMessageStatus = Literal["pending", "sent", "failed", "skipped"]
+
+
 @router.get("", response_model=dict)
 async def list_campaigns(
-    status: str = Query(None),
+    status: Optional[_CampaignStatus] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -224,7 +228,7 @@ async def get_campaign_messages(
     campaign_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    status: str = Query(None),
+    status: Optional[_CampaignMessageStatus] = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Get campaign message statuses with pagination."""

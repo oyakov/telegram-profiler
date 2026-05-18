@@ -63,10 +63,15 @@ class ContactService:
             "updated_at": c.updated_at.isoformat() if c.updated_at else None,
         }
 
+    @staticmethod
+    def _escape_ilike(value: str) -> str:
+        """Escape ILIKE wildcard metacharacters so user input is treated literally."""
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
     async def list_contacts(
-        self, 
-        source: Optional[str] = None, 
-        search: Optional[str] = None, 
+        self,
+        source: Optional[str] = None,
+        search: Optional[str] = None,
         is_personal: Optional[bool] = None,
         page: int = 1,
         page_size: int = 50
@@ -78,12 +83,14 @@ class ContactService:
         if is_personal is not None:
             query = query.where(Contact.is_personal == is_personal)
         if search:
-            search_pattern = f"%{search}%"
+            # Escape % and _ so they are treated as literals, not ILIKE wildcards.
+            escaped = self._escape_ilike(search)
+            search_pattern = f"%{escaped}%"
             query = query.where(
-                (Contact.first_name.ilike(search_pattern))
-                | (Contact.last_name.ilike(search_pattern))
-                | (Contact.email.ilike(search_pattern))
-                | (Contact.company.ilike(search_pattern))
+                (Contact.first_name.ilike(search_pattern, escape="\\"))
+                | (Contact.last_name.ilike(search_pattern, escape="\\"))
+                | (Contact.email.ilike(search_pattern, escape="\\"))
+                | (Contact.company.ilike(search_pattern, escape="\\"))
             )
 
         count_query = select(func.count()).select_from(query.subquery())
@@ -115,9 +122,15 @@ class ContactService:
             raise ValueError("Contact not found")
         return self.map_to_response(contact)
 
+    # Fields allowed when creating a new contact (superset of update fields:
+    # also permits 'source' on creation but not internal computed columns).
+    _ALLOWED_CREATE_FIELDS = _ALLOWED_UPDATE_FIELDS | frozenset({"source"})
+
     async def create_contact(self, data: dict) -> dict:
         """Create a new contact."""
-        contact = Contact(**data)
+        # Apply server-side whitelist to prevent mass-assignment of internal columns.
+        filtered = {k: v for k, v in data.items() if k in self._ALLOWED_CREATE_FIELDS}
+        contact = Contact(**filtered)
         self.session.add(contact)
         await self.session.flush()
         return self.map_to_response(contact)
@@ -159,11 +172,19 @@ class ContactService:
 
     async def add_to_tracked(self, contact_ids: List[str]) -> int:
         """Mark contacts as leads and tracked."""
-        from uuid import UUID as _UUID
-        validated_ids = [str(cid) for cid in contact_ids]
-        
+        # Parse and validate each ID; silently skip malformed entries rather than
+        # letting asyncpg raise a DataError (500) on an invalid UUID string.
+        parsed_ids: list[UUID] = []
+        for cid in contact_ids:
+            try:
+                parsed_ids.append(UUID(str(cid)))
+            except (ValueError, AttributeError):
+                logger.warning("add_to_tracked_invalid_uuid", raw_id=str(cid)[:64])
+        if not parsed_ids:
+            return 0
+
         result = await self.session.execute(
-            select(Contact).where(Contact.id.in_(validated_ids))
+            select(Contact).where(Contact.id.in_(parsed_ids))
         )
         contacts = result.scalars().all()
 

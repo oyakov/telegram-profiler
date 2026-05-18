@@ -103,7 +103,9 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
         raise HTTPException(422, "Invalid channel ID format")
 
     result = await db.execute(
-        select(TrackedChannel).where(TrackedChannel.id == channel_uuid)
+        select(TrackedChannel)
+        .where(TrackedChannel.id == channel_uuid)
+        .options(selectinload(TrackedChannel.sync_state))
     )
     channel = result.scalar_one_or_none()
     if not channel:
@@ -127,13 +129,17 @@ async def start_channel_sync(channel_id: str, db: AsyncSession = Depends(get_db)
     try:
         scan_channel_metadata.apply_async(
             args=[channel.telegram_id, str(sync_state.id)],
-            task_id=f"metadata_{sync_state.id}"
+            task_id=f"metadata_{sync_state.id}",
+            queue="connectors",
         )
     except Exception as enqueue_err:
-        logger.error("start_channel_sync_enqueue_failed", channel_id=channel_id, error=str(enqueue_err))
+        logger.error("start_channel_sync_enqueue_failed", channel_id=channel_id, error_type=type(enqueue_err).__name__)
         from sqlalchemy import delete as _sa_delete
-        async with __import__("src.db.database", fromlist=["get_session"]).get_session() as cleanup:
-            await cleanup.execute(_sa_delete(ChannelSyncState).where(ChannelSyncState.id == sync_state.id))
+        try:
+            await db.execute(_sa_delete(ChannelSyncState).where(ChannelSyncState.id == sync_state.id))
+            await db.commit()
+        except Exception as cleanup_err:
+            logger.error("start_channel_sync_cleanup_failed", error_type=type(cleanup_err).__name__)
         raise HTTPException(503, "Task queue unavailable. Please retry.")
 
     return {
@@ -153,7 +159,9 @@ async def get_channel_sync_status(channel_id: str, db: AsyncSession = Depends(ge
         raise HTTPException(422, "Invalid channel ID format")
 
     result = await db.execute(
-        select(TrackedChannel).where(TrackedChannel.id == channel_uuid)
+        select(TrackedChannel)
+        .where(TrackedChannel.id == channel_uuid)
+        .options(selectinload(TrackedChannel.sync_state))
     )
     channel = result.scalar_one_or_none()
     if not channel:
@@ -265,8 +273,16 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
             queued_count += 1
 
         except Exception as e:
-            logger.error("queue_folder_channel_error", channel_id=str(channel.id), error=str(e))
-            await db.rollback()
+            logger.error("queue_folder_channel_error", channel_id=str(channel.id), error_type=type(e).__name__)
+            # The per-channel commit already landed; rollback is a no-op.
+            # Delete the orphaned ChannelSyncState so the next orchestrator cycle
+            # can retry rather than waiting for the stuck-metadata timeout.
+            from sqlalchemy import delete as _del
+            try:
+                await db.execute(_del(ChannelSyncState).where(ChannelSyncState.channel_id == channel.id))
+                await db.commit()
+            except Exception as del_err:
+                logger.error("folder_sync_cleanup_failed", channel_id=str(channel.id), error_type=type(del_err).__name__)
 
     logger.info("start_folder_sync_committed", folder_id=folder_id, queued_count=queued_count)
 

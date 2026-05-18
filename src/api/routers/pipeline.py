@@ -15,6 +15,9 @@ from src.db.models import SyncState
 
 router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
 
+# Maximum accepted file size for spreadsheet uploads (50 MB).
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
 # ========== Upload/Import Endpoints ==========
 
 @router.post("/import/excel")
@@ -33,7 +36,10 @@ async def import_excel_file(file: UploadFile = File(...)):
     filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
-    contents = await file.read()
+    # Read with a size cap to prevent OOM on unbounded uploads.
+    contents = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large. Maximum size is 50 MB.")
     await asyncio.get_running_loop().run_in_executor(None, filepath.write_bytes, contents)
 
     from src.pipeline.tasks import import_excel

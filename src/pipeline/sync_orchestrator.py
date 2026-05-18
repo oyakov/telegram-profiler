@@ -260,18 +260,22 @@ class SyncOrchestrator:
                         )
                         try:
                             from sqlalchemy import delete as _sa_delete
-                            async with get_session(db_name=self.db_name) as cleanup:
-                                await cleanup.execute(
-                                    _sa_delete(ChannelSyncState).where(
-                                        ChannelSyncState.id == sync_state.id
-                                    )
+                            # Reuse the already-open session; commit required because
+                            # the previous commit (for the sync_state insert) already
+                            # closed the prior transaction — we need a new one here.
+                            await session.execute(
+                                _sa_delete(ChannelSyncState).where(
+                                    ChannelSyncState.id == sync_state.id
                                 )
+                            )
+                            await session.commit()
                         except Exception as cleanup_err:
                             logger.error(
                                 "sync_state_cleanup_failed",
                                 sync_state_id=str(sync_state.id),
                                 error=str(cleanup_err)
                             )
+                            await session.rollback()
 
                 except Exception as e:
                     logger.error(
