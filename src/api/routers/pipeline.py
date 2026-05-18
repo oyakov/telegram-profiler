@@ -15,14 +15,18 @@ from src.db.models import SyncState
 
 router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
 
-# Maximum accepted file size for spreadsheet uploads (50 MB).
-_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+# Maximum accepted file sizes.
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024   # 50 MB for spreadsheets
+_MAX_AUDIO_BYTES = 25 * 1024 * 1024    # 25 MB for audio
+
+_ALLOWED_AUDIO_EXTENSIONS = {".ogg", ".mp3", ".wav", ".m4a", ".flac", ".opus", ".aac"}
 
 # ========== Upload/Import Endpoints ==========
 
 @router.post("/import/excel")
-async def import_excel_file(file: UploadFile = File(...)):
+async def import_excel_file(file: UploadFile = File(...), request: Request = None):
     """Upload an Excel/CSV file for import."""
+    from src.db.database import _DB_NAME_RE
     allowed = {".xlsx", ".xls", ".csv", ".tsv"}
     raw_name = (file.filename or "").replace("\x00", "")  # strip null bytes
     ext = Path(raw_name).suffix.lower() if raw_name else ""
@@ -42,8 +46,16 @@ async def import_excel_file(file: UploadFile = File(...)):
         raise HTTPException(413, "File too large. Maximum size is 50 MB.")
     await asyncio.get_running_loop().run_in_executor(None, filepath.write_bytes, contents)
 
+    # Pass the tenant DB name so the import task runs against the correct database.
+    db_name = None
+    if request is not None:
+        raw_db = request.headers.get("X-Database") or None
+        if raw_db is not None and not _DB_NAME_RE.match(raw_db):
+            raise HTTPException(400, "Invalid X-Database header value")
+        db_name = raw_db
+
     from src.pipeline.tasks import import_excel
-    result = import_excel.delay(file_path=str(filepath))
+    result = import_excel.delay(file_path=str(filepath), db_name=db_name)
 
     return {"task_id": result.id, "filename": filename, "status": "queued"}
 
@@ -51,15 +63,31 @@ async def import_excel_file(file: UploadFile = File(...)):
 @router.post("/import/audio")
 async def import_audio_file(file: UploadFile = File(...), contact_id: Optional[str] = None):
     """Upload a voice note for transcription."""
+    from uuid import UUID as _UUID
+
+    # Validate contact_id if provided — avoids propagating an invalid string to downstream code.
+    if contact_id is not None:
+        try:
+            _UUID(contact_id)
+        except (ValueError, AttributeError):
+            raise HTTPException(400, "Invalid contact_id format")
+
+    raw_name = (file.filename or "").replace("\x00", "")  # strip null bytes
+    ext = Path(raw_name).suffix.lower() if raw_name else ""
+    if ext not in _ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(400, f"Unsupported audio type. Allowed: {', '.join(sorted(_ALLOWED_AUDIO_EXTENSIONS))}")
+
     upload_dir = Path("/app/uploads/voice")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_name = (file.filename or "").replace("\x00", "")  # strip null bytes
     safe_name = Path(raw_name).name if raw_name else "upload"
     filename = f"{uuid.uuid4().hex[:8]}_{safe_name}"
     filepath = upload_dir / filename
 
-    contents = await file.read()
+    # Enforce size cap before writing to disk.
+    contents = await file.read(_MAX_AUDIO_BYTES + 1)
+    if len(contents) > _MAX_AUDIO_BYTES:
+        raise HTTPException(413, "Audio file too large. Maximum size is 25 MB.")
     await asyncio.get_running_loop().run_in_executor(None, filepath.write_bytes, contents)
 
     from src.connectors.audio import AudioProcessor
@@ -69,6 +97,8 @@ async def import_audio_file(file: UploadFile = File(...), contact_id: Optional[s
     return {
         "filename": filename,
         "transcript": transcript,
+        # contact_id is returned for the caller's convenience but is not stored
+        # automatically — the caller must PATCH the contact with the transcript if needed.
         "contact_id": contact_id,
     }
 

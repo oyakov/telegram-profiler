@@ -63,7 +63,7 @@ async def telegram_auth_status(request: Request):
         
         return {"authorized": is_auth, "profile": profile_data}
     except Exception as e:
-        logger.error("telegram_auth_status_error", error=str(e))
+        logger.error("telegram_auth_status_error", error_type=type(e).__name__)
         return {"authorized": False, "error": "Could not check authorization status"}
 
 @router.post("/auth/send_code")

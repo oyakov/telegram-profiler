@@ -160,7 +160,10 @@ async def list_tenant_databases() -> list[str]:
         database="postgres"
     )
     try:
-        rows = await conn.fetch("SELECT datname FROM pg_database WHERE datname LIKE 'crm%'")
+        # Use 'crm\_%' with an explicit ESCAPE clause so only names with an underscore
+        # separator match (e.g. crm_main, crm_tenant1).  The bare 'crm%' pattern would
+        # accidentally include unrelated databases like crmtest, crm-old, crm_backup, etc.
+        rows = await conn.fetch("SELECT datname FROM pg_database WHERE datname LIKE 'crm\\_%' ESCAPE '\\'")  # noqa: W605
         dbs = [row['datname'] for row in rows]
         # Always include the default configured DB if not found
         if settings.postgres_db not in dbs:

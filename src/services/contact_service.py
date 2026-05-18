@@ -16,7 +16,11 @@ logger = structlog.get_logger()
 # embedding, embedding_dirty, lead_score, is_lead, lead_context, etc.
 _ALLOWED_UPDATE_FIELDS = frozenset({
     "first_name", "last_name", "company", "position",
-    "email", "phone", "telegram_id", "telegram_username",
+    "email", "phone",
+    # telegram_id is intentionally excluded — it is a deduplication key managed
+    # only by the Telegram sync pipeline; allowing REST callers to overwrite it
+    # would corrupt the dedup index and allow identity theft between contacts.
+    "telegram_username",
     "linkedin_url", "notes", "context", "bio",
     "interests", "skills", "is_tracked", "is_personal",
 })

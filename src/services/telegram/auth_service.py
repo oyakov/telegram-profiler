@@ -26,7 +26,7 @@ class TelegramAuthService(TelegramAuthInterface):
             await client.connect()
             return await client.is_user_authorized()
         except Exception as e:
-            logger.error("telegram_auth_check_failed", error=str(e))
+            logger.error("telegram_auth_check_failed", error_type=type(e).__name__)
             return False
         finally:
             await client.disconnect()

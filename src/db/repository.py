@@ -383,20 +383,27 @@ class LeadSearchRepository:
         self.session = session
 
     @staticmethod
+    def _esc(value: str) -> str:
+        """Escape ILIKE wildcard metacharacters so stored filter values are treated literally."""
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    @staticmethod
     def _apply_profile_filter(stmt, profile_filter: dict):
         """Apply shared WHERE clauses for profile_filter to a SQLAlchemy statement.
 
         Used by both get_matching_contacts and count_matching_contacts to keep
         filter logic in a single place and prevent silent divergence.
+        Metacharacters (%, _) in filter values are escaped so they match literally.
         """
+        esc = LeadSearchRepository._esc
         if profile_filter.get("first_name"):
-            stmt = stmt.where(Contact.first_name.ilike(f"%{profile_filter['first_name']}%"))
+            stmt = stmt.where(Contact.first_name.ilike(f"%{esc(profile_filter['first_name'])}%", escape="\\"))
         if profile_filter.get("last_name"):
-            stmt = stmt.where(Contact.last_name.ilike(f"%{profile_filter['last_name']}%"))
+            stmt = stmt.where(Contact.last_name.ilike(f"%{esc(profile_filter['last_name'])}%", escape="\\"))
         if profile_filter.get("company"):
-            stmt = stmt.where(Contact.company.ilike(f"%{profile_filter['company']}%"))
+            stmt = stmt.where(Contact.company.ilike(f"%{esc(profile_filter['company'])}%", escape="\\"))
         if profile_filter.get("position"):
-            stmt = stmt.where(Contact.position.ilike(f"%{profile_filter['position']}%"))
+            stmt = stmt.where(Contact.position.ilike(f"%{esc(profile_filter['position'])}%", escape="\\"))
         if profile_filter.get("min_lead_score") is not None:
             stmt = stmt.where(Contact.lead_score >= profile_filter["min_lead_score"])
         return stmt

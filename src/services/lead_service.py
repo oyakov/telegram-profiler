@@ -159,7 +159,9 @@ class LeadService:
         # Use the saved page_size, or a generous default of 200 so that
         # last_result_count reflects a realistic count rather than always ≤ 50.
         profile_filter = search.profile_filter
-        run_limit = profile_filter.get("page_size", 200) if isinstance(profile_filter, dict) else 200
+        # Cap at 500 to prevent arbitrarily large stored page_size values from
+        # causing unbounded result sets if the DB record was modified directly.
+        run_limit = min(int(profile_filter.get("page_size", 200)), 500) if isinstance(profile_filter, dict) else 200
         contacts = await self.repo.get_matching_contacts(profile_filter, limit=run_limit)
 
         # Update search metadata

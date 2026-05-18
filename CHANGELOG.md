@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security (round-8)
+- **Audio upload DoS**: `/pipeline/import/audio` now enforces a 25 MB size limit (`_MAX_AUDIO_BYTES`)
+  before reading into memory. Previously an unbounded `file.read()` could exhaust the API worker's RAM.
+- **Audio upload arbitrary file storage**: added an extension allowlist
+  (`_ALLOWED_AUDIO_EXTENSIONS`) — unknown types are rejected with HTTP 400 before saving to disk.
+- **`contact_id` query param unvalidated in audio upload**: the parameter is now parsed with
+  `UUID(contact_id)` and rejected with HTTP 400 if malformed.
+- **`telegram_id` writable via public REST API**: removed `"telegram_id"` from
+  `_ALLOWED_UPDATE_FIELDS`; it is a deduplication key managed only by the Telegram sync pipeline
+  and must not be user-settable (risked identity theft and unique-constraint violations).
+- **Contacts router echoed ValueError text to API clients**: `str(e)` was propagated through
+  `HTTPException(404, str(e))` in three routes; replaced with static `"Contact not found"` strings.
+- **`is_authorized` logged `str(e)`**: `TelegramAuthService.is_authorized` now logs only
+  `error_type=type(e).__name__`, matching the fix already applied to `sign_in`/`sign_in_2fa`.
+- **Telegram router logged `str(e)` for auth status errors**: same class of fix in
+  `src/api/routers/telegram.py` — the `telegram_auth_status_error` handler now uses `error_type=`.
+- **`/stats/tree` used unvalidated `X-Database` header as Redis key**: an attacker could inject
+  Redis key characters (`:`, `*`, `\n`) via the header. The value is now validated against
+  `_DB_NAME_RE` before being embedded in the cache key.
+- **`batch.error_message` / `sync_state.error_message` stored raw `str(e)`**: these fields are
+  returned verbatim via the sync status API. Both `scan_channel_metadata` and `sync_channel_batch`
+  now store `"... failed: {type(e).__name__}"` and log the full error internally only.
+- **`list_tenant_databases` overly broad LIKE pattern**: changed `LIKE 'crm%'` to
+  `LIKE 'crm\_%' ESCAPE '\'` so only names with an underscore separator match — avoids
+  accidentally including unrelated databases (`crmtest`, `crm-old`, `crm_backup`).
+
+### Fixed (round-8)
+- **`run_campaign` had no `finally` block — campaign stuck in `"running"` after worker crash**:
+  wrapped the delivery loop in `try/except` that sets `campaign.status = "failed"` and commits
+  on any unhandled exception, so no campaign can be permanently stranded.
+- **`run_campaign` did not allow retry of `"sending"` campaigns**: a campaign stuck in `"sending"`
+  after a worker crash could not be retried via the task queue. The guard condition now treats
+  `"sending"` the same as `"running"` — both are retryable.
+- **`_retry_failed_batches` missing `queue="connectors"`**: retried batches were dispatched
+  without an explicit queue, routing them to the default `"celery"` queue where Telegram API
+  calls cannot execute. Added `queue="connectors"` to the retry `apply_async` call.
+- **ILIKE metacharacter injection in `LeadSearchRepository._apply_profile_filter`**: the
+  `_esc()` helper (already applied in `ContactService.list_contacts`) is now also applied to
+  every ILIKE pattern in the lead search filter, preventing `%` and `_` from acting as wildcards.
+- **`run_saved_search` page_size unbounded in stored filter**: added `min(run_limit, 500)` cap
+  so a directly-modified DB record cannot cause an arbitrarily large query.
+- **`import_excel_file` missing `db_name` propagation**: the Excel upload endpoint now reads
+  and validates the `X-Database` header and passes `db_name` to `import_excel.delay()` so
+  multi-tenant imports run against the correct database.
+
 ### Security (round-7)
 - **`/stats/embeddings/reindex` X-Database injection**: the endpoint now validates the
   `X-Database` header against `_DB_NAME_RE` before passing it to Celery, consistent with

@@ -430,7 +430,8 @@ class SyncOrchestrator:
                         attempt=batch.retry_attempt
                     )
 
-                    # Queue retry task with delay
+                    # Queue retry task with delay — must run on connectors queue
+                    # (Telegram API calls cannot execute on the processing queue).
                     sync_channel_batch.apply_async(
                         kwargs={
                             "channel_id": channel.telegram_id,
@@ -442,7 +443,8 @@ class SyncOrchestrator:
                             "limit": BATCH_SIZE,
                             "db_name": self.db_name
                         },
-                        countdown=60 * batch.retry_attempt  # 1m, 2m, 3m delays
+                        countdown=60 * batch.retry_attempt,  # 1m, 2m, 3m delays
+                        queue="connectors",
                     )
 
                 except Exception as e:

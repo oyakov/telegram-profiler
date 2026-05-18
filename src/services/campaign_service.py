@@ -80,15 +80,17 @@ class CampaignService:
     async def run_campaign(self, campaign_id: UUID) -> Dict[str, Any]:
         """Execute the campaign: personalize and deliver messages."""
         campaign = await self.session.get(Campaign, campaign_id)
-        # Skip only fully completed campaigns — allow retry of "running" campaigns
-        # so a worker crash mid-delivery doesn't permanently strand the campaign.
+        # Skip only fully completed campaigns.
+        # Allow retry of "running" and "sending" campaigns so a worker crash
+        # mid-delivery doesn't permanently strand the campaign.
         # Pending CampaignMessages are re-fetched below, so already-sent ones are skipped.
         if not campaign or campaign.status == "completed":
             logger.warning("campaign_skip_execution", campaign_id=str(campaign_id), status=getattr(campaign, 'status', 'None'))
             return {"status": "skipped"}
 
         campaign.status = "running"
-        campaign.started_at = datetime.now(timezone.utc)
+        if not campaign.started_at:
+            campaign.started_at = datetime.now(timezone.utc)
         await self.session.commit()
 
         messages = await self.campaign_repo.get_pending_messages(campaign_id, limit=_MAX_CAMPAIGN_RECIPIENTS)
@@ -103,52 +105,64 @@ class CampaignService:
         sent = 0
         failed = 0
 
-        for cm in messages:
-            try:
-                contact = contacts_map.get(cm.contact_id)
-                if not contact or not contact.telegram_id:
-                    cm.status = "skipped"
-                    cm.error_message = "No delivery identifier (telegram_id)"
-                    failed += 1
-                    continue
+        try:
+            for cm in messages:
+                try:
+                    contact = contacts_map.get(cm.contact_id)
+                    if not contact or not contact.telegram_id:
+                        cm.status = "skipped"
+                        cm.error_message = "No delivery identifier (telegram_id)"
+                        failed += 1
+                        continue
 
-                # 1. Personalize
-                context = {
-                    "first_name": contact.first_name,
-                    "last_name": contact.last_name,
-                    "company": contact.company,
-                    "position": contact.position
-                }
-                text = self.personalizer.personalize(campaign.message, context)
+                    # 1. Personalize
+                    context = {
+                        "first_name": contact.first_name,
+                        "last_name": contact.last_name,
+                        "company": contact.company,
+                        "position": contact.position
+                    }
+                    text = self.personalizer.personalize(campaign.message, context)
 
-                # 2. Deliver
-                success = await self.delivery.send_message(contact.telegram_id, text)
+                    # 2. Deliver
+                    success = await self.delivery.send_message(contact.telegram_id, text)
 
-                if success:
-                    cm.status = "sent"
-                    cm.sent_at = datetime.now(timezone.utc)
-                    sent += 1
-                else:
+                    if success:
+                        cm.status = "sent"
+                        cm.sent_at = datetime.now(timezone.utc)
+                        sent += 1
+                    else:
+                        cm.status = "failed"
+                        cm.error_message = "Delivery provider failed"
+                        failed += 1
+
+                except Exception as e:
+                    logger.error("campaign_message_error", campaign_id=str(campaign_id), error_type=type(e).__name__)
                     cm.status = "failed"
-                    cm.error_message = "Delivery provider failed"
+                    # Store a generic message — str(e) may contain internal stack details
+                    # that would be exposed via the GET /campaigns/{id}/messages API.
+                    cm.error_message = "Internal delivery error"
                     failed += 1
 
-            except Exception as e:
-                logger.error("campaign_message_error", campaign_id=str(campaign_id), error=str(e))
-                cm.status = "failed"
-                # Store a generic message — str(e) may contain internal stack details
-                # that would be exposed via the GET /campaigns/{id}/messages API.
-                cm.error_message = "Internal delivery error"
-                failed += 1
+                # Update stats and throttle
+                campaign.sent_count = sent
+                campaign.failed_count = failed
+                await self.session.commit()
+                await asyncio.sleep(_INTER_MESSAGE_DELAY_S)
 
-            # Update stats and throttle
-            campaign.sent_count = sent
-            campaign.failed_count = failed
+            campaign.status = "completed"
+            campaign.completed_at = datetime.now(timezone.utc)
             await self.session.commit()
-            await asyncio.sleep(_INTER_MESSAGE_DELAY_S)
 
-        campaign.status = "completed"
-        campaign.completed_at = datetime.now(timezone.utc)
-        await self.session.commit()
+        except Exception:
+            # Ensure the campaign is never permanently stuck in "running" after
+            # an unhandled crash (e.g. DB connection drop, worker OOM kill).
+            try:
+                campaign.status = "failed"
+                await self.session.commit()
+            except Exception as commit_err:
+                logger.error("campaign_status_reset_failed", campaign_id=str(campaign_id),
+                             error_type=type(commit_err).__name__)
+            raise
 
         return {"sent": sent, "failed": failed}

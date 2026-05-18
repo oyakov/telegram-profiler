@@ -152,11 +152,16 @@ async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get
         # don't trigger a full sequential scan on the messages table.
         # Key is scoped per tenant so different DBs never share each other's counts.
         import json
+        from src.db.database import _DB_NAME_RE
         counts_map: dict = {}
         settings = get_settings()
         _redis = None
-        # Resolve tenant DB name from header (already validated by get_db dependency upstream).
-        _db_name = request.headers.get("X-Database") or settings.postgres_db
+        # Resolve and validate the tenant DB name.  The get_db dependency on other
+        # endpoints validates X-Database, but /stats/tree receives raw Request.
+        _raw_db = request.headers.get("X-Database") or settings.postgres_db
+        if not _DB_NAME_RE.match(_raw_db):
+            raise HTTPException(status_code=400, detail="Invalid X-Database header value")
+        _db_name = _raw_db
         _tree_counts_cache_key = f"tree:msg_counts:{_db_name}"
 
         # 1. Try cache read — open connection only if we expect Redis to be up.

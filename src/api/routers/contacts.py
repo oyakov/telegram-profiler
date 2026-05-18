@@ -34,8 +34,8 @@ async def get_contact(contact_id: str, db: AsyncSession = Depends(get_db)):
     service = ContactService(db)
     try:
         return await service.get_contact(contact_id)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
+    except ValueError:
+        raise HTTPException(404, "Contact not found")
 
 @router.post("", status_code=201)
 async def create_contact(data: ContactCreate, db: AsyncSession = Depends(get_db)):
@@ -53,8 +53,8 @@ async def update_contact(contact_id: str, data: ContactUpdate, db: AsyncSession 
         result = await service.update_contact(contact_id, data.model_dump(exclude_none=True))
         await db.commit()
         return result
-    except ValueError as e:
-        raise HTTPException(404, str(e))
+    except ValueError:
+        raise HTTPException(404, "Contact not found")
 
 @router.delete("/{contact_id}", status_code=204)
 async def delete_contact(contact_id: str, db: AsyncSession = Depends(get_db)):
@@ -63,8 +63,8 @@ async def delete_contact(contact_id: str, db: AsyncSession = Depends(get_db)):
     try:
         await service.delete_contact(contact_id)
         await db.commit()
-    except ValueError as e:
-        raise HTTPException(404, str(e))
+    except ValueError:
+        raise HTTPException(404, "Contact not found")
 
 @router.post("/add-to-tracked")
 async def add_to_tracked(

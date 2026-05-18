@@ -156,10 +156,13 @@ def sync_channel_batch(
                 raise self.retry(countdown=min(e.seconds * 2, 3600))
 
             except Exception as e:
-                logger.error("batch_error", batch=batch_number, error=str(e), exc_info=True)
+                # Log the full error internally but store only the type in the DB;
+                # str(e) for Telethon errors can contain phone numbers or session data
+                # which would be returned to the frontend via the sync status API.
+                logger.error("batch_error", batch=batch_number, error_type=type(e).__name__, exc_info=True)
                 if batch_log:
                     batch_log.status = "failed"
-                    batch_log.error_message = str(e)
+                    batch_log.error_message = f"Batch failed: {type(e).__name__}"
                     await session.commit()
                 raise e
 
@@ -247,13 +250,15 @@ def scan_channel_metadata(self, channel_id: str, sync_state_id: Optional[str] = 
             return res_data
 
         except Exception as e:
-            logger.error("metadata_scan_error", channel_id=channel_id, error=str(e))
+            # Log full error internally; store only the type in the DB so it cannot
+            # be returned verbatim to frontend clients via the sync status API.
+            logger.error("metadata_scan_error", channel_id=channel_id, error_type=type(e).__name__, exc_info=True)
             if sync_state_id:
                 async with get_session(db_name=db_name_actual) as session:
                     sync_state = await session.get(ChannelSyncState, UUID(sync_state_id))
                     if sync_state:
                         sync_state.phase = "error"
-                        sync_state.error_message = str(e)
+                        sync_state.error_message = f"Metadata scan failed: {type(e).__name__}"
                         await session.commit()
             raise e
 
