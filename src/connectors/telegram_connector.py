@@ -53,14 +53,22 @@ class TelegramConnector(BaseConnector):
         if result["status"] == "success":
             # Post-login tasks
             await self.entity.update_user_profile()
-            asyncio.create_task(self.auto_sync_on_login(force=True))
+            task = asyncio.create_task(self.auto_sync_on_login(force=True))
+            task.add_done_callback(
+                lambda t: logger.error("auto_sync_on_login_failed", error=str(t.exception()))
+                if not t.cancelled() and t.exception() is not None else None
+            )
         return result
 
     async def sign_in_2fa(self, password: str) -> dict:
         result = await self.auth.sign_in_2fa(password)
         if result["status"] == "success":
             await self.entity.update_user_profile()
-            asyncio.create_task(self.auto_sync_on_login(force=True))
+            task = asyncio.create_task(self.auto_sync_on_login(force=True))
+            task.add_done_callback(
+                lambda t: logger.error("auto_sync_on_login_failed", error=str(t.exception()))
+                if not t.cancelled() and t.exception() is not None else None
+            )
         return result
 
     async def logout(self):

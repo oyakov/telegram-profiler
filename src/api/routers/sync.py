@@ -240,11 +240,13 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
             sync_state = ChannelSyncState(
                 channel_id=channel.id,
                 phase="metadata",
-                progress_percent=0.1, # Set small progress so UI immediately reacts
+                progress_percent=0.1,  # Set small progress so UI immediately reacts
                 started_at=datetime.now(timezone.utc)
             )
             db.add(sync_state)
-            await db.flush()
+            # Commit per channel so a failure on one channel doesn't roll back
+            # the successfully flushed states of all previous channels.
+            await db.commit()
 
             # Queue metadata scan task
             logger.info("queuing_metadata_scan", channel_id=str(channel.id), telegram_id=channel.telegram_id, sync_state_id=str(sync_state.id))
@@ -258,8 +260,8 @@ async def start_folder_sync(folder_id: str, db: AsyncSession = Depends(get_db)):
 
         except Exception as e:
             logger.error("queue_folder_channel_error", channel_id=str(channel.id), error=str(e))
+            await db.rollback()
 
-    await db.commit()
     logger.info("start_folder_sync_committed", folder_id=folder_id, queued_count=queued_count)
 
     return {

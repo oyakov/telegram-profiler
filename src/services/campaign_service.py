@@ -36,11 +36,24 @@ class CampaignService:
         self.session = session
         self.campaign_repo = CampaignRepository(session)
         self.search_repo = LeadSearchRepository(session)
-        
+
         # Dependency Injection with defaults
         self.personalizer = personalizer or SimplePersonalizer()
-        # Default to Telegram delivery if none provided
-        self.delivery = delivery_provider or TelegramDeliveryProvider(TelegramConnector())
+        # Store provider; create the real Telegram delivery lazily (via the
+        # property below) so no DB connections are opened at construction time
+        # when running in test or DI contexts.
+        self._delivery: Optional[BaseDeliveryProvider] = delivery_provider
+
+    @property
+    def delivery(self) -> BaseDeliveryProvider:
+        """Lazy-initialized delivery provider — avoids real connections at init."""
+        if self._delivery is None:
+            self._delivery = TelegramDeliveryProvider(TelegramConnector())
+        return self._delivery
+
+    @delivery.setter
+    def delivery(self, value: BaseDeliveryProvider) -> None:
+        self._delivery = value
 
     async def create_messages_from_search(self, campaign_id: UUID, search_id: UUID) -> int:
         """Generate CampaignMessage entries for all contacts matching a lead search."""

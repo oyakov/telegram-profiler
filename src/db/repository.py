@@ -96,12 +96,17 @@ class ContactRepository:
         self.session = session
 
     async def bulk_upsert_contacts(self, contacts_data: List[dict]) -> List[Contact]:
-        """Bulk upsert contacts based on telegram_id or email."""
+        """Bulk upsert contacts based on telegram_id or email.
+
+        Handles a UniqueViolationError on secondary unique indexes (e.g.
+        telegram_username) gracefully: rolls back the batch and returns an
+        empty list so the caller can proceed without data loss on other rows.
+        """
         if not contacts_data:
             return []
-            
+
         from sqlalchemy.dialects.postgresql import insert
-        
+
         stmt = insert(Contact).values(contacts_data)
         # We assume telegram_id is the primary unique identifier for sync
         stmt = stmt.on_conflict_do_update(
@@ -114,9 +119,21 @@ class ContactRepository:
                 "updated_at": datetime.now(timezone.utc)
             }
         ).returning(Contact)
-        
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+
+        try:
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "unique" in exc_str or "duplicate" in exc_str:
+                logger.warning(
+                    "bulk_upsert_contacts_unique_conflict",
+                    error=str(exc),
+                    hint="Secondary unique index (e.g. telegram_username) conflict; batch skipped",
+                )
+                await self.session.rollback()
+                return []
+            raise
 
     async def find_duplicate(
         self,
@@ -252,16 +269,23 @@ class SyncStateRepository:
         self.session = session
 
     async def get_or_create_connector_state(self, connector_name: str) -> SyncState:
-        """Get or create the global sync state for a connector."""
+        """Get or create the global sync state for a connector.
+
+        Uses INSERT … ON CONFLICT DO NOTHING so concurrent callers (e.g. multiple
+        channel sync tasks running in parallel) never race to INSERT the same row.
+        """
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        stmt = (
+            pg_insert(SyncState)
+            .values(connector=connector_name, status="idle")
+            .on_conflict_do_nothing(index_elements=["connector"])
+        )
+        await self.session.execute(stmt)
+        # Always fetch — either we just inserted or the row already existed.
         result = await self.session.execute(
             select(SyncState).where(SyncState.connector == connector_name)
         )
-        state = result.scalar_one_or_none()
-        if not state:
-            state = SyncState(connector=connector_name, status="idle")
-            self.session.add(state)
-            await self.session.flush()
-        return state
+        return result.scalar_one()
 
     async def update_eta(self, sync_state: ChannelSyncState) -> None:
         """Calculate and update ETA and sync rate for an active sync."""
@@ -304,17 +328,27 @@ class SyncStateRepository:
         return list(result.scalars().all())
 
     async def get_failed_batches(self, limit: int = 10) -> List[SyncBatchLog]:
-        """Get recently failed batches for retry."""
+        """Get recently failed batches for retry.
+
+        Eagerly loads sync_state and its channel to avoid DetachedInstanceError
+        when the orchestrator accesses batch.sync_state.channel in async context.
+        """
+        from sqlalchemy.orm import joinedload
         result = await self.session.execute(
-            select(SyncBatchLog).where(
+            select(SyncBatchLog)
+            .options(
+                joinedload(SyncBatchLog.sync_state).joinedload(ChannelSyncState.channel)
+            )
+            .where(
                 and_(
                     SyncBatchLog.status == "failed",
                     SyncBatchLog.retry_attempt < 3
                 )
-            ).order_by(SyncBatchLog.updated_at.desc())
+            )
+            .order_by(SyncBatchLog.updated_at.desc())
             .limit(limit)
         )
-        return list(result.scalars().all())
+        return list(result.unique().scalars().all())
 
 
 class CampaignRepository:

@@ -236,9 +236,10 @@ async def get_campaign_messages(
     if status:
         query = query.where(CampaignMessage.status == status)
 
-    count_result = await db.execute(
-        select(func.count(CampaignMessage.id)).where(CampaignMessage.campaign_id == campaign_id)
-    )
+    count_query = select(func.count(CampaignMessage.id)).where(CampaignMessage.campaign_id == campaign_id)
+    if status:
+        count_query = count_query.where(CampaignMessage.status == status)
+    count_result = await db.execute(count_query)
     total = count_result.scalar()
 
     query = query.order_by(CampaignMessage.created_at).offset((page - 1) * page_size).limit(page_size)

@@ -185,7 +185,13 @@ def import_excel(self, file_path: str, db_name: str | None = None):
         import pandas as pd
         from pathlib import Path
         from src.db.models import Contact
-        path = Path(file_path)
+        # Validate that the path is under the permitted uploads directory.
+        # The file_path value comes from the Redis broker (potentially tampered).
+        _uploads_root = Path("/app/uploads").resolve()
+        path = Path(file_path).resolve()
+        if not str(path).startswith(str(_uploads_root) + "/"):
+            logger.error("import_excel_path_rejected", file_path=file_path)
+            return {"status": "error", "reason": "invalid_path"}
         if not path.exists():
             return {"status": "error", "reason": "file_not_found", "path": file_path}
         try:
@@ -212,7 +218,11 @@ def import_excel(self, file_path: str, db_name: str | None = None):
                 )
                 session.add(contact)
                 imported += 1
-            # session.commit() is called by get_session context manager on clean exit.
+                # Flush every 500 rows to avoid accumulating all objects in memory
+                # and issuing a single enormous commit at the end.
+                if imported % 500 == 0:
+                    await session.flush()
+            # Final commit is issued by the get_session context manager on clean exit.
             # Only delete the file AFTER the session exits successfully so the file
             # is still available for retry if the commit fails.
         try:

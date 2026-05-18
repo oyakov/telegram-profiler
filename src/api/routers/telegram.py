@@ -167,7 +167,8 @@ async def telegram_logout(request: Request):
         await services["auth"].logout()
         return {"status": "success"}
     except Exception as e:
-        raise HTTPException(400, f"Logout failed: {str(e)}")
+        logger.error("telegram_logout_error", error=str(e))
+        raise HTTPException(400, "Logout failed")
 
 @router.post("/auth/reset-session")
 async def telegram_reset_session(request: Request):

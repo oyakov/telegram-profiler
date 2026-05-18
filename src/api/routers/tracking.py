@@ -81,9 +81,12 @@ async def update_folder(folder_id: str, req: UpdateFolderRequest, db: AsyncSessi
     if not folder:
         raise HTTPException(404, "Folder not found")
     
+    # Explicit whitelist prevents mass-assignment if the schema is ever extended.
+    _ALLOWED = frozenset({"name", "description", "tags", "is_active"})
     update_data = req.model_dump(exclude_none=True)
     for key, value in update_data.items():
-        setattr(folder, key, value)
+        if key in _ALLOWED:
+            setattr(folder, key, value)
     
     await db.commit()
     await db.refresh(folder)

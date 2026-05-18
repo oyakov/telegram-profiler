@@ -37,7 +37,9 @@ class MessageProcessor:
         """
         from src.pipeline.tasks import log_extraction_task
         stats = {"processed": 0, "contacts_found": 0, "leads_found": 0, "errors": 0}
-        semaphore = asyncio.Semaphore(10)  # Increased concurrency for extraction
+        # Each message may fan out to N chunk LLM calls internally; cap at 3 to
+        # keep total LLM concurrency manageable and avoid rate-limit cascades.
+        semaphore = asyncio.Semaphore(3)
         lead_threshold = await self.settings_svc.get("extraction_lead_confidence_threshold", 0.6)
 
         # Phase 1: Concurrent LLM Extraction
@@ -282,6 +284,11 @@ async def maintenance_reindex_dirty(batch_size: int = 50, session: Optional[Asyn
 
 
 async def _maintenance_reindex_dirty_impl(session: AsyncSession, batch_size: int) -> dict:
+    """Internal implementation — does NOT commit.
+
+    When called with an external session the caller is responsible for
+    committing (or the ``get_session`` context manager does so on clean exit).
+    """
     from collections import defaultdict
     stats = {"processed": 0, "errors": 0, "skipped": 0}
     result = await session.execute(select(Contact).where(Contact.embedding_dirty == True).limit(batch_size))

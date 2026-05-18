@@ -79,7 +79,7 @@ class CampaignDetailResponse(CampaignResponse):
 class CampaignPreviewRequest(BaseModel):
     """Request to preview a message with variable substitution."""
     message: str = Field(..., min_length=1)
-    sample_contact: dict = Field(...)  # Dict with first_name, last_name, email, etc.
+    sample_contact: dict[str, str] = Field(default_factory=dict)  # first_name, last_name, email, etc.
 
 
 class CampaignPreviewResponse(BaseModel):

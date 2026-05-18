@@ -232,20 +232,37 @@ class SyncOrchestrator:
                         started_at=datetime.now(timezone.utc)
                     )
                     session.add(sync_state)
-                    # Commit BEFORE enqueueing so the Celery task always finds the row
+                    # Commit BEFORE enqueueing so the Celery task always finds the row.
                     await session.commit()
 
-                    # Queue ONLY metadata scan task - batch tasks queued later after metadata completes
+                    # Queue ONLY metadata scan task — batch tasks queued later.
                     logger.info("queuing_metadata_scan", channel=channel.title)
-                    scan_channel_metadata.apply_async(
-                        args=[channel.telegram_id, str(sync_state.id)],
-                        kwargs={"db_name": self.db_name},
-                        task_id=f"metadata_{sync_state.id}",
-                        queue="connectors",
-                        priority=9  # HIGH priority - metadata must complete before batches
-                    )
-
-                    queued_count += 1
+                    try:
+                        scan_channel_metadata.apply_async(
+                            args=[channel.telegram_id, str(sync_state.id)],
+                            kwargs={"db_name": self.db_name},
+                            task_id=f"metadata_{sync_state.id}",
+                            queue="connectors",
+                            priority=9  # HIGH priority - metadata must complete before batches
+                        )
+                        queued_count += 1
+                    except Exception as enqueue_err:
+                        # Broker unavailable after commit — clean up the orphaned row
+                        # so the next orchestrator cycle can retry instead of waiting
+                        # for the 2-minute stuck-metadata timeout.
+                        logger.error(
+                            "enqueue_metadata_failed_cleaning_up",
+                            channel=channel.title,
+                            sync_state_id=str(sync_state.id),
+                            error=str(enqueue_err)
+                        )
+                        from sqlalchemy import delete as _sa_delete
+                        async with get_session(db_name=self.db_name) as cleanup:
+                            await cleanup.execute(
+                                _sa_delete(ChannelSyncState).where(
+                                    ChannelSyncState.id == sync_state.id
+                                )
+                            )
 
                 except Exception as e:
                     logger.error(
@@ -327,7 +344,8 @@ class SyncOrchestrator:
                             priority=0  # LOW priority - only after metadata completes
                         )
 
-                    queued_count += batch_count
+                    # Track actually-dispatched count (capped), not estimated total
+                    queued_count += min(batch_count, MAX_BATCHES_PER_CYCLE)
 
                 except Exception as e:
                     logger.error(

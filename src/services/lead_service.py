@@ -60,7 +60,11 @@ class LeadService:
         page_size: int = 50
     ) -> dict:
         """Get detailed lead history for a contact with enriched message content."""
-        result = await self.session.execute(select(Contact).where(Contact.id == contact_id))
+        try:
+            contact_uuid = UUID(contact_id)
+        except (ValueError, AttributeError):
+            raise ValueError("Contact not found")
+        result = await self.session.execute(select(Contact).where(Contact.id == contact_uuid))
         contact = result.scalar_one_or_none()
         if not contact:
             raise ValueError("Contact not found")
@@ -136,13 +140,17 @@ class LeadService:
         query = select(LeadSearch)
         if active_only:
             query = query.where(LeadSearch.is_active == True)
-        query = query.order_by(LeadSearch.created_at.desc())
+        query = query.order_by(LeadSearch.created_at.desc()).limit(200)
         result = await self.session.execute(query)
         return result.scalars().all()
 
     async def run_saved_search(self, search_id: str) -> dict:
         """Run a saved lead search and return results."""
-        result = await self.session.execute(select(LeadSearch).where(LeadSearch.id == search_id))
+        try:
+            search_uuid = UUID(search_id)
+        except (ValueError, AttributeError):
+            raise ValueError("Search not found")
+        result = await self.session.execute(select(LeadSearch).where(LeadSearch.id == search_uuid))
         search = result.scalar_one_or_none()
         if not search:
             raise ValueError("Search not found")

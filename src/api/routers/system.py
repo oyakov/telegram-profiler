@@ -21,7 +21,9 @@ async def health(db: AsyncSession = Depends(get_db)):
     try:
         await db.execute(text("SELECT 1"))
         checks["database"] = "ok"
-    except Exception as e: checks["database"] = f"error: {str(e)}"
+    except Exception as e:
+        logger.error("health_db_check_failed", error=str(e))
+        checks["database"] = "error"
     return {"status": "healthy" if all(v == "ok" for v in checks.values()) else "degraded", "checks": checks}
 
 @router.get("")
@@ -126,7 +128,9 @@ async def purge_celery_tasks():
         for q in ["connectors", "processing", "celery"]:
             r.delete(f"celery/queue/{q}" if q != "celery" else "celery")
         return {"status": "success"}
-    except Exception as e: raise HTTPException(500, str(e))
+    except Exception as e:
+        logger.error("purge_celery_tasks_failed", error=str(e))
+        raise HTTPException(500, "Failed to purge task queue")
 
 _TREE_COUNTS_CACHE_KEY = "tree:msg_counts"
 _TREE_COUNTS_TTL_S = 30  # Refresh at most every 30 s; GROUP BY on millions of rows is expensive
@@ -218,7 +222,9 @@ async def get_hierarchical_tree(db: AsyncSession = Depends(get_db)):
                 total = sum(c["percentage"] for c in fn["children"])
                 fn["percentage"] = round(total / len(fn["children"]), 1)
         return {"tree": tree}
-    except Exception as e: return {"tree": [], "error": str(e)}
+    except Exception as e:
+        logger.error("tree_load_failed", error=str(e))
+        return {"tree": [], "error": "Failed to load tree"}
 
 @router.get("/prometheus")
 async def get_prometheus_metrics(db: AsyncSession = Depends(get_db)):

@@ -39,8 +39,9 @@ def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.a
         if len(_engines) >= 50:
             oldest_key = next(iter(_engines))
             old_engine = _engines.pop(oldest_key)
-            # Always dispose synchronously — avoids race where another coroutine
-            # uses the engine between create_task() and actual disposal.
+            # dispose() only reclaims idle pool connections; connections that are
+            # currently checked out remain valid until returned.  Synchronous
+            # dispose avoids any async race between eviction and active usage.
             old_engine.sync_engine.dispose()
 
         # Use SQLAlchemy URL object so the password is redacted in repr/logs

@@ -22,9 +22,33 @@ async def list_top_leads(
     service = LeadService(db)
     return await service.list_top_leads(min_score, page, page_size)
 
+@router.get("/searches")
+async def list_lead_searches(
+    db: AsyncSession = Depends(get_db),
+    active_only: bool = Query(True),
+):
+    """List saved lead searches."""
+    service = LeadService(db)
+    searches = await service.list_searches(active_only=active_only)
+
+    return [
+        LeadSearchResponse(
+            id=str(s.id),
+            name=s.name,
+            description=s.description,
+            profile_filter=s.profile_filter,
+            is_active=s.is_active,
+            result_count=s.last_result_count,
+            last_run_at=s.last_run_at,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+        )
+        for s in searches
+    ]
+
 @router.get("/{contact_id}/history")
 async def get_lead_history(
-    contact_id: str, 
+    contact_id: str,
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
@@ -83,30 +107,6 @@ async def create_lead_search(
         created_at=lead_search.created_at,
         updated_at=lead_search.updated_at,
     )
-
-@router.get("/searches")
-async def list_lead_searches(
-    db: AsyncSession = Depends(get_db),
-    active_only: bool = Query(True),
-):
-    """List saved lead searches."""
-    service = LeadService(db)
-    searches = await service.list_searches(active_only=active_only)
-
-    return [
-        LeadSearchResponse(
-            id=str(s.id),
-            name=s.name,
-            description=s.description,
-            profile_filter=s.profile_filter,
-            is_active=s.is_active,
-            result_count=s.last_result_count,
-            last_run_at=s.last_run_at,
-            created_at=s.created_at,
-            updated_at=s.updated_at,
-        )
-        for s in searches
-    ]
 
 @router.post("/searches/{search_id}/run")
 async def run_lead_search(
