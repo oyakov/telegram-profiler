@@ -1,0 +1,7 @@
+{
+  "id": "test-resilience-retries",
+  "title": "Testing: Resilience & Retry Logic",
+  "description": "Verify that tenacity retry decorators correctly handle transient failures in Telegram services.",
+  "status": "todo",
+  "priority": "high"
+}

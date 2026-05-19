@@ -1,0 +1,7 @@
+{
+  "id": "improvement-service-tests",
+  "title": "Improvement: Expand Service Layer Tests",
+  "description": "Increase test coverage for critical service layer components including ContactService and PipelineService.",
+  "status": "completed",
+  "priority": "medium"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "test-dedup-merge",
+  "title": "Testing: Deduplication & Merge Logic",
+  "description": "Verify the correctness of contact merging and field deduplication in the repository layer.",
+  "status": "todo",
+  "priority": "high"
+}

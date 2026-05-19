@@ -1,0 +1,7 @@
+{
+  "id": "test-ai-pipeline",
+  "title": "Testing: AI Extraction Pipeline",
+  "description": "Verify the robustness of the UnifiedProcessor and AI extraction logic.",
+  "status": "todo",
+  "priority": "medium"
+}

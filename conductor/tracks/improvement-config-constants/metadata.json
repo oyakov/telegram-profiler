@@ -1,0 +1,7 @@
+{
+  "id": "improvement-config-constants",
+  "title": "Improvement: Externalize Constants to Config",
+  "description": "Move hardcoded magic numbers and semantic thresholds from code to AppSettings/config.py.",
+  "status": "completed",
+  "priority": "medium"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "test-search-logic",
+  "title": "Testing: Search Logic Integrity",
+  "description": "Verify the hybrid search logic and evidence extraction.",
+  "status": "todo",
+  "priority": "medium"
+}
