@@ -9,7 +9,7 @@ export default defineConfig({
     proxy: {
       // Forward all /api calls to the local Docker nginx stack
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },

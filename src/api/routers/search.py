@@ -7,6 +7,9 @@ from src.db.database import get_db
 from src.db.models import Contact, MessageEmbedding, Message
 from src.api.schemas import SearchRequest
 from src.services.contact_service import ContactService
+from src.core.config import get_settings
+
+settings = get_settings()
 
 def _contact_to_response(contact):
     return ContactService.map_to_response(contact)
@@ -106,14 +109,27 @@ async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)
         .join(Message, Message.id == MessageEmbedding.message_id)
         .options(sa.orm.joinedload(Message.contact))
         .order_by("distance")
-        .limit(req.limit * 5)
+        .limit(req.limit * settings.search_row_limit_multiplier)
     )
 
-    semantic_contacts = defaultdict(list)
+    # contact_id → (contact, best_distance, [evidence_items])
+    semantic_contacts: dict = {}
     for me, msg, distance in msg_results:
-        if msg.contact and distance < 0.52:  # Relaxed threshold: 0.3 was too strict
-            if not (msg.contact.id in semantic_contacts and len(semantic_contacts[msg.contact.id]) >= 5):
-                semantic_contacts[msg.contact.id].append((msg.contact, me, distance))
+        if not msg.contact or distance >= settings.search_semantic_threshold:
+            continue
+        cid = msg.contact.id
+        evidence_item = {
+            "text": (me.chunk_text or msg.content or "").strip()[:300],
+            "relevance": round(1 - distance, 3),
+        }
+        if cid not in semantic_contacts:
+            semantic_contacts[cid] = (msg.contact, distance, [evidence_item])
+        else:
+            contact, best_dist, ev_list = semantic_contacts[cid]
+            if len(ev_list) < 3:
+                ev_list.append(evidence_item)
+            if distance < best_dist:
+                semantic_contacts[cid] = (contact, distance, ev_list)
 
     # 2. Keyword search as fallback
     keyword_contacts = {}
@@ -121,33 +137,39 @@ async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)
         kw_results = await _keyword_search(db, req.query, req.limit * 2)
         for contact, msg_count in kw_results:
             if contact.id not in semantic_contacts:
-                keyword_contacts[contact.id] = (contact, None, 0.5)
+                keyword_contacts[contact.id] = (contact, None, settings.search_keyword_fallback_relevance)
 
-    # 3. Combine results - semantic + keyword
+    # 3. Combine + build keyword evidence (recent messages)
     all_contacts = {}
+    for contact_id, (contact, best_dist, ev_list) in semantic_contacts.items():
+        all_contacts[contact_id] = (contact, best_dist, "semantic", ev_list)
 
-    # Add semantic results (higher priority)
-    for contact_id, msg_list in semantic_contacts.items():
-        contact, best_me, best_distance = msg_list[0]
-        all_contacts[contact_id] = (contact, best_distance, "semantic")
+    if keyword_contacts:
+        kw_ids = [cid for cid in keyword_contacts if cid not in all_contacts]
+        if kw_ids:
+            kw_msgs = await db.execute(
+                select(Message.contact_id, Message.content)
+                .where(Message.contact_id.in_(kw_ids))
+                .where(Message.content.isnot(None), Message.content != "")
+                .order_by(Message.contact_id, Message.timestamp.desc())
+                .limit(len(kw_ids) * 3)
+            )
+            kw_evidence: dict = defaultdict(list)
+            for cid, content in kw_msgs:
+                if len(kw_evidence[cid]) < 3:
+                    kw_evidence[cid].append({"text": content.strip()[:300], "relevance": None})
+        for contact_id, (contact, _, fallback_dist) in keyword_contacts.items():
+            if contact_id not in all_contacts:
+                all_contacts[contact_id] = (contact, fallback_dist, "keyword", kw_evidence.get(contact_id, []))
 
-    # Add keyword results (lower priority)
-    for contact_id, (contact, _, _) in keyword_contacts.items():
-        if contact_id not in all_contacts:
-            all_contacts[contact_id] = (contact, 0.5, "keyword")
-
-    # 4. Batch load evidence for all contacts (fixes N+1 queries)
+    # 4. Build final contact list
     contact_list = list(all_contacts.values())[:req.limit]
-    contact_ids = [contact.id for contact, _, _ in contact_list]
-    evidence_by_contact = await _extract_evidence_batch(db, contact_ids, query_embedding)
-
-    # 5. Build final contact list with evidence
     contacts = []
-    for contact, distance, search_type in contact_list:
+    for contact, distance, search_type, ev_list in contact_list:
         contacts.append({
             **_contact_to_response(contact),
             "similarity": round(1 - distance, 4) if search_type == "semantic" else 0.5,
-            "evidence": evidence_by_contact.get(contact.id, []),
+            "evidence": ev_list,
             "search_type": search_type,
         })
 

@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 from sqlalchemy import select, update
 from telethon.tl.types import Channel
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from telethon.errors import FloodWaitError, RPCError
+
 from src.db.database import get_session
 from src.db.models import Message, MessageContact, TrackedChannel, SyncState
 from src.db.repository import SyncStateRepository
@@ -14,6 +17,19 @@ from src.services.telegram.client_factory import TelegramClientFactory
 from src.services.telegram.entity_service import TelegramEntityService
 
 logger = structlog.get_logger()
+
+# Common retry decorator for Telegram network/RPC operations
+telegram_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((ConnectionError, asyncio.TimeoutError, RPCError)),
+    reraise=True,
+    before_sleep=lambda retry_state: logger.warning(
+        "telegram_operation_retry",
+        attempt=retry_state.attempt_number,
+        exception=str(retry_state.outcome.exception()),
+    )
+)
 
 class TelegramSyncService(TelegramSyncInterface):
     """Handles Telegram message synchronization."""
@@ -90,19 +106,24 @@ class TelegramSyncService(TelegramSyncInterface):
 
     async def _sync_chat_impl(self, chat_id, limit, offset_date, session, ignore_last_id) -> int:
         client = await self.factory.get_client()
-        # connect() is inside the try block so the finally clause always runs and
-        # the session file is never left in a locked state on unexpected errors.
-        try:
+        
+        @telegram_retry
+        async def _get_entity():
             if not client.is_connected():
                 await client.connect()
             try:
-                entity = await client.get_entity(chat_id)
+                return await client.get_entity(chat_id)
             except Exception:
                 # Handle common Telegram ID quirks
                 if isinstance(chat_id, int) and chat_id > 0:
-                    try: entity = await client.get_entity(int(f"-100{chat_id}"))
-                    except Exception: entity = await client.get_entity(str(chat_id))
+                    try: return await client.get_entity(int(f"-100{chat_id}"))
+                    except Exception: return await client.get_entity(str(chat_id))
                 else: raise
+
+        # connect() is inside the try block so the finally clause always runs and
+        # the session file is never left in a locked state on unexpected errors.
+        try:
+            entity = await _get_entity()
 
             is_channel = isinstance(entity, Channel) and entity.broadcast
             messages_synced = 0
@@ -120,38 +141,43 @@ class TelegramSyncService(TelegramSyncInterface):
                 last_id = (state.metadata_json or {}).get(f"chat_{entity.id}_last_id", 0)
 
             # Load all known source_message_ids for this entity into a Python set for
-            # O(1) dedup during the iter_messages loop.  Each ID is ~25 bytes; even a
-            # 500k-message channel adds only ~12 MB — well within the container limit.
+            # O(1) dedup during the iter_messages loop.
             existing_rows = await session.execute(
                 select(Message.source_message_id)
                 .where(Message.group_id == str(entity.id))
             )
             existing_ids = {r[0] for r in existing_rows if r[0]}
 
-            async for msg in client.iter_messages(entity, limit=limit, min_id=last_id, offset_date=offset_date):
-                source_id = f"{entity.id}_{msg.id}"
-                if source_id in existing_ids: continue
+            # Wrap iterator in a retriable function
+            @telegram_retry
+            async def _fetch_and_process():
+                nonlocal messages_synced
+                async for msg in client.iter_messages(entity, limit=limit, min_id=last_id, offset_date=offset_date):
+                    source_id = f"{entity.id}_{msg.id}"
+                    if source_id in existing_ids: continue
 
-                sender_entity = msg.sender or entity if not is_channel else entity
-                contact = await self.entity_service.get_or_create_contact(session, sender_entity, is_channel=is_channel)
+                    sender_entity = msg.sender or entity if not is_channel else entity
+                    contact = await self.entity_service.get_or_create_contact(session, sender_entity, is_channel=is_channel)
 
-                message = Message(
-                    contact_id=contact.id,
-                    source="telegram",
-                    source_message_id=source_id,
-                    direction="outgoing" if msg.out else "incoming",
-                    content=msg.text or "",
-                    group_id=str(entity.id),
-                    group_name=getattr(entity, "title", "Unknown"),
-                    timestamp=msg.date
-                )
-                session.add(message)
-                session.add(MessageContact(message=message, contact=contact, role="sender"))
-                existing_ids.add(source_id)
-                messages_synced += 1
+                    message = Message(
+                        contact_id=contact.id,
+                        source="telegram",
+                        source_message_id=source_id,
+                        direction="outgoing" if msg.out else "incoming",
+                        content=msg.text or "",
+                        group_id=str(entity.id),
+                        group_name=getattr(entity, "title", "Unknown"),
+                        timestamp=msg.date
+                    )
+                    session.add(message)
+                    session.add(MessageContact(message=message, contact=contact, role="sender"))
+                    existing_ids.add(source_id)
+                    messages_synced += 1
 
-                if messages_synced % batch_size == 0:
-                    await session.commit()
+                    if messages_synced % batch_size == 0:
+                        await session.commit()
+
+            await _fetch_and_process()
 
             # Update last sync timestamp for channel
             await session.execute(

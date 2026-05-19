@@ -144,19 +144,6 @@ services:
       - crm-net
     restart: unless-stopped
 
-  whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    container_name: crm-whisper
-    environment:
-      - ASR_MODEL=${WHISPER_MODEL:-small}
-      - ASR_ENGINE=${WHISPER_ENGINE:-openai_whisper}
-    # NO public port — internal network only
-    volumes:
-      - whisper_cache:/root/.cache/whisper
-    networks:
-      - crm-net
-    restart: unless-stopped
-
   frontend:
     build:
       context: ./frontend
@@ -217,7 +204,6 @@ services:
 volumes:
   pgdata:
   redisdata:
-  whisper_cache:
   session_data:
   uploads_data:
   prometheus_data:

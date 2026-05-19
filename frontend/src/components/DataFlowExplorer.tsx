@@ -14,6 +14,21 @@ interface TreeNode {
   status?: string;
   username?: string;
   last_change?: string;
+  oldest_message_date?: string;
+}
+
+function formatDepth(isoDate: string | undefined): string {
+  if (!isoDate) return '—';
+  const ms = Date.now() - new Date(isoDate).getTime();
+  const days = Math.floor(ms / 86_400_000);
+  if (days < 1) return 'сегодня';
+  if (days < 30) return `${days} дн. назад`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} мес. назад`;
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  if (rem === 0) return `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'} назад`;
+  return `${years}г ${rem}м назад`;
 }
 
 const Pacman: React.FC<{ size?: number; active?: boolean }> = ({ size = 16, active = true }) => {
@@ -76,7 +91,7 @@ const TreeRow: React.FC<{ node: TreeNode; level: number; onSync?: (folderId: str
                 transition: 'width 0.5s ease-out'
               }}></div>
             </div>
-            <span className="pct-text">{isSyncing && node.percentage === 0 ? '⧗' : `${node.percentage}%`}</span>
+            <span className="pct-text">{isSyncing && node.percentage === 0 ? '⧗' : formatDepth(node.oldest_message_date)}</span>
           </div>
         </div>
 <div className="tree-col files-col" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>

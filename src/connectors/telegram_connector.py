@@ -253,6 +253,14 @@ class TelegramConnector(BaseConnector):
     async def _get_client(self):
         return await self.factory.get_client()
 
+    async def test_connection(self) -> bool:
+        """Test if the connector can reach Telegram and is authorized."""
+        try:
+            return await self.is_authorized()
+        except Exception as e:
+            logger.error("telegram_connection_test_failed", error=str(e))
+            return False
+
     async def get_status(self) -> dict:
         from src.db.database import get_session
         from src.db.models import SyncState

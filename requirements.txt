@@ -42,3 +42,5 @@ prometheus-fastapi-instrumentator==7.0.0
 
 # Security
 slowapi==0.1.9
+
+tenacity>=9.1.4

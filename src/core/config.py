@@ -69,6 +69,12 @@ class AppSettings(BaseSettings):
     prometheus_dir: str = Field("/tmp/prometheus_multiproc_dir")
     enable_json_logging: bool = Field(True)
 
+    # --- Search ---
+    search_semantic_threshold: float = Field(0.52, description="Cosine distance threshold for semantic results (lower = more similar).")
+    search_row_limit_multiplier: int = Field(5, description="Multiplier for req.limit when fetching candidates from DB.")
+    search_max_semantic_per_contact: int = Field(5, description="Max semantic evidence chunks to collect per contact.")
+    search_keyword_fallback_relevance: float = Field(0.5, description="Simulated distance for keyword fallback results.")
+
     @property
     def database_url(self) -> str:
         return (

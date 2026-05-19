@@ -104,13 +104,14 @@ const Search: React.FC = () => {
                       {/* Evidence quotes */}
                       {c.evidence && c.evidence.length > 0 && (
                         <div className="evidence-section">
-                          <div className="evidence-header">Подтверждение:</div>
+                          <div className="evidence-header">Почему выбран:</div>
                           <div className="evidence-quotes">
                             {c.evidence.map((quote: any, idx: number) => (
                               <div key={idx} className="evidence-quote">
-                                <span className="quote-mark">"</span>
                                 <p>{quote.text}</p>
-                                <span className="evidence-relevance">совпадение: {(quote.relevance * 100).toFixed(0)}%</span>
+                                {quote.relevance != null && (
+                                  <span className="evidence-relevance">{(quote.relevance * 100).toFixed(0)}% совпадение</span>
+                                )}
                               </div>
                             ))}
                           </div>

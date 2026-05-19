@@ -29,3 +29,11 @@
 | [refactor-celery-task-pureness](./tracks/refactor-celery-task-pureness/metadata.json) | Refactor: Celery Task Pureness | `[x]` |
 | [refactor-maintenance-cli-consolidation](./tracks/refactor-maintenance-cli-consolidation/metadata.json) | Refactor: Maintenance CLI Consolidation | `[x]` |
 | [belgrade-discovery](./tracks/belgrade-discovery/index.md) | Belgrade Discovery & Ingestion | `[ ]` |
+| [improvement-retry-logic](./tracks/improvement-retry-logic/plan.md) | Improvement: Retry Logic for Connectors | `[x]` |
+| [improvement-config-constants](./tracks/improvement-config-constants/plan.md) | Improvement: Externalize Constants to Config | `[x]` |
+| [improvement-service-tests](./tracks/improvement-service-tests/plan.md) | Improvement: Expand Service Layer Tests | `[x]` |
+| [test-dedup-merge](./tracks/test-dedup-merge/plan.md) | Testing: Deduplication & Merge Logic | `[x]` |
+| [test-resilience-retries](./tracks/test-resilience-retries/plan.md) | Testing: Resilience & Retry Logic | `[x]` |
+| [test-ai-pipeline](./tracks/test-ai-pipeline/plan.md) | Testing: AI Extraction Pipeline | `[x]` |
+| [test-multi-db](./tracks/test-multi-db/plan.md) | Testing: Multi-DB & Tenant Logic | `[x]` |
+| [test-search-logic](./tracks/test-search-logic/plan.md) | Testing: Search Logic Integrity | `[x]` |

@@ -64,6 +64,7 @@ class MessageProcessor:
                     return {"msg": msg, "contacts": contacts, "leads": leads, "is_channel": is_channel}
                 except Exception as e:
                     logger.error("unified_message_extraction_error", message_id=str(msg.id), error=str(e))
+                    stats["errors"] += 1
                     return None
 
         extraction_results = await asyncio.gather(*[_extract_single(msg) for msg in messages])

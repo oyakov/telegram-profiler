@@ -154,6 +154,7 @@ async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get
         import json
         from src.db.database import _DB_NAME_RE
         counts_map: dict = {}
+        oldest_map: dict = {}
         settings = get_settings()
         _redis = None
         # Resolve and validate the tenant DB name.  The get_db dependency on other
@@ -174,13 +175,26 @@ async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get
             pass  # Redis unavailable — fall through to DB query
 
         if not counts_map:
-            counts_res = await db.execute(select(Message.group_id, func.count(Message.id)).group_by(Message.group_id))
-            counts_map = {str(row[0]): row[1] for row in counts_res.all()}
+            counts_res = await db.execute(
+                select(Message.group_id, func.count(Message.id), func.min(Message.timestamp)).group_by(Message.group_id)
+            )
+            oldest_map: dict[str, str | None] = {}
+            for row in counts_res.all():
+                gid = str(row[0])
+                counts_map[gid] = row[1]
+                oldest_map[gid] = row[2].isoformat() if row[2] else None
             if _redis is not None:
                 try:
                     await _redis.set(_tree_counts_cache_key, json.dumps(counts_map), ex=_TREE_COUNTS_TTL_S)
+                    await _redis.set(_tree_counts_cache_key + ":oldest", json.dumps(oldest_map), ex=_TREE_COUNTS_TTL_S)
                 except Exception:
                     pass
+        if not oldest_map:
+            try:
+                cached_oldest = await _redis.get(_tree_counts_cache_key + ":oldest") if _redis else None
+                oldest_map = json.loads(cached_oldest) if cached_oldest else {}
+            except Exception:
+                oldest_map = {}
         if _redis is not None:
             try:
                 await _redis.aclose()
@@ -229,7 +243,7 @@ async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get
             elif ch_msg_count > 0:
                 status = "complete"; progress = 100.0
 
-            cn = {"id": str(ch.id), "name": ch.title or str(ch.telegram_id), "type": "channel", "username": ch.username, "files": ch_msg_count, "percentage": round(min(100.0, progress), 1), "status": status, "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None}
+            cn = {"id": str(ch.id), "name": ch.title or str(ch.telegram_id), "type": "channel", "username": ch.username, "files": ch_msg_count, "percentage": round(min(100.0, progress), 1), "status": status, "last_change": ch.last_sync_at.isoformat() if ch.last_sync_at else None, "oldest_message_date": next((oldest_map.get(vid) for vid in id_variants if oldest_map.get(vid)), None)}
             folder_nodes[str(ch.folder_id)]["children"].append(cn); folder_nodes[str(ch.folder_id)]["files"] += ch_msg_count
 
         for fn in tree:
