@@ -1,0 +1,54 @@
+.git
+.github
+.claude
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+dist
+build
+.venv
+venv
+
+# Runtime data dirs — mounted as Docker volumes, never baked into image
+uploads/
+sessions/
+
+# Dev/test files
+requirements-dev.txt
+tests/
+
+# Loose data / scratch files at project root
+*.csv
+*.xlsx
+*.json
+*.txt
+!requirements*.txt
+scratch/
+conductor/
+celerybeat-schedule
+
+# Frontend (not needed in backend image)
+frontend/
+.vite/
+
+# Local secrets and overrides
+.env.local
+.env.*.local
+
+# Docs and tooling
+*.md
+*.txt.bak
+.editorconfig
+.gitignore
+.gitattributes
+
+# OS
+.DS_Store
+Thumbs.db
