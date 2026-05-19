@@ -23,17 +23,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # ── 1. system_projects table ─────────────────────────────────────────────
-    op.create_table(
-        "system_projects",
-        sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("description", sa.Text, nullable=True),
-        sa.Column("telegram_folder_id", sa.String(255), nullable=True),
-        sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
-        sa.UniqueConstraint("name", name="uq_system_project_name"),
-    )
+    # Use raw SQL so the CREATE is idempotent if the table already exists
+    # (can happen when a previous session created it outside Alembic).
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS system_projects (
+            id UUID DEFAULT gen_random_uuid() NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            telegram_folder_id VARCHAR(255),
+            is_active BOOLEAN DEFAULT true NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+            PRIMARY KEY (id),
+            CONSTRAINT uq_system_project_name UNIQUE (name)
+        )
+    """))
 
     # ── 2. Deduplicate contacts before adding unique indexes ─────────────────
     # Keep the oldest row for each non-NULL telegram_id duplicate.
@@ -73,11 +77,13 @@ def upgrade() -> None:
     """))
 
     # ── 4. messages.is_extracted column ──────────────────────────────────────
-    op.add_column(
-        "messages",
-        sa.Column("is_extracted", sa.Boolean, nullable=False, server_default="false"),
-    )
-    op.create_index("ix_message_is_extracted", "messages", ["is_extracted"])
+    op.execute(sa.text("""
+        ALTER TABLE messages
+        ADD COLUMN IF NOT EXISTS is_extracted BOOLEAN NOT NULL DEFAULT false
+    """))
+    op.execute(sa.text("""
+        CREATE INDEX IF NOT EXISTS ix_message_is_extracted ON messages (is_extracted)
+    """))
 
     # Backfill: mark messages that already have an ExtractionLog entry as extracted
     op.execute(sa.text("""
@@ -91,11 +97,10 @@ def upgrade() -> None:
     """))
 
     # ── 5. ExtractionLog composite index ─────────────────────────────────────
-    op.create_index(
-        "ix_extraction_log_source",
-        "extraction_log",
-        ["source_type", "source_id"],
-    )
+    op.execute(sa.text("""
+        CREATE INDEX IF NOT EXISTS ix_extraction_log_source
+        ON extraction_log (source_type, source_id)
+    """))
 
     # ── 6. Trigram indexes for fast keyword search ────────────────────────────
     op.execute(sa.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
