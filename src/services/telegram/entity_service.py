@@ -47,18 +47,46 @@ class TelegramEntityService(TelegramEntityInterface):
             return contact
 
         tg_id = str(sender.id)
+        username = getattr(sender, "username", None) or None
+
+        # 1. Lookup by telegram_id (primary identifier)
         result = await session.execute(select(Contact).where(Contact.telegram_id == tg_id).limit(1))
         contact = result.scalar_one_or_none()
-        
+
+        # 2. Fallback: lookup by telegram_username to avoid hitting uq_contact_telegram_username
+        if not contact and username:
+            result2 = await session.execute(
+                select(Contact).where(Contact.telegram_username == username).limit(1)
+            )
+            contact = result2.scalar_one_or_none()
+            if contact:
+                # Sync the telegram_id now that we know it
+                contact.telegram_id = tg_id
+
         if not contact:
             contact = Contact(
-                first_name=getattr(sender, "title", "Unknown") if is_channel else getattr(sender, "first_name", "Unknown"),
-                telegram_id=tg_id, 
-                telegram_username=getattr(sender, "username", None), 
+                first_name=getattr(sender, "title", "Unknown") if is_channel else getattr(sender, "first_name", "Unknown") or "Unknown",
+                telegram_id=tg_id,
+                telegram_username=username,
                 source="telegram"
             )
             session.add(contact)
+
+        try:
             await session.flush()
+        except Exception:
+            # Last-resort: another concurrent insert won the race — look up the winner
+            await session.rollback()
+            res = await session.execute(
+                select(Contact).where(
+                    (Contact.telegram_id == tg_id) | (Contact.telegram_username == username)
+                    if username else Contact.telegram_id == tg_id
+                ).limit(1)
+            )
+            contact = res.scalar_one_or_none()
+            if not contact:
+                raise
+
         return contact
 
     async def update_user_profile(self) -> None:
