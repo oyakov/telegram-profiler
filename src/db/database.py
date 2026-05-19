@@ -91,14 +91,15 @@ async def get_session(db_name: str | None = None, use_pooling: bool = False) -> 
         finally:
             await session.close()
 
-from fastapi import Request, HTTPException
-
-async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+async def get_db(request: "Request") -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an async DB session based on X-Database header.
 
+    Imports FastAPI lazily so this module can be imported by Celery workers
+    without requiring fastapi to be installed in their slim requirements.
     The X-Database value is validated against _DB_NAME_RE before use to prevent
     connection-URL injection (issue #2 in code review).
     """
+    from fastapi import Request, HTTPException  # lazy — not needed by Celery workers
     db_name = request.headers.get("X-Database") or None  # treat empty string as None
     if db_name is not None and not _DB_NAME_RE.match(db_name):
         raise HTTPException(status_code=400, detail="Invalid X-Database header value")
