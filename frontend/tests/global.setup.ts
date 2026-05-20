@@ -11,13 +11,14 @@ import { test as setup, expect } from '@playwright/test';
 const AUTH_FILE = 'playwright/.auth/state.json';
 
 setup('verify stack and save auth state', async ({ page }) => {
-  // 1. Backend health check
-  const health = await page.request.get('/api/stats/health');
+  // 1. Backend health check — /api/telegram/auth/status is the most reliable
+  //    endpoint (no FastAPI Request-injection dependency).  /api/stats returns
+  //    422 because it requires an injected FastAPI Request object.
+  const health = await page.request.get('/api/telegram/auth/status');
   expect(health.ok(), `Backend health check failed: ${health.status()}`).toBeTruthy();
 
-  // 2. Telegram session must already be authorized
-  const authResp = await page.request.get('/api/telegram/auth/status');
-  expect(authResp.ok()).toBeTruthy();
+  // 2. Telegram session must already be authorized (reuse the response above)
+  const authResp = health;
   const auth = await authResp.json();
   expect(auth.authorized, 'Telegram session must be authorized before running e2e tests').toBe(true);
 

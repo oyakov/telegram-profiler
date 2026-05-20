@@ -38,6 +38,8 @@ api.interceptors.response.use(
 
 export default api;
 
+export const fetcher = (url: string) => api.get(url).then(res => res.data);
+
 export const setDatabase = (db: string) => {
   localStorage.setItem('selected_db', db);
   window.dispatchEvent(new Event('storage')); // Trigger update in components

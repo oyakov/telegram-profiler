@@ -1,0 +1,217 @@
+.folder-card {
+  background: rgba(30, 41, 59, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.folder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  background: rgba(168, 85, 247, 0.05);
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.folder-header:hover {
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.folder-header.expanded {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.folder-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.folder-chevron { color: #94a3b8; }
+.folder-icon    { color: #a855f7; }
+
+.folder-name-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-name {
+  color: #f8fafc;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.folder-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.folder-tag {
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.folder-count {
+  padding: 1px 8px;
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.folder-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.folder-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.folder-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+.folder-btn--import {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  padding: 0 10px;
+  font-size: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.folder-btn--import:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #10b981;
+}
+
+.folder-btn--danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.folder-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Import panel */
+.folder-import-panel {
+  padding: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.folder-import-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.folder-import-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.folder-import-close:hover { color: #94a3b8; }
+
+.folder-import-status {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.folder-import-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.folder-import-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 6px;
+  color: #10b981;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.folder-import-item:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.folder-import-count {
+  padding: 0 6px;
+  background: rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+/* Channels table */
+.channels-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.channels-table thead tr {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.channels-table th {
+  padding: 10px 16px;
+  text-align: left;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.channels-table th.text-right  { text-align: right; }
+.channels-table th.text-center { text-align: center; }
+
+.channels-empty {
+  padding: 20px 16px;
+  text-align: center;
+  color: #475569;
+  font-size: 13px;
+}

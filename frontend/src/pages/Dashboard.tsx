@@ -1,15 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import useSWR from 'swr';
-import api from '../services/api';
+import api, { fetcher } from '../services/api';
 import { Search, RefreshCw } from 'lucide-react';
 import './Dashboard.css';
 
-const fetcher = (url: string) => api.get(url).then(res => res.data);
+interface Folder {
+  id: string;
+  name?: string;
+  title?: string;
+  folder_type?: string;
+  message_count?: number;
+}
+
+interface Contact {
+  id: string;
+  name?: string;
+  first_name?: string;
+  status?: string;
+  message_count?: number;
+}
 
 const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const isMountedRef = useRef(true);
+
+  // Reset to true on every mount (including React StrictMode's double-invocation)
+  // so the isMounted check in handleManualSync works correctly after remount.
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   const { data: stats, error: statsError, isLoading: statsLoading, mutate: mutateStats } = useSWR('/api/stats', fetcher);
   const { data: tracking, mutate: mutateTracking } = useSWR('/api/tracking/channels', fetcher);
@@ -21,26 +43,19 @@ const Dashboard: React.FC = () => {
     setSyncing(true);
     setSyncStatus('idle');
     try {
-      // Sync folders and channels
-      const syncResult = await api.post('/api/sync/manual');
-      console.log('Folder/Channel sync response:', syncResult.data);
+      await api.post('/api/sync/manual');
 
-      // Also sync contacts (asynchronously)
       const contactsSyncResponse = await api.post('/api/telegram/contacts/sync');
       const contactsTaskId = contactsSyncResponse.data.task_id;
 
-      // Poll for contacts sync completion
       let contactsSyncComplete = false;
       let pollAttempts = 0;
-      const maxAttempts = 60; // 1 minute
 
-      while (!contactsSyncComplete && pollAttempts < maxAttempts) {
+      while (!contactsSyncComplete && pollAttempts < 60) {
+        if (!isMountedRef.current) return;
         pollAttempts++;
-        const statusResponse = await api.get(
-          `/api/telegram/contacts/sync/status/${contactsTaskId}`
-        );
+        const statusResponse = await api.get(`/api/telegram/contacts/sync/status/${contactsTaskId}`);
         const taskStatus = statusResponse.data.status;
-
         if (taskStatus === 'SUCCESS' || taskStatus === 'FAILURE') {
           contactsSyncComplete = true;
         } else {
@@ -48,42 +63,42 @@ const Dashboard: React.FC = () => {
         }
       }
 
-      setTimeout(() => {
-        console.log('Setting sync status to success');
-        mutateStats();
-        mutateTracking();
-        mutateFolders();
-        mutateContacts();
-        setSyncStatus('success');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      }, 1000);
-    } catch (err: any) {
-      setSyncStatus('error');
+      if (!isMountedRef.current) return;
+      mutateStats();
+      mutateTracking();
+      mutateFolders();
+      mutateContacts();
+      setSyncStatus('success');
+      setTimeout(() => { if (isMountedRef.current) setSyncStatus('idle'); }, 3000);
+    } catch (err) {
+      if (!isMountedRef.current) return;
       console.error('Sync failed:', err);
+      setSyncStatus('error');
     } finally {
-      setSyncing(false);
+      if (isMountedRef.current) setSyncing(false);
     }
   };
 
-  const folders = foldersData?.folders || [];
-  const contacts = contactsData?.contacts || [];
+  const folders: Folder[] = foldersData?.folders || [];
+  const contacts: Contact[] = contactsData?.contacts || [];
 
-  const isLoading = statsLoading || !stats || !tracking;
   if (statsError) {
-    const statusCode = statsError.response?.status;
-    if (statusCode === 401) {
-      return <div className="error">Please log in to view dashboard data</div>;
-    }
-    return <div className="error">Failed to load dashboard data</div>;
+    return (
+      <div className="error">
+        {statsError.response?.status === 401
+          ? 'Необходима авторизация'
+          : 'Не удалось загрузить данные'}
+      </div>
+    );
   }
-  if (isLoading) return <div className="loading">Loading intelligence...</div>;
+  if (statsLoading || !stats) return <div className="loading">Загрузка данных...</div>;
 
-  const userName = user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'User';
+  const userName = user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : 'Пользователь';
   const userInitial = userName.charAt(0).toUpperCase();
 
   return (
     <div className="dashboard-page">
-      <div className="profile-section serpent-card">
+      <div className="profile-section serpent-card no-hover">
         <div className="profile-avatar">{userInitial}</div>
         <div className="profile-info">
           <h2 className="profile-workspace">{userName}</h2>
@@ -94,7 +109,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="profile-stat">
               <span className="stat-label">Папок</span>
-              <span className="stat-value">{folders?.length || 0}</span>
+              <span className="stat-value">{folders.length}</span>
             </div>
             <div className="profile-stat">
               <span className="stat-label">Каналов</span>
@@ -108,11 +123,16 @@ const Dashboard: React.FC = () => {
             onClick={handleManualSync}
             disabled={syncing}
             title="Синхронизировать папки и контакты"
+            aria-label="Синхронизировать"
           >
             <RefreshCw size={18} className={syncing ? 'spinning' : ''} />
           </button>
-          {syncStatus === 'success' && <span style={{fontSize: '0.85rem', color: '#10b981'}}>✓ Готово</span>}
-          {syncStatus === 'error' && <span style={{fontSize: '0.85rem', color: '#ef4444'}}>✗ Ошибка</span>}
+          {syncStatus === 'success' && (
+            <span style={{ fontSize: '0.85rem', color: '#10b981' }}>✓ Готово</span>
+          )}
+          {syncStatus === 'error' && (
+            <span style={{ fontSize: '0.85rem', color: '#ef4444' }}>✗ Ошибка</span>
+          )}
         </div>
       </div>
 
@@ -128,8 +148,8 @@ const Dashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {folders && folders.length > 0 ? (
-                folders.map((folder: any) => (
+              {folders.length > 0 ? (
+                folders.map(folder => (
                   <tr key={folder.id}>
                     <td>{folder.name || folder.title}</td>
                     <td>{folder.folder_type || 'folder'}</td>
@@ -151,7 +171,7 @@ const Dashboard: React.FC = () => {
               type="text"
               placeholder="Поиск контактов..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
           <table className="data-table">
@@ -163,14 +183,14 @@ const Dashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {contacts && contacts.length > 0 ? (
+              {contacts.length > 0 ? (
                 contacts
-                  .filter((contact: any) =>
-                    (contact.name || contact.first_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+                  .filter(c =>
+                    (c.name || c.first_name || '').toLowerCase().includes(searchQuery.toLowerCase())
                   )
-                  .map((contact: any) => (
+                  .map(contact => (
                     <tr key={contact.id}>
-                      <td>{contact.name || contact.first_name || 'Unknown'}</td>
+                      <td>{contact.name || contact.first_name || 'Неизвестно'}</td>
                       <td>{contact.status || 'active'}</td>
                       <td>{contact.message_count || 0}</td>
                     </tr>

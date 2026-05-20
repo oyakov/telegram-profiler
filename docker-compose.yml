@@ -105,6 +105,8 @@ services:
       resources:
         limits:
           memory: 384M
+    healthcheck:
+      disable: true   # Celery workers have no HTTP endpoint; default healthcheck would always fail
     depends_on:
       postgres:
         condition: service_healthy
@@ -130,6 +132,8 @@ services:
       resources:
         limits:
           memory: 256M
+    healthcheck:
+      disable: true   # Celery workers have no HTTP endpoint; default healthcheck would always fail
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,6 +153,8 @@ services:
     env_file: .env
     volumes:
       - session_data:/app/sessions
+    healthcheck:
+      disable: true   # Beat scheduler has no HTTP endpoint; default healthcheck would always fail
     depends_on:
       redis:
         condition: service_healthy

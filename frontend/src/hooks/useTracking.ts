@@ -1,58 +1,79 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import useSWR from 'swr';
-import api from '../services/api';
+import api, { fetcher } from '../services/api';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 
-const fetcher = (url: string) => api.get(url).then(res => res.data);
+interface Folder {
+  id: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+}
+
+interface Channel {
+  id: string;
+  folder_id?: string;
+  title?: string;
+  username?: string;
+  messages_count?: number;
+}
 
 export const useTracking = () => {
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
+
   const { data, mutate } = useSWR('/api/tracking/channels', fetcher);
   const { data: foldersData, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
-  const { data: syncData, mutate: mutateSyncStatus } = useSWR('/api/connectors/pipeline/sync/status', fetcher, { refreshInterval: 8000 });
-  
+  const { data: syncData, mutate: mutateSyncStatus } = useSWR(
+    '/api/connectors/pipeline/sync/status', fetcher, { refreshInterval: 8000 }
+  );
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [foldersInitialized, setFoldersInitialized] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [importingFolderId, setImportingFolderId] = useState<string | null>(null);
   const [tgFolders, setTgFolders] = useState<any[]>([]);
   const [tgFoldersLoading, setTgFoldersLoading] = useState(false);
 
-  // Folder Editing State
-  const [editingFolder, setEditingFolder] = useState<any>(null);
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [folderFormData, setFolderFormData] = useState({ name: '', description: '', tags_str: '' });
 
-  // Initialize all folders as collapsed
+  // Collapse all folders on first load only — don't reset when SWR revalidates
   useEffect(() => {
-    if (foldersData?.folders && foldersData.folders.length > 0) {
-      const allFolderIds = new Set<string>(foldersData.folders.map((f: any) => f.id));
-      setCollapsedFolders(allFolderIds);
+    if (!foldersInitialized && foldersData?.folders?.length > 0) {
+      setCollapsedFolders(new Set<string>(foldersData.folders.map((f: Folder) => f.id)));
+      setFoldersInitialized(true);
     }
-  }, [foldersData]);
+  }, [foldersData, foldersInitialized]);
 
-  const handleOpenEditFolder = (folder: any) => {
+  const handleOpenEditFolder = (folder: Folder) => {
     setEditingFolder(folder);
     setFolderFormData({
       name: folder.name,
       description: folder.description || '',
-      tags_str: (folder.tags || []).join(', ')
+      tags_str: (folder.tags || []).join(', '),
     });
   };
 
-  const handleUpdateFolder = async (e: React.FormEvent) => {
+  const handleUpdateFolder = async (e: FormEvent) => {
     e.preventDefault();
+    if (!editingFolder) return;
     try {
-      const tags = folderFormData.tags_str.split(',').map(s => s.trim()).filter(s => !!s);
+      const tags = folderFormData.tags_str.split(',').map(s => s.trim()).filter(Boolean);
       await api.patch(`/api/tracking/folders/${editingFolder.id}`, {
         name: folderFormData.name,
         description: folderFormData.description,
-        tags: tags
+        tags,
       });
       setEditingFolder(null);
       mutateFolders();
       mutate();
     } catch (err: any) {
-      alert('Error: ' + (err.response?.data?.detail || 'Update failed'));
+      showToast('error', err.response?.data?.detail || 'Не удалось обновить папку');
     }
   };
 
@@ -60,17 +81,17 @@ export const useTracking = () => {
     setIsSyncing(true);
     try {
       await api.post('/api/connectors/telegram/sync');
-      alert('Синхронизация запущена в фоновом режиме');
+      showToast('info', 'Синхронизация запущена в фоновом режиме');
       mutate();
       mutateSyncStatus();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      showToast('error', err.response?.data?.detail || 'Не удалось запустить синхронизацию');
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const handleCreateFolder = async (e: React.FormEvent) => {
+  const handleCreateFolder = async (e: FormEvent) => {
     e.preventDefault();
     if (!newFolderName.trim()) return;
     try {
@@ -79,32 +100,32 @@ export const useTracking = () => {
       setShowNewFolderInput(false);
       mutateFolders();
     } catch (err: any) {
-      alert('Error: ' + (err.response?.data?.detail || 'Failed to create folder'));
+      showToast('error', err.response?.data?.detail || 'Не удалось создать папку');
     }
   };
 
   const handleDeleteFolder = async (folderId: string, folderName: string) => {
-    const channelsInFolder = data?.channels?.filter((ch: any) => ch.folder_id === folderId) || [];
+    const channelsInFolder = (data?.channels as Channel[] || []).filter(ch => ch.folder_id === folderId);
     const msg = channelsInFolder.length > 0
-      ? `Delete folder "${folderName}" and all ${channelsInFolder.length} channels in it?`
-      : `Delete folder "${folderName}"?`;
-    if (!window.confirm(msg)) return;
+      ? `Удалить папку «${folderName}» и все ${channelsInFolder.length} каналов внутри?`
+      : `Удалить папку «${folderName}»?`;
+    if (!await confirm(msg, 'Удаление папки')) return;
     try {
       await api.delete(`/api/tracking/folders/${folderId}`);
       mutate();
       mutateFolders();
     } catch (err: any) {
-      alert('Error: ' + (err.response?.data?.detail || 'Failed to delete folder'));
+      showToast('error', err.response?.data?.detail || 'Не удалось удалить папку');
     }
   };
 
   const handleDeleteChannel = async (channelId: string, channelTitle: string) => {
-    if (!window.confirm(`Remove channel "${channelTitle}" from tracking?`)) return;
+    if (!await confirm(`Убрать канал «${channelTitle}» из отслеживания?`, 'Удаление канала')) return;
     try {
       await api.delete(`/api/tracking/channels/${channelId}`);
       mutate();
     } catch (err: any) {
-      alert('Error: ' + (err.response?.data?.detail || 'Failed to delete channel'));
+      showToast('error', err.response?.data?.detail || 'Не удалось удалить канал');
     }
   };
 
@@ -116,7 +137,7 @@ export const useTracking = () => {
       const res = await api.get('/api/telegram/folders');
       setTgFolders(res.data.folders || []);
     } catch (err: any) {
-      alert('Error: ' + (err.response?.data?.detail || 'Could not load Telegram folders'));
+      showToast('error', err.response?.data?.detail || 'Не удалось загрузить папки Telegram');
       setImportingFolderId(null);
     } finally {
       setTgFoldersLoading(false);
@@ -124,19 +145,22 @@ export const useTracking = () => {
   };
 
   const handleImportFromTg = async (folderId: string, tgFolder: any) => {
-    if (!window.confirm(`Import ${tgFolder.channel_count} channels from Telegram folder "${tgFolder.name}"?`)) return;
+    if (!await confirm(
+      `Импортировать ${tgFolder.channel_count} каналов из папки Telegram «${tgFolder.name}»?`,
+      'Импорт каналов'
+    )) return;
     try {
       const res = await api.post('/api/telegram/folders/import', {
         folder_id: folderId,
         peer_ids: tgFolder.peer_ids,
       });
       const { added, moved, total } = res.data;
-      alert(`Done: ${added} added, ${moved} moved to this folder (${total} total)`);
+      showToast('success', `Готово: добавлено ${added}, перемещено ${moved} (всего ${total})`);
       setImportingFolderId(null);
       mutate();
       mutateFolders();
     } catch (err: any) {
-      alert('Error: ' + (err.response?.data?.detail || 'Import failed'));
+      showToast('error', err.response?.data?.detail || 'Не удалось импортировать каналы');
     }
   };
 
@@ -176,6 +200,6 @@ export const useTracking = () => {
     handleDeleteChannel,
     handleOpenImport,
     handleImportFromTg,
-    toggleFolder
+    toggleFolder,
   };
 };

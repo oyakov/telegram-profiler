@@ -1,7 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import useSWR, { mutate } from 'swr';
-import api from '../services/api';
-import { Settings2, Cpu, Database, Mic, Monitor, RotateCcw, Save, CheckCircle, AlertCircle, Share2, TrendingUp } from 'lucide-react';
+import api, { fetcher } from '../services/api';
+import {
+  Settings2, Cpu, Database, Mic, Monitor, RotateCcw, Save,
+  CheckCircle, AlertCircle, Share2, TrendingUp,
+} from 'lucide-react';
 import './Settings.css';
 
 interface EffectiveSetting {
@@ -20,15 +23,14 @@ interface SettingsResponse {
 }
 
 const EFFECTIVE_URL = '/api/settings/effective';
-const fetcher = (url: string) => api.get(url).then(r => r.data);
 
 const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  llm:        { label: 'AI / LLM',    icon: <Cpu size={18} />,      color: 'purple' },
-  embeddings: { label: 'Embeddings',  icon: <Database size={18} />, color: 'blue'   },
-  whisper:    { label: 'Whisper STT', icon: <Mic size={18} />,      color: 'green'  },
-  telegram:   { label: 'Telegram',    icon: <Share2 size={18} />,   color: 'orange' },
-  system:     { label: 'System',      icon: <Monitor size={18} />,  color: 'yellow' },
-  heuristics: { label: 'Heuristics',  icon: <TrendingUp size={18} />, color: 'red'    },
+  llm:        { label: 'AI / LLM',    icon: <Cpu size={18} />,        color: 'purple' },
+  embeddings: { label: 'Embeddings',  icon: <Database size={18} />,   color: 'blue'   },
+  whisper:    { label: 'Whisper STT', icon: <Mic size={18} />,        color: 'green'  },
+  telegram:   { label: 'Telegram',    icon: <Share2 size={18} />,     color: 'orange' },
+  system:     { label: 'Система',     icon: <Monitor size={18} />,    color: 'yellow' },
+  heuristics: { label: 'Эвристики',   icon: <TrendingUp size={18} />, color: 'red'    },
 };
 
 const CATEGORY_ORDER = ['llm', 'heuristics', 'embeddings', 'whisper', 'telegram', 'system'];
@@ -38,7 +40,17 @@ type SaveState = 'idle' | 'saving' | 'ok' | 'err';
 function SettingRow({ setting }: { setting: EffectiveSetting }) {
   const [localValue, setLocalValue] = useState<string>(String(setting.value ?? ''));
   const [saveState, setSaveState] = useState<SaveState>('idle');
-  const isDirty = localValue !== String(setting.value ?? '');
+  const serverValueRef = useRef(String(setting.value ?? ''));
+  const isDirty = localValue !== serverValueRef.current;
+
+  // Sync to new server value when SWR revalidates, but only if user hasn't edited
+  useEffect(() => {
+    const newServerVal = String(setting.value ?? '');
+    if (localValue === serverValueRef.current) {
+      setLocalValue(newServerVal);
+    }
+    serverValueRef.current = newServerVal;
+  }, [setting.value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     setSaveState('saving');
@@ -67,11 +79,6 @@ function SettingRow({ setting }: { setting: EffectiveSetting }) {
       setSaveState('idle');
     }
   };
-
-  // Keep local value in sync when SWR revalidates and we have no pending edits
-  React.useEffect(() => {
-    if (!isDirty) setLocalValue(String(setting.value ?? ''));
-  }, [setting.value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderInput = () => {
     if (setting.value_type === 'bool') {
@@ -112,9 +119,10 @@ function SettingRow({ setting }: { setting: EffectiveSetting }) {
         {setting.source === 'db' && (
           <button
             className="icon-btn reset"
-            title={`Reset to env default: ${setting.env_value}`}
+            title={`Сбросить до значения .env: ${setting.env_value}`}
             onClick={handleReset}
             disabled={saveState === 'saving'}
+            aria-label="Сбросить к значению .env"
           >
             <RotateCcw size={14} />
           </button>
@@ -123,7 +131,8 @@ function SettingRow({ setting }: { setting: EffectiveSetting }) {
           className={`icon-btn save ${!isDirty ? 'hidden' : ''} ${saveState}`}
           onClick={handleSave}
           disabled={!isDirty || saveState === 'saving'}
-          title="Save"
+          title="Сохранить"
+          aria-label="Сохранить изменение"
         >
           {saveState === 'ok'  ? <CheckCircle size={14} /> :
            saveState === 'err' ? <AlertCircle size={14} /> :
@@ -134,25 +143,17 @@ function SettingRow({ setting }: { setting: EffectiveSetting }) {
   );
 }
 
-function CategoryCard({
-  category,
-  settings,
-}: {
-  category: string;
-  settings: EffectiveSetting[];
-}) {
+function CategoryCard({ category, settings }: { category: string; settings: EffectiveSetting[] }) {
   const meta = CATEGORY_META[category] ?? { label: category, icon: <Settings2 size={18} />, color: 'gray' };
   return (
-    <div className="settings-card serpent-card">
+    <div className="settings-card serpent-card no-hover">
       <div className={`card-header color-${meta.color}`}>
         {meta.icon}
         <h3>{meta.label}</h3>
-        <span className="setting-count">{settings.length} settings</span>
+        <span className="setting-count">{settings.length} параметров</span>
       </div>
       <div className="settings-list">
-        {settings.map(s => (
-          <SettingRow key={s.key} setting={s} />
-        ))}
+        {settings.map(s => <SettingRow key={s.key} setting={s} />)}
       </div>
     </div>
   );
@@ -162,13 +163,13 @@ const Settings: React.FC = () => {
   const { data, error } = useSWR<SettingsResponse>(EFFECTIVE_URL, fetcher);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  const grouped = useCallback(() => {
+  const grouped = useMemo(() => {
     if (!data) return {} as Record<string, EffectiveSetting[]>;
     return data.settings.reduce<Record<string, EffectiveSetting[]>>((acc, s) => {
       (acc[s.category] ??= []).push(s);
       return acc;
     }, {});
-  }, [data])();
+  }, [data]);
 
   const categories = CATEGORY_ORDER.filter(c => c in grouped);
   const displayed = activeCategory ? [activeCategory] : categories;
@@ -184,7 +185,7 @@ const Settings: React.FC = () => {
         <h1 className="text-gradient">Настройки</h1>
         <p className="text-secondary">
           Конфигурация системы — значения из БД переопределяют .env
-          {dbCount > 0 && <span className="db-overrides-badge">{dbCount} DB overrides</span>}
+          {dbCount > 0 && <span className="db-overrides-badge">{dbCount} переопределено</span>}
         </p>
       </div>
 

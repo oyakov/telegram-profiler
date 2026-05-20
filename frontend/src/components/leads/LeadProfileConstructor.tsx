@@ -25,14 +25,14 @@ const LeadProfileConstructor: React.FC<Props> = ({
   const [currentInterestInput, setCurrentInterestInput] = useState('');
 
   const handleAddKeyword = () => {
-    if (currentKeywordInput) {
+    if (currentKeywordInput.trim()) {
       addTag('keywords', currentKeywordInput);
       setCurrentKeywordInput('');
     }
   };
 
   const handleAddInterest = () => {
-    if (currentInterestInput) {
+    if (currentInterestInput.trim()) {
       addTag('interests', currentInterestInput);
       setCurrentInterestInput('');
     }
@@ -40,7 +40,7 @@ const LeadProfileConstructor: React.FC<Props> = ({
 
   return (
     <div className="lead-constructor">
-      <h2>Конструктор Профиля Лида</h2>
+      <h2>Конструктор профиля лида</h2>
 
       <div className="form-section">
         <label>Контактные данные</label>
@@ -49,14 +49,14 @@ const LeadProfileConstructor: React.FC<Props> = ({
             type="text"
             placeholder="Имя"
             value={profile.first_name}
-            onChange={(e) => updateProfileField('first_name', e.target.value)}
+            onChange={e => updateProfileField('first_name', e.target.value)}
             className="form-input"
           />
           <input
             type="text"
             placeholder="Фамилия"
             value={profile.last_name}
-            onChange={(e) => updateProfileField('last_name', e.target.value)}
+            onChange={e => updateProfileField('last_name', e.target.value)}
             className="form-input"
           />
         </div>
@@ -66,14 +66,14 @@ const LeadProfileConstructor: React.FC<Props> = ({
             type="text"
             placeholder="Компания"
             value={profile.company}
-            onChange={(e) => updateProfileField('company', e.target.value)}
+            onChange={e => updateProfileField('company', e.target.value)}
             className="form-input"
           />
           <input
             type="text"
             placeholder="Должность"
             value={profile.position}
-            onChange={(e) => updateProfileField('position', e.target.value)}
+            onChange={e => updateProfileField('position', e.target.value)}
             className="form-input"
           />
         </div>
@@ -86,8 +86,8 @@ const LeadProfileConstructor: React.FC<Props> = ({
             type="text"
             placeholder="Добавить ключевое слово..."
             value={currentKeywordInput}
-            onChange={(e) => setCurrentKeywordInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAddKeyword()}
+            onChange={e => setCurrentKeywordInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddKeyword())}
             className="form-input"
           />
           <button onClick={handleAddKeyword} className="btn-small primary">
@@ -98,7 +98,7 @@ const LeadProfileConstructor: React.FC<Props> = ({
           {profile.keywords.map((kw, idx) => (
             <span key={idx} className="tag">
               {kw}
-              <button onClick={() => removeTag('keywords', idx)} className="tag-remove">
+              <button onClick={() => removeTag('keywords', idx)} className="tag-remove" aria-label="Удалить">
                 <X size={14} />
               </button>
             </span>
@@ -113,8 +113,8 @@ const LeadProfileConstructor: React.FC<Props> = ({
             type="text"
             placeholder="Добавить интерес..."
             value={currentInterestInput}
-            onChange={(e) => setCurrentInterestInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAddInterest()}
+            onChange={e => setCurrentInterestInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddInterest())}
             className="form-input"
           />
           <button onClick={handleAddInterest} className="btn-small primary">
@@ -125,7 +125,7 @@ const LeadProfileConstructor: React.FC<Props> = ({
           {profile.interests.map((int, idx) => (
             <span key={idx} className="tag interest-tag">
               {int}
-              <button onClick={() => removeTag('interests', idx)} className="tag-remove">
+              <button onClick={() => removeTag('interests', idx)} className="tag-remove" aria-label="Удалить">
                 <X size={14} />
               </button>
             </span>
@@ -135,6 +135,7 @@ const LeadProfileConstructor: React.FC<Props> = ({
 
       <div className="form-section">
         <label>Фильтры поиска</label>
+
         <div className="form-group">
           <label className="filter-label">
             Минимальный Score: <span className="value">{profile.min_score}</span>
@@ -145,43 +146,47 @@ const LeadProfileConstructor: React.FC<Props> = ({
             max="100"
             step="5"
             value={profile.min_score}
-            onChange={(e) => updateProfileField('min_score', parseFloat(e.target.value))}
+            onChange={e => updateProfileField('min_score', parseFloat(e.target.value))}
             className="form-range"
           />
         </div>
 
         <div className="form-group">
           <label className="filter-label">
-            Активность в канале: {profile.min_activity_ratio}% - {profile.max_activity_ratio}%
+            Минимальная активность: <span className="value">{profile.min_activity_ratio}%</span>
           </label>
-          <div className="range-inputs">
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={profile.min_activity_ratio}
-              onChange={(e) => updateProfileField('min_activity_ratio', parseFloat(e.target.value))}
-              className="form-input small"
-            />
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={profile.max_activity_ratio}
-              onChange={(e) => updateProfileField('max_activity_ratio', parseFloat(e.target.value))}
-              className="form-input small"
-            />
-          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={profile.min_activity_ratio}
+            onChange={e => updateProfileField('min_activity_ratio', parseFloat(e.target.value))}
+            className="form-range"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="filter-label">
+            Максимальная активность: <span className="value">{profile.max_activity_ratio}%</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={profile.max_activity_ratio}
+            onChange={e => updateProfileField('max_activity_ratio', parseFloat(e.target.value))}
+            className="form-range"
+          />
         </div>
       </div>
 
       <div className="form-actions">
         <button className="btn-venom primary" onClick={handleSearch} disabled={isSearching}>
-          {isSearching ? (
-            <><Loader size={18} className="spinner" /> Поиск...</>
-          ) : (
-            <><TrendingUp size={18} /> Искать лидов</>
-          )}
+          {isSearching
+            ? <><Loader size={18} className="spinner" /> Поиск...</>
+            : <><TrendingUp size={18} /> Искать лидов</>}
         </button>
 
         <button className="btn-venom secondary" onClick={onSaveClick} disabled={isSearching}>

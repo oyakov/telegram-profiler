@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import api from './services/api';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import Login from './pages/Login';
@@ -16,64 +18,65 @@ import Settings from './pages/Settings';
 import Audit from './pages/Audit';
 import './App.css';
 
-const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+const LoadingScreen: React.FC = () => (
+  <div className="loading-screen">
+    <div className="loading-spinner" />
+    <p className="loading-text">Загрузка...</p>
+  </div>
+);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await api.get('/api/telegram/auth/status');
-        setIsAuthenticated(response.data.authorized);
-      } catch (err) {
-        setIsAuthenticated(false);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+const AppRoutes: React.FC = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
 
-    checkAuth();
-  }, []);
+  if (isLoading) return <LoadingScreen />;
 
-  if (isLoading) {
+  if (!isAuthenticated) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div>Loading...</div>
-      </div>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="*"
+          element={<Navigate to="/login" state={{ from: location.pathname }} replace />}
+        />
+      </Routes>
     );
   }
 
   return (
-    <Router>
-      {isAuthenticated ? (
-        <div className="app-container">
-          <Sidebar />
-          <main className="main-content">
-            <TopBar />
-            <div className="scroll-area">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/tracking" element={<Tracking />} />
-                <Route path="/monitoring" element={<Monitoring />} />
-                <Route path="/audit" element={<Audit />} />
-                <Route path="/search" element={<Search />} />
-                <Route path="/leads" element={<Leads />} />
-                <Route path="/campaigns" element={<Campaigns />} />
-                <Route path="/contacts" element={<Contacts />} />
-                <Route path="/personal-contacts" element={<PersonalContacts />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
-            </div>
-          </main>
+    <div className="app-container">
+      <Sidebar />
+      <main className="main-content">
+        <TopBar />
+        <div className="scroll-area">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/tracking" element={<Tracking />} />
+            <Route path="/monitoring" element={<Monitoring />} />
+            <Route path="/audit" element={<Audit />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/leads" element={<Leads />} />
+            <Route path="/campaigns" element={<Campaigns />} />
+            <Route path="/contacts" element={<Contacts />} />
+            <Route path="/personal-contacts" element={<PersonalContacts />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
         </div>
-      ) : (
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      )}
-    </Router>
+      </main>
+    </div>
   );
 };
+
+const App: React.FC = () => (
+  <AuthProvider>
+    <ToastProvider>
+      <ConfirmProvider>
+        <Router>
+          <AppRoutes />
+        </Router>
+      </ConfirmProvider>
+    </ToastProvider>
+  </AuthProvider>
+);
 
 export default App;

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import useSWR from 'swr';
-import api from '../services/api';
-
-const fetcher = (url: string) => api.get(url).then(res => res.data);
+import api, { fetcher } from '../services/api';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 export type LeadProfile = {
   first_name: string;
@@ -35,10 +35,13 @@ export type LeadSearch = {
 
 export type LeadSearchResult = {
   total: number;
-  contacts: any[]; // Still using any[] here as Contact type is complex and varies
+  contacts: any[];
 };
 
 export const useLeads = () => {
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
+
   const [profile, setProfile] = useState<LeadProfile>({
     first_name: '',
     last_name: '',
@@ -61,24 +64,17 @@ export const useLeads = () => {
   const [searchName, setSearchName] = useState('');
   const [searchDescription, setSearchDescription] = useState('');
 
-  // Saved searches
   const { data: savedSearches, mutate: mutateSavedSearches } = useSWR(
-    '/api/leads/searches?active_only=true',
-    fetcher
+    '/api/leads/searches?active_only=true', fetcher
   );
 
   const handleSearch = async () => {
     setIsSearching(true);
     try {
-      const res = await api.post('/api/leads/search', {
-        ...profile,
-        page: 1,
-        page_size: 50,
-      });
+      const res = await api.post('/api/leads/search', { ...profile, page: 1, page_size: 50 });
       setSearchResults(res.data);
-    } catch (err) {
-      console.error('Search error:', err);
-      alert('Failed to search leads');
+    } catch (err: any) {
+      showToast('error', err.response?.data?.detail || 'Не удалось выполнить поиск лидов');
     } finally {
       setIsSearching(false);
     }
@@ -86,28 +82,23 @@ export const useLeads = () => {
 
   const handleSaveSearch = async () => {
     if (!searchName.trim()) {
-      alert('Please enter a search name');
+      showToast('error', 'Введите название поиска');
       return;
     }
-
     setSavingSearch(true);
     try {
       await api.post('/api/leads/searches', {
         name: searchName,
         description: searchDescription,
-        profile_filter: {
-          ...profile,
-          page: 1,
-          page_size: 50,
-        },
+        profile_filter: { ...profile, page: 1, page_size: 50 },
       });
       setShowSaveDialog(false);
       setSearchName('');
       setSearchDescription('');
       mutateSavedSearches();
-    } catch (err) {
-      console.error('Save error:', err);
-      alert('Failed to save search');
+      showToast('success', 'Поиск сохранён');
+    } catch (err: any) {
+      showToast('error', err.response?.data?.detail || 'Не удалось сохранить поиск');
     } finally {
       setSavingSearch(false);
     }
@@ -118,23 +109,21 @@ export const useLeads = () => {
     try {
       const res = await api.post(`/api/leads/searches/${searchId}/run`);
       setSearchResults(res.data);
-    } catch (err) {
-      console.error('Run search error:', err);
-      alert('Failed to run search');
+    } catch (err: any) {
+      showToast('error', err.response?.data?.detail || 'Не удалось запустить поиск');
     } finally {
       setIsSearching(false);
     }
   };
 
   const handleDeleteSavedSearch = async (searchId: string) => {
-    if (window.confirm('Delete this saved search?')) {
-      try {
-        await api.delete(`/api/leads/searches/${searchId}`);
-        mutateSavedSearches();
-      } catch (err) {
-        console.error('Delete error:', err);
-        alert('Failed to delete search');
-      }
+    if (!await confirm('Удалить сохранённый поиск?', 'Удаление поиска')) return;
+    try {
+      await api.delete(`/api/leads/searches/${searchId}`);
+      mutateSavedSearches();
+      showToast('success', 'Поиск удалён');
+    } catch (err: any) {
+      showToast('error', err.response?.data?.detail || 'Не удалось удалить поиск');
     }
   };
 
@@ -144,18 +133,12 @@ export const useLeads = () => {
 
   const addTag = (field: 'keywords' | 'interests', value: string) => {
     if (value.trim()) {
-      setProfile(prev => ({
-        ...prev,
-        [field]: [...prev[field], value.trim()]
-      }));
+      setProfile(prev => ({ ...prev, [field]: [...prev[field], value.trim()] }));
     }
   };
 
   const removeTag = (field: 'keywords' | 'interests', index: number) => {
-    setProfile(prev => ({
-      ...prev,
-      [field]: prev[field].filter((_, i) => i !== index)
-    }));
+    setProfile(prev => ({ ...prev, [field]: prev[field].filter((_, i) => i !== index) }));
   };
 
   return {

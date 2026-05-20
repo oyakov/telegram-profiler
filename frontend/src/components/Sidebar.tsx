@@ -7,20 +7,21 @@ import {
   Settings,
   BrainCircuit,
   ClipboardList,
-  Send
+  Send,
+  BookUser,
 } from 'lucide-react';
 import './Sidebar.css';
 
 const Sidebar: React.FC = () => {
   const navItems = [
-    { name: 'Данные', path: '/monitoring', icon: <Activity size={20} /> },
-    { name: 'Аудит', path: '/audit', icon: <ClipboardList size={20} /> },
-    { name: 'Поиск и AI', path: '/search', icon: <Search size={20} /> },
-    { name: 'Лиды', path: '/leads', icon: <BrainCircuit size={20} /> },
-    { name: 'Рассылки', path: '/campaigns', icon: <Send size={20} /> },
-    { name: 'Контакты', path: '/contacts', icon: <Users size={20} /> },
-    { name: 'Личные Контакты', path: '/personal-contacts', icon: <Users size={20} /> },
-    { name: 'Настройки', path: '/settings', icon: <Settings size={20} /> },
+    { name: 'Данные',            path: '/monitoring',         icon: <Activity size={20} /> },
+    { name: 'Аудит',             path: '/audit',              icon: <ClipboardList size={20} /> },
+    { name: 'Поиск и AI',        path: '/search',             icon: <Search size={20} /> },
+    { name: 'Лиды',              path: '/leads',              icon: <BrainCircuit size={20} /> },
+    { name: 'Рассылки',          path: '/campaigns',          icon: <Send size={20} /> },
+    { name: 'Контакты',          path: '/contacts',           icon: <Users size={20} /> },
+    { name: 'Личные контакты',   path: '/personal-contacts',  icon: <BookUser size={20} /> },
+    { name: 'Настройки',         path: '/settings',           icon: <Settings size={20} /> },
   ];
 
   return (
@@ -29,12 +30,12 @@ const Sidebar: React.FC = () => {
         <Activity className="logo-icon" size={32} />
         <h2 className="text-gradient">Profiler</h2>
       </div>
-      
+
       <nav className="sidebar-nav">
-        {navItems.map((item) => (
-          <NavLink 
-            key={item.path} 
-            to={item.path} 
+        {navItems.map(item => (
+          <NavLink
+            key={item.path}
+            to={item.path}
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           >
             <span className="nav-icon">{item.icon}</span>
@@ -43,8 +44,7 @@ const Sidebar: React.FC = () => {
         ))}
       </nav>
 
-      <div className="sidebar-footer">
-      </div>
+      <div className="sidebar-footer" />
     </aside>
   );
 };
