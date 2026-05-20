@@ -13,6 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 import asyncpg
 
+# FastAPI is available in all containers (shared telegram-profiler-backend:latest image).
+# Import here so FastAPI's DI can resolve Request type annotations in get_db at startup.
+from fastapi import Request, HTTPException
+
 from src.core.config import get_settings
 
 logger = structlog.get_logger()
@@ -91,15 +95,13 @@ async def get_session(db_name: str | None = None, use_pooling: bool = False) -> 
         finally:
             await session.close()
 
-async def get_db(request: "Request") -> AsyncGenerator[AsyncSession, None]:
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an async DB session based on X-Database header.
 
-    Imports FastAPI lazily so this module can be imported by Celery workers
-    without requiring fastapi to be installed in their slim requirements.
     The X-Database value is validated against _DB_NAME_RE before use to prevent
-    connection-URL injection (issue #2 in code review).
+    connection-URL injection. All containers share telegram-profiler-backend:latest
+    (full requirements.txt), so fastapi is always available at import time.
     """
-    from fastapi import Request, HTTPException  # lazy — not needed by Celery workers
     db_name = request.headers.get("X-Database") or None  # treat empty string as None
     if db_name is not None and not _DB_NAME_RE.match(db_name):
         raise HTTPException(status_code=400, detail="Invalid X-Database header value")
