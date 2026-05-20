@@ -1,30 +1,33 @@
-# Ключевые концепции
+# Core Concepts / Ключевые концепции
 
-## 1. Отслеживание: Папки vs Каналы
+This document outlines the core architectural and business concepts powering the Networking Brain project.
 
-### Отслеживаемые папки (Folders)
+---
 
-**Папка** — логическая коллекция каналов или групп (e.g., "BG Intel", "Crypto"). В Telegram UI это соответствует chat folders (папкам чатов). В нашей системе они действуют как high-level классификация для организации данных.
+## 1. Tracking: Folders vs. Channels / Отслеживание: Папки vs Каналы
 
-**Характеристики**:
-- Пользователь может создать несколько папок
-- Папка связана с одной БД
-- Каждая папка содержит несколько отслеживаемых каналов
-- Папка определяет область поиска и фильтрации
+### Tracked Folders / Отслеживаемые папки
 
-### Отслеживаемые каналы (Tracked Channels)
+**Folder** — логическая коллекция каналов или групп (e.g., "BG Intel", "Crypto"). В Telegram UI это соответствует chat folders (папкам чатов). В нашей системе они действуют как high-level классификация для организации данных.
 
-**Отслеживаемый канал** — конкретный Telegram entity (канал или группа), которую система мониторит.
+*Characteristics / Характеристики:*
+- Пользователь может создать несколько папок.
+- Папка связана с одной БД.
+- Каждая папка содержит несколько отслеживаемых каналов.
+- Папка определяет область поиска и фильтрации.
 
-**Характеристики**:
-- Каждый канал привязан к определенной **Папке**
-- Система автоматически **мьютит** эти каналы в Telegram пользователя (предотвращение перегрузки уведомлениями)
-- `last_sync_at` отслеживает, когда система в последний раз загрузила сообщения из этого канала
-- Каждый канал имеет уникальный `channel_id` в Telegram
-- Опциональные параметры: `auto_join`, `mute`, `archive`
+### Tracked Channels / Отслеживаемые каналы
 
-### Связь между папками и каналами
+**Tracked Channel** — конкретный Telegram entity (канал или группа), которую система мониторит.
 
+*Characteristics / Характеристики:*
+- Каждый канал привязан к определенной **Папке**.
+- Система автоматически **мьютит** (mutes) эти каналы в Telegram пользователя (предотвращение перегрузки уведомлениями).
+- `last_sync_at` отслеживает, когда система в последний раз загрузила сообщения из этого канала.
+- Каждый канал имеет уникальный `channel_id` в Telegram.
+- Опциональные параметры: `auto_join`, `mute`, `archive`.
+
+### Relationship / Связь папок и каналов
 ```
 User (1) 
   └─ Database: crm (1)
@@ -37,51 +40,36 @@ User (1)
           └─ Channel: serbia_business
 ```
 
-## 2. Алгоритм Lead Scoring
+---
 
-Система выявляет "Leads" и присваивает им **quality score**. Оценка рассчитывается в `src/ai/scorers/` на основе:
+## 2. Lead Scoring Algorithm / Алгоритм Lead Scoring
+
+Система выявляет "Leads" и присваивает им **quality score**. Оценка рассчитывается в `src/ai/scorers/` на основе следующих факторов:
 
 ### Raw Score (Базовая оценка)
-
-- Каждое обнаружение контакта начинает с базовой оценки качества (1-10), предоставленной LLM
-- Оценка зависит от уверенности модели в том, что это действительно потенциальный lead
+- Каждое обнаружение контакта начинает с базовой оценки качества (1-10), предоставленной LLM.
+- Оценка зависит от уверенности модели в том, что это действительно потенциальный lead.
 
 ### Keyword Bonus (Бонус за ключевые слова)
-
-Сообщения, содержащие высокоценные ключевые слова, получают bonus:
-
-**Примеры high-value keywords**: "dev", "invest", "ai", "founder", "startup", "product", "blockchain", "crypto", "trading", "project"
-
-**Конфигурируется**: `scoring_weight_keyword_bonus` (default: 5.0)
-
-**Формула**: `base_score + (number_of_keywords * keyword_bonus)`
+Сообщения, содержащие высокоценные ключевые слова (e.g., `"dev"`, `"invest"`, `"ai"`, `"founder"`, `"startup"`), получают bonus.
+- **Конфигурируется**: `scoring_weight_keyword_bonus` (default: `5.0`).
+- **Формула**: `base_score + (number_of_keywords * keyword_bonus)`
 
 ### Recency Multipliers (Множители свежести)
-
 Свежесть контакта влияет на score:
-
-**Recent Week Multiplier**: 3.0x для сообщений из последних 7 дней
-- Активные люди в последнюю неделю более ценны
-- **Конфигурируется**: `scoring_multiplier_recent_week`
-
-**Recent Month Multiplier**: 2.0x для сообщений из последних 30 дней
-- Менее агрессивное усиление для месячного периода
-- **Конфигурируется**: `scoring_multiplier_recent_month`
+- **Recent Week Multiplier**: `3.0x` для сообщений из последних 7 дней. (Конфигурируется: `scoring_multiplier_recent_week`).
+- **Recent Month Multiplier**: `2.0x` для сообщений из последних 30 дней. (Конфигурируется: `scoring_multiplier_recent_month`).
 
 ### Context (Контекст)
+- **Channel Ratio**: Процент объявлений контакта, размещенные в "нашем" первичном отслеживаемом канале (Конфигурируется: `scoring_our_channel_id`).
+- **Формула**:
+  ```
+  channel_ratio = (ads_in_our_channel / total_ads) * 100
+  if channel_ratio > 50:
+      score *= 1.5  # Bonus если контакт активен в наших каналах
+  ```
 
-**Channel Ratio**: Процент объявлений контакта, размещенные в "нашем" первичном отслеживаемом канале
-
-**Формула**:
-```
-channel_ratio = (ads_in_our_channel / total_ads) * 100
-
-if channel_ratio > 50:
-    score *= 1.5  # Bonus если контакт активен в наших каналах
-```
-
-### Полная формула scoring
-
+### Full Scoring Formula / Полная формула scoring
 ```
 raw_score = LLM_confidence (1-10)
 
@@ -94,126 +82,44 @@ adjusted_score = raw_score
 final_score = min(100, max(1, adjusted_score))
 ```
 
-### Пример расчета
+### Lead Classifications
+- **90-100**: ⭐⭐⭐⭐⭐ Premium Lead (немедленное внимание)
+- **70-89**:  ⭐⭐⭐⭐  High Priority (действуйте сегодня)
+- **50-69**:  ⭐⭐⭐   Medium Priority (на неделю)
+- **30-49**:  ⭐⭐    Low Priority (в список)
+- **1-29**:   ⭐     Research (для будущего)
 
-```
-Message: "Hey, I'm a blockchain developer looking for AI projects"
+---
 
-1. LLM confidence: 7/10
-2. Keywords found: "developer" (5), "blockchain" (5), "ai" (5) = 15 points
-3. Posted 3 days ago: * 3.0 (recent_week)
-4. Posted in #crypto_dev channel: * 1.5 (our_channel)
-
-Score = 7 + 15 = 22
-Score = 22 * 3.0 (recent) = 66
-Score = 66 * 1.5 (channel) = 99 → Финальный score: 100 (max)
-```
-
-### Lead Classifications по score
-
-```
-90-100: ⭐⭐⭐⭐⭐ Premium Lead (немедленное внимание)
-70-89:  ⭐⭐⭐⭐  High Priority (действуйте сегодня)
-50-69:  ⭐⭐⭐   Medium Priority (на неделю)
-30-49:  ⭐⭐    Low Priority (в список)
-1-29:   ⭐     Research (для будущего)
-```
-
-## 3. Persistent Sessions
+## 3. Persistent Sessions / Постоянные Сессии
 
 Система использует **Telethon sessions** (сохраненные в `sessions/` директории). 
 
-### Зачем нужны сессии?
-
-- Сохранение состояния Telegram подключения
-- Избежание повторной авторизации
-- Возможность нескольких одновременных сессий
-- Переиспользование подключений
-
 ### Multi-DB Session Management
-
-Каждая база данных может иметь свой dedicated session файл:
-
+Каждая база данных имеет свой dedicated session файл:
 ```
 sessions/
 ├── crm.session                 # Main DB session
 ├── crm_research.session        # Research DB session
 ├── crm_personal.session        # Personal DB session
-└── crm_<folder_name>.session   # Per-folder sessions (опционально)
+└── crm_<folder_name>.session   # Per-folder sessions
 ```
 
-### Жизненный цикл сессии
+### Session Lifecycle / Жизненный цикл сессии
+1. **Пользователь авторизуется** $\to$ Отправляется OTP код на телефон $\to$ Сохраняется session файл.
+2. **Система использует session для** $\to$ Подключения к Telegram без повторной авторизации $\to$ Синхронизации сообщений $\to$ Мониторинга каналов.
+3. **При выходе** $\to$ Сессия остается для будущего использования (или удаляется при явном logout).
 
-```
-1. Пользователь авторизуется
-   → Отправляется OTP код на телефон
-   → Сохраняется session файл
+---
 
-2. Система использует session для:
-   → Подключение к Telegram без повторной авторизации
-   → Синхронизация сообщений
-   → Мониторинг каналов
+## 4. Extraction Pipeline / Конвейер извлечения
 
-3. При выходе:
-   → Сессия остается для будущего использования
-   → Может быть удалена при logout
-```
-
-### Управление сессиями в API
-
-```python
-# src/api/auth.py
-@router.post("/auth/login")
-async def login(phone: str, db_name: str = "crm"):
-    """
-    1. Проверка существует ли session
-    2. Если нет → запрос OTP
-    3. Сохранение session после подтверждения
-    """
-    session_file = f"sessions/{db_name}.session"
-    if not os.path.exists(session_file):
-        # Требуется OTP авторизация
-        ...
-    else:
-        # Использование существующей session
-        ...
-```
-
-## 4. Extraction Pipeline (Конвейер извлечения)
-
-### Шаги процесса
-
-**1. Ingestion (Приемка)**
-- Telegram сообщения загружаются через API Telethon
-- Сохраняются в таблице `messages`
-- Каждое сообщение получает `message_id`, `channel_id`, `timestamp`, `content`
-
-**2. Detection (Обнаружение)**
-- LLM анализирует контент сообщения
-- Выявляет: имена, email, номера телефонов, должности, компании
-- Создает JSON с извлеченной информацией
-- Присваивает confidence score (0-1)
-
-**3. Deduplication (Дедупликация)**
-- Система проверяет, существует ли уже контакт с:
-  - Тем же Telegram ID
-  - Тем же username
-  - Тем же email
-  - Похожим именем (fuzzy matching)
-- Если найден → обновить существующий контакт
-- Если нет → создать новый
-
-**4. Embedding (Векторизация)**
-- Сообщение преобразуется в embedding (vector)
-- Сохраняется в pgvector для семантического поиска
-- Позволяет find похожие сообщения по смыслу
-
-**5. Scoring (Ранжирование)**
-- Применяется Lead Scoring Algorithm
-- Контакт получает final score
-- Отмечается как "lead" если score > threshold (e.g., > 50)
-
-### Диаграмма потока
+### Pipeline Steps
+1. **Ingestion (Приемка)**: Telegram сообщения загружаются через API Telethon и сохраняются в таблице `messages`.
+2. **Detection (Обнаружение)**: LLM анализирует контент сообщения, извлекая контакты, лиды и метаданные с confidence score (0-1).
+3. **Deduplication (Дедупликация)**: Проверка существования контакта по Telegram ID, Username, Email или похожему имени (fuzzy matching). Если найден — обновляется, иначе создается новый.
+4. **Embedding (Векторизация)**: Генерация векторных представлений сообщений/контактов с сохранением в `pgvector` для семантического поиска.
+5. **Scoring (Ранжирование)**: Вычисление финального Lead Score.
 
 ```
 Telegram Messages
@@ -231,17 +137,15 @@ Telegram Messages
 [Scoring] → Lead Score
     ↓
 [Storage] → contacts + leads tables
-
-User can now:
-- Search semantically
-- View leads ranked by score
-- Take action (contact, notes, etc.)
 ```
 
-## 5. Semantic Search
+---
 
-### Как это работает
+## 5. Semantic Search / Семантический поиск
 
+Семантический поиск позволяет находить контакты по смыслу запроса, а не только по точному совпадению ключевых слов.
+
+*How It Works:*
 ```
 User Query: "blockchain developer looking for investment"
     ↓
@@ -249,46 +153,39 @@ User Query: "blockchain developer looking for investment"
     ↓
 [pgvector] → Similarity search (HNSW index)
     ↓
-[Ranking] → Sort by cosine similarity score
+[Ranking] → Sort by cosine similarity score (Threshold: 0.52 cosine distance)
     ↓
 Results: Top contacts matching the query
 ```
 
-### Примеры поиска
+---
 
-| Query | Результаты |
-|-------|-----------|
-| "AI expert" | Contacts со словами AI, ML, data science, neural |
-| "developer" | Contacts из #dev channels, со словами code, github, project |
-| "investor" | Contacts со словами fund, investment, capital, portfolio |
-| "стартап" | Contacts со словами startup, entrepreneurship, идея |
+## 6. Telegram Folder Import Feature / Импорт Папок Telegram
 
-### Точность поиска
+### What are Telegram Folders?
+Папки Telegram (внутреннее название: `dialog filters`) — созданные пользователем коллекции для организации чатов.
 
-- **Semantic similarity** — поиск по смыслу, не только по ключевым словам
-- **Multi-language support** — через мультиязычные embeddings
-- **Ranking** — лучшие результаты по relevance score
+### How Import Works
+1. **List Folders**: Вызов `list_telegram_folders()` для получения структуры папок и peer ID.
+2. **Import Channels**: При выборе папки запускается `import_folder_channels(peer_ids)`.
+3. **Resolve Entities**: Для каждого peer_id вызывается Telethon `get_entity()` для извлечения Channel/Chat.
+4. **Deduplicate**: Проверка существования отслеживаемого канала и обновление связей.
+5. **Save to Database**: Запись новых `TrackedChannel` связанных с выбранной папкой.
 
-## 6. Contact Graph
+### Retry Logic / Логика повторных попыток
+Процесс импорта использует **exponential backoff retry** (`0.5s` $\to$ `1s` $\to$ `2s`) для обхода ошибок блокировки базы `sqlite3.OperationalError: database is locked`, возникающих при одновременном обращении Celery-воркеров к файлу сессии Telethon.
 
-Система может строить граф связей между контактами:
-
+### UUID Type Safety
+API-эндпоинт принимает `folder_id` как строку UUID и конвертирует ее в Python-объект UUID перед выполнением SQL-запроса:
+```python
+from uuid import UUID
+if isinstance(folder_id, str):
+    folder_id = UUID(folder_id)
 ```
-Developer (John)
-  ├─ Posted in: #crypto_dev
-  ├─ Also active in: #ai_projects
-  ├─ Mentioned by: @maria_advisor
-  ├─ Interested in: Blockchain, AI
-  └─ Network score: 85/100
-```
+Это предотвращает ошибки `sqlalchemy.exc.ProgrammingError: operator does not exist: uuid = integer`.
 
-### Использование
-- Найти "influencers" в сообществе
-- Рекомендовать контакты на основе связей
-- Анализировать тренды в сообществе
+For detailed implementation, see the [Telegram Folder Import Feature](../05-features/telegram-folder-import.md) guide.
 
 ---
 
-**Все эти концепции работают вместе** для создания мощной системы идентификации и ранжирования leads.
-
-**Последнее обновление**: 2026-05-08
+**Last Updated / Последнее обновление**: 2026-05-20  
