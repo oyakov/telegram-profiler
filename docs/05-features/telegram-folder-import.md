@@ -104,66 +104,50 @@ Content-Type: application/json
 - `created_at` (Timestamp)
 - `last_sync` (Timestamp)
 
-### Error Handling & Retry Logic
+### Error Handling & PostgreSQL Sessions
 
-The import feature implements robust error handling with exponential backoff retry logic to handle concurrent access to the Telegram session database.
+Previously, when multiple celery workers accessed Telethon's SQLite session files simultaneously, they would encounter `sqlite3.OperationalError: database is locked` errors.
 
-#### Retry Strategy
-- **Max Attempts**: 3 retries
-- **Backoff Pattern**: 0.5s → 1s → 2s
-- **Trigger**: `sqlite3.OperationalError: database is locked`
-- **Root Cause**: Multiple processes accessing Telethon's SQLite session database simultaneously
+To address this, the system was refactored to use **PostgreSQL-backed sessions** (`PostgresTelegramSession`). StringSession data is loaded directly from each workspace's database and cached in-memory with asyncio locks. 
+
+#### Modern Architecture Highlights
+- **No SQLite Files**: No lock-contention issues on the filesystem.
+- **Asyncio Locks**: In-process operations are coordinated via `asyncio.Lock()` to avoid race conditions.
+- **Robust Client Factory**: The `TelegramClientFactory` handles client creation dynamically per database workspace.
 
 #### Code Location
-File: `src/connectors/telegram_connector.py`
+File: `src/services/telegram/management_service.py`
 
 ```python
-async def import_folder_channels(self, peer_ids: list) -> list:
-    """
-    Import channels from Telegram folder with retry logic.
-    
-    Implements exponential backoff to handle database locking
-    when multiple workers access the Telethon session database.
-    """
-    for attempt in range(3):
-        try:
-            # Attempt to retrieve channel information
+async def import_folder_channels(self, peer_ids: List[str]) -> List[dict]:
+    """Resolve a list of peer IDs to channel/group info."""
+    client = await self.factory.get_client()
+    try:
+        async with client:
             channels = []
-            for peer_id in peer_ids:
-                try:
-                    entity = await self.client.get_entity(peer_id)
-                    if entity is None:
-                        logger.warning(...)
+            for pid in peer_ids:
+                try: 
+                    entity = await client.get_entity(-int(pid))
+                except Exception:
+                    try: 
+                        entity = await client.get_entity(int(pid))
+                    except Exception: 
                         continue
-                    
-                    # Validate entity type
-                    if not isinstance(entity, (Channel, Chat)):
-                        logger.warning(...)
-                        continue
-                    
-                    # Extract channel info
-                    channels.append({
-                        "telegram_id": str(entity.id),
-                        "title": getattr(entity, 'title', 'Unknown'),
-                        "username": getattr(entity, 'username', None),
-                        "entity_type": "channel" if isinstance(entity, Channel) else "group"
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to get entity for {peer_id}: {e}")
+                
+                if not isinstance(entity, (Channel, Chat)): 
                     continue
-            
+                    
+                is_channel = isinstance(entity, Channel) and entity.broadcast
+                channels.append({
+                    "telegram_id": str(entity.id), 
+                    "title": getattr(entity, "title", "Unknown"),
+                    "username": getattr(entity, "username", None), 
+                    "entity_type": "channel" if is_channel else "group"
+                })
             return channels
-        
-        except sqlite3.OperationalError as e:
-            if "database is locked" not in str(e):
-                raise
-            
-            if attempt < 2:
-                wait_time = [0.5, 1.0, 2.0][attempt]
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                raise
+    except Exception as e:
+        logger.error("import_folder_channels_error", error=str(e))
+        return []
 ```
 
 ## Known Limitations & Edge Cases
@@ -178,9 +162,7 @@ Some peer_ids may fail to import due to:
 **Mitigation**: The system logs which peer_ids fail and why, allowing users to retry or manually add channels.
 
 ### 2. Database Locking
-When multiple workers access the Telethon session simultaneously, SQLite throws "database is locked" errors.
-
-**Solution**: Exponential backoff retry logic waits 0.5s, 1s, then 2s before giving up.
+With the deprecated SQLite session system, multiple workers accessing the session file simultaneously would cause database locks. This has been fully resolved by adopting `PostgresTelegramSession`, which manages sessions inside PostgreSQL with in-memory asyncio locks.
 
 ### 3. UUID Type Handling
 The `folder_id` is sent from frontend as a string UUID but must be converted to Python UUID object for database queries.
@@ -214,10 +196,9 @@ docker logs crm-app | grep "telegram_auto_tracked"
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| "database is locked" | Multiple workers accessing session | Retry automatically; wait 2s |
+| "User profile not found" | Not authenticated to Telegram | Complete Telegram OAuth flow first |
 | "operator does not exist: uuid = integer" | Type mismatch on folder_id | Convert folder_id to UUID |
 | Only 2 of 4 channels imported | Some peers failed silently | Check logs for peer_id failures |
-| "User profile not found" | Not authenticated to Telegram | Complete Telegram OAuth flow first |
 
 ## Future Improvements
 

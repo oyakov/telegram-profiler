@@ -62,9 +62,9 @@ def get_engine(db_name: str | None = None, use_pooling: bool = True) -> sa.ext.a
         if not use_pooling:
             engine_kwargs["poolclass"] = NullPool
         else:
-            # Conservative pool per tenant: 50 tenants × 8 conn = 400 max vs PG default 100
-            engine_kwargs["pool_size"] = 5
-            engine_kwargs["max_overflow"] = 3
+            # Constrained pool per tenant to stay within PostgreSQL max_connections=25 limit
+            engine_kwargs["pool_size"] = 2
+            engine_kwargs["max_overflow"] = 0
             # Detect stale connections after Docker/network restarts
             engine_kwargs["pool_pre_ping"] = True
             # Recycle connections every 30 min to prevent idle-timeout drops

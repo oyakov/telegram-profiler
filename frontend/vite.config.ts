@@ -15,4 +15,31 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('recharts')) {
+              return 'vendor-recharts';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (
+              id.includes('react') ||
+              id.includes('react-dom') ||
+              id.includes('react-router-dom') ||
+              id.includes('swr') ||
+              id.includes('axios')
+            ) {
+              return 'vendor-core';
+            }
+            return 'vendor-misc';
+          }
+        },
+      },
+    },
+  },
 })
+

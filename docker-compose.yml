@@ -65,6 +65,7 @@ services:
       context: .
       args:
         REQUIREMENTS_FILE: requirements.txt
+    image: telegram-profiler-backend:latest
     container_name: crm-app
     env_file: .env
     volumes:
@@ -90,10 +91,7 @@ services:
     restart: unless-stopped
 
   worker-processing:
-    build:
-      context: .
-      args:
-        REQUIREMENTS_FILE: requirements-processing.txt
+    image: telegram-profiler-backend:latest
     container_name: crm-worker-processing
     # -c 1: single process; --pool=solo avoids fork overhead on a 2 GB VPS
     command: celery -A src.pipeline.celery_app worker --loglevel=warning -Q processing -c 1 --pool=solo
@@ -117,10 +115,7 @@ services:
     restart: unless-stopped
 
   worker-connectors:
-    build:
-      context: .
-      args:
-        REQUIREMENTS_FILE: requirements-connectors.txt
+    image: telegram-profiler-backend:latest
     container_name: crm-worker-connectors
     # --pool=solo: no subprocess forking, lower memory on a small VPS
     command: celery -A src.pipeline.celery_app worker --loglevel=warning -Q connectors -c 1 --pool=solo
@@ -144,10 +139,7 @@ services:
     restart: unless-stopped
 
   beat:
-    build:
-      context: .
-      args:
-        REQUIREMENTS_FILE: requirements-beat.txt
+    image: telegram-profiler-backend:latest
     container_name: crm-beat
     command: celery -A src.pipeline.celery_app beat --loglevel=warning --schedule=/app/sessions/celerybeat-schedule
     env_file: .env

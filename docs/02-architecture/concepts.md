@@ -93,22 +93,21 @@ final_score = min(100, max(1, adjusted_score))
 
 ## 3. Persistent Sessions / Постоянные Сессии
 
-Система использует **Telethon sessions** (сохраненные в `sessions/` директории). 
+Система использует **PostgreSQL-backed Telethon sessions** (класс `PostgresTelegramSession`), исключая использование классических SQLite `.session` файлов. Сессия сохраняется в виде сериализованной и опционально зашифрованной (через Fernet) строки `StringSession` в таблице `telegram_sessions` соответствующей базы данных.
 
 ### Multi-DB Session Management
-Каждая база данных имеет свой dedicated session файл:
+Каждая папка/база данных хранит свои данные сессии изолированно внутри своей схемы в PostgreSQL:
 ```
-sessions/
-├── crm.session                 # Main DB session
-├── crm_research.session        # Research DB session
-├── crm_personal.session        # Personal DB session
-└── crm_<folder_name>.session   # Per-folder sessions
+PostgreSQL Database: <db_name>
+└── Table: telegram_sessions
+    └── Row: session_name ("telethon_session"), session_data (encrypted or plaintext StringSession), user_id, is_active
 ```
+Это полностью устраняет проблемы с конкурентным доступом к файловой системе и блокировками файлов, обеспечивая горизонтальное масштабирование Celery-воркеров.
 
 ### Session Lifecycle / Жизненный цикл сессии
-1. **Пользователь авторизуется** $\to$ Отправляется OTP код на телефон $\to$ Сохраняется session файл.
-2. **Система использует session для** $\to$ Подключения к Telegram без повторной авторизации $\to$ Синхронизации сообщений $\to$ Мониторинга каналов.
-3. **При выходе** $\to$ Сессия остается для будущего использования (или удаляется при явном logout).
+1. **Пользователь авторизуется** $\to$ Отправляется OTP код на телефон $\to$ Генерируется StringSession и сохраняется в таблицу `telegram_sessions`.
+2. **Система использует session для** $\to$ Загрузки StringSession из БД $\to$ Подключения к Telegram без повторной авторизации $\to$ Синхронизации сообщений $\to$ Мониторинга каналов.
+3. **При выходе** $\to$ Сессия удаляется из PostgreSQL (или деактивируется при явном logout).
 
 ---
 
@@ -173,7 +172,7 @@ Results: Top contacts matching the query
 5. **Save to Database**: Запись новых `TrackedChannel` связанных с выбранной папкой.
 
 ### Retry Logic / Логика повторных попыток
-Процесс импорта использует **exponential backoff retry** (`0.5s` $\to$ `1s` $\to$ `2s`) для обхода ошибок блокировки базы `sqlite3.OperationalError: database is locked`, возникающих при одновременном обращении Celery-воркеров к файлу сессии Telethon.
+В старых версиях импорта использовался **exponential backoff retry** для обхода блокировок файлов SQLite (`sqlite3.OperationalError: database is locked`). В текущей архитектуре эта проблема полностью решена благодаря переходу на PostgreSQL-backed сессии (`PostgresTelegramSession`). Система работает конкурентно и надежно без ошибок взаимной блокировки файлов.
 
 ### UUID Type Safety
 API-эндпоинт принимает `folder_id` как строку UUID и конвертирует ее в Python-объект UUID перед выполнением SQL-запроса:
