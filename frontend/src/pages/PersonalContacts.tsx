@@ -1,8 +1,25 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import api from '../services/api';
-import { ExternalLink, ChevronDown, ChevronUp, Download, Loader } from 'lucide-react';
+import { ExternalLink, ChevronDown, ChevronUp, Download, Loader, Phone } from 'lucide-react';
 import './PersonalContacts.css';
+
+const AVATAR_COLORS = [
+  'linear-gradient(135deg, #10b981, #059669)',
+  'linear-gradient(135deg, #3b82f6, #2563eb)',
+  'linear-gradient(135deg, #a855f7, #7c3aed)',
+  'linear-gradient(135deg, #f59e0b, #d97706)',
+  'linear-gradient(135deg, #ef4444, #dc2626)',
+  'linear-gradient(135deg, #06b6d4, #0891b2)',
+  'linear-gradient(135deg, #f97316, #ea580c)',
+  'linear-gradient(135deg, #ec4899, #db2777)',
+];
+
+const getAvatarColor = (name: string): string => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+};
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
@@ -259,31 +276,50 @@ const PersonalContacts: React.FC = () => {
                   onClick={() => toggleExpand(contact.id)}
                   style={{ flex: 1, cursor: 'pointer' }}
                 >
-                  <div className="mini-avatar">
-                    {contact.first_name?.[0] || 'U'}
+                  <div
+                    className="mini-avatar"
+                    style={{ background: getAvatarColor(`${contact.first_name || ''}${contact.last_name || ''}${contact.id}`) }}
+                  >
+                    {contact.first_name?.[0]?.toUpperCase() || 'U'}
                   </div>
                   <div className="contact-summary">
-                    <span className="contact-name">
+                    <span
+                      className="contact-name"
+                      title={`${contact.first_name || ''} ${contact.last_name || ''}`.trim()}
+                    >
                       {contact.first_name} {contact.last_name || ''}
                     </span>
-                    {contact.company && (
+                    {contact.company ? (
                       <span className="contact-company">{contact.company}</span>
-                    )}
+                    ) : contact.phone ? (
+                      <span className="contact-phone-inline">
+                        <Phone size={11} />
+                        {contact.phone}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
                 <div className="contact-badges">
                   {contact.telegram_username && (
-                    <span className="badge">@{contact.telegram_username}</span>
+                    <span className="badge badge-tg" title={`@${contact.telegram_username}`}>
+                      @{contact.telegram_username}
+                    </span>
                   )}
                   {contact.email && (
-                    <span className="badge">{contact.email}</span>
+                    <span className="badge badge-email" title={contact.email}>{contact.email}</span>
+                  )}
+                  {contact.phone && contact.company && (
+                    <span className="badge badge-phone">
+                      <Phone size={11} />
+                      {contact.phone}
+                    </span>
                   )}
                   {contact.lead_score > 0 && (
                     <div
                       className="score-badge"
                       style={{
-                        backgroundColor: `rgba(16, 185, 129, ${contact.lead_score / 100})`,
+                        backgroundColor: `rgba(16, 185, 129, ${Math.max(0.25, contact.lead_score / 100)})`,
                       }}
                     >
                       {Math.round(contact.lead_score)}
