@@ -51,7 +51,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Prometheus (internal only — nginx blocks /metrics from outside) ---
-Instrumentator().instrument(app).expose(app, include_in_schema=False, endpoint="/metrics")
+if app_settings.enable_metrics:
+    Instrumentator().instrument(app).expose(app, include_in_schema=False, endpoint="/metrics")
 
 # --- Exception handlers ---
 

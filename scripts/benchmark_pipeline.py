@@ -34,7 +34,7 @@ async def benchmark_pipeline():
     
     with patch("src.ai.services.ExtractionService.extract", side_effect=mock_extract):
         start_time = time.perf_counter()
-        stats = await processor.process_batch([msg], force_ad_detection=True)
+        stats = await processor.process_batch([msg], force_lead_detection=True)
         end_time = time.perf_counter()
         
         total_duration = end_time - start_time
