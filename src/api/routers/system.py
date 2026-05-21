@@ -255,69 +255,165 @@ async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get
         logger.error("tree_load_failed", error=str(e))
         return {"tree": [], "error": "Failed to load tree"}
 
+# ── Docker stats via Unix socket (httpx, no extra deps) ──────────────────────
+_DOCKER_STATS_CACHE: dict = {"data": {}, "ts": 0.0}
+_DOCKER_STATS_TTL = 8.0  # seconds
+_DOCKER_CONTAINERS = [
+    "crm-app", "crm-worker-processing", "crm-worker-connectors",
+    "crm-beat", "crm-postgres", "crm-redis",
+]
+
+def _parse_docker_stats(s: dict) -> dict:
+    """Extract CPU%, memory MB/%, net I/O MB, block I/O MB from a Docker stats snapshot."""
+    # CPU %
+    cpu_pct = 0.0
+    try:
+        c, p = s["cpu_stats"], s["precpu_stats"]
+        cpu_delta = c["cpu_usage"]["total_usage"] - p["cpu_usage"]["total_usage"]
+        sys_delta  = c.get("system_cpu_usage", 0) - p.get("system_cpu_usage", 0)
+        ncpu = c.get("online_cpus") or len(c["cpu_usage"].get("percpu_usage", [1]))
+        if sys_delta > 0:
+            cpu_pct = round(cpu_delta / sys_delta * ncpu * 100, 1)
+    except Exception:
+        pass
+
+    # Memory
+    mem_mb, mem_pct = 0.0, 0.0
+    try:
+        ms = s["memory_stats"]
+        cache = ms.get("stats", {}).get("cache", 0) or ms.get("stats", {}).get("inactive_file", 0)
+        used  = ms["usage"] - cache
+        mem_mb  = round(used / 1024 / 1024, 1)
+        mem_pct = round(used / ms["limit"] * 100, 1) if ms.get("limit") else 0.0
+    except Exception:
+        pass
+
+    # Net I/O (cumulative bytes since container start)
+    net_rx_mb = net_tx_mb = 0.0
+    try:
+        for iface in s.get("networks", {}).values():
+            net_rx_mb += iface.get("rx_bytes", 0)
+            net_tx_mb += iface.get("tx_bytes", 0)
+        net_rx_mb = round(net_rx_mb / 1024 / 1024, 1)
+        net_tx_mb = round(net_tx_mb / 1024 / 1024, 1)
+    except Exception:
+        pass
+
+    # Block I/O (cumulative bytes since container start)
+    blk_r_mb = blk_w_mb = 0.0
+    try:
+        for entry in s.get("blkio_stats", {}).get("io_service_bytes_recursive", []) or []:
+            op = (entry.get("op") or "").lower()
+            if op == "read":   blk_r_mb += entry.get("value", 0)
+            elif op == "write": blk_w_mb += entry.get("value", 0)
+        blk_r_mb = round(blk_r_mb / 1024 / 1024, 1)
+        blk_w_mb = round(blk_w_mb / 1024 / 1024, 1)
+    except Exception:
+        pass
+
+    return dict(cpu_pct=cpu_pct, mem_mb=mem_mb, mem_pct=mem_pct,
+                net_rx_mb=net_rx_mb, net_tx_mb=net_tx_mb,
+                blk_r_mb=blk_r_mb, blk_w_mb=blk_w_mb)
+
+
+async def _fetch_docker_stats() -> dict[str, dict]:
+    """Query Docker daemon stats for all CRM containers in parallel (cached 8 s)."""
+    import time as _t
+    import asyncio
+    global _DOCKER_STATS_CACHE
+
+    now = _t.monotonic()
+    if _DOCKER_STATS_CACHE["data"] and (now - _DOCKER_STATS_CACHE["ts"]) < _DOCKER_STATS_TTL:
+        return _DOCKER_STATS_CACHE["data"]
+
+    result: dict[str, dict] = {}
+    try:
+        import httpx
+        transport = httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")
+        async with httpx.AsyncClient(transport=transport,
+                                     base_url="http://docker",
+                                     timeout=5.0) as client:
+            async def _one(name: str):
+                try:
+                    r = await client.get(f"/containers/{name}/stats",
+                                         params={"stream": "false"})
+                    if r.status_code == 200:
+                        return name, _parse_docker_stats(r.json())
+                except Exception:
+                    pass
+                return name, None
+
+            for name, data in await asyncio.gather(*[_one(n) for n in _DOCKER_CONTAINERS]):
+                if data:
+                    result[name] = data
+    except Exception:
+        pass
+
+    _DOCKER_STATS_CACHE["data"] = result
+    _DOCKER_STATS_CACHE["ts"] = now
+    return result
+
+
 @router.get("/prometheus")
 async def get_prometheus_metrics(db: AsyncSession = Depends(get_db)):
-    """Live pipeline metrics: ingestion rate, extraction rate, queue depths, embeddings/min."""
+    """Live pipeline metrics: ingestion, extraction, queue depths, Docker stats."""
+    import asyncio as _aio
     settings = get_settings()
     now = datetime.now(timezone.utc)
     five_min = now - timedelta(minutes=5)
 
-    # ── Message ingestion rate (real DB) ────────────────────────────────────
-    ingest_raw = (await db.execute(
-        select(func.count(Message.id)).where(Message.created_at >= five_min)
-    )).scalar() or 0
-    ingest = round(ingest_raw / 5, 1)
-
-    # ── AI extraction rate (ExtractionLog entries in last 5 min) ────────────
-    extraction = 0.0
-    try:
-        extraction_raw = (await db.execute(
-            select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= five_min)
+    # ── Run DB query + Docker stats + Redis in parallel ──────────────────────
+    async def _ingest():
+        raw = (await db.execute(
+            select(func.count(Message.id)).where(Message.created_at >= five_min)
         )).scalar() or 0
-        extraction = round(extraction_raw / 5, 1)
-    except Exception:
-        pass
+        return round(raw / 5, 1)
 
-    # ── Redis: embedding rate + queue depths ─────────────────────────────────
-    embeddings_per_min = 0
-    queue_connectors = 0
-    queue_processing = 0
-    try:
-        r = aioredis.from_url(settings.redis_url, socket_timeout=2)
+    async def _extraction():
+        try:
+            raw = (await db.execute(
+                select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= five_min)
+            )).scalar() or 0
+            return round(raw / 5, 1)
+        except Exception:
+            return 0.0
 
-        # Embedding rate: try current minute, fallback to previous
-        mk = now.strftime("%Y-%m-%d %H:%M")
-        v = await r.get(f"embeddings:requests:{mk}")
-        if not v:
-            mk = (now - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
+    async def _redis_metrics():
+        emb, qconn, qproc = 0, 0, 0
+        try:
+            r = aioredis.from_url(settings.redis_url, socket_timeout=2)
+            mk = now.strftime("%Y-%m-%d %H:%M")
             v = await r.get(f"embeddings:requests:{mk}")
-        if v:
-            embeddings_per_min = int(v)
+            if not v:
+                mk = (now - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
+                v = await r.get(f"embeddings:requests:{mk}")
+            if v:
+                emb = int(v)
+            qconn = int(await r.llen("celery/queue/connectors") or 0)
+            qproc = int(await r.llen("celery/queue/processing") or 0)
+            await r.aclose()
+        except Exception:
+            pass
+        return emb, qconn, qproc
 
-        # Celery queue depths
-        queue_connectors = int(await r.llen("celery/queue/connectors") or 0)
-        queue_processing = int(await r.llen("celery/queue/processing") or 0)
+    (ingest, extraction, (embeddings_per_min, queue_connectors, queue_processing), docker_stats) = \
+        await _aio.gather(_ingest(), _extraction(), _redis_metrics(), _fetch_docker_stats())
 
-        await r.aclose()
-    except Exception:
-        pass
+    # ── Build per-container metrics dict ────────────────────────────────────
+    metrics: dict = {}
+    for cname in _DOCKER_CONTAINERS:
+        ds = docker_stats.get(cname, {})
+        metrics[cname] = {
+            "cpu":        [{"value": ds.get("cpu_pct", 0.0)}],
+            "memory":     [{"value": ds.get("mem_mb",  0.0)}],
+            "mem_pct":    ds.get("mem_pct",    0.0),
+            "net_rx_mb":  ds.get("net_rx_mb",  0.0),
+            "net_tx_mb":  ds.get("net_tx_mb",  0.0),
+            "blk_r_mb":   ds.get("blk_r_mb",   0.0),
+            "blk_w_mb":   ds.get("blk_w_mb",   0.0),
+            "status":     "online",
+        }
 
-    # ── psutil: real CPU + memory for this (app) process ────────────────────
-    app_cpu, app_mem = 1.0, 128.0
-    try:
-        import os
-        proc = psutil.Process(os.getpid())
-        app_cpu = round(proc.cpu_percent(interval=0.05), 1)
-        app_mem = round(proc.memory_info().rss / 1024 / 1024, 1)
-    except Exception:
-        pass
-
-    containers = ["crm-app", "crm-worker-processing", "crm-worker-connectors",
-                  "crm-beat", "crm-postgres", "crm-redis"]
-    metrics = {c: {"cpu": [{"value": 1.0}], "memory": [{"value": 120.0}], "status": "online"}
-               for c in containers}
-    metrics["crm-app"]["cpu"]    = [{"value": app_cpu}]
-    metrics["crm-app"]["memory"] = [{"value": app_mem}]
     metrics["throughput"] = {
         "ingestion":        ingest,
         "extraction":       extraction,

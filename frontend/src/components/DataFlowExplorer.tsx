@@ -183,19 +183,21 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: stri
 interface EmbedProvider { provider: string; available: boolean; model: string; dimensions: number; speed_vec_per_min: number; }
 
 // ── Canvas & node layout ────────────────────────────────────────────────────
-const CW = 860, CH = 480;
+// Nodes are taller (h=96 internal, h=76 external) to fit Docker stats
+const CW = 900, CH = 530;
 
 interface NodeDef { x:number; y:number; w:number; h:number; color:string; name:string; sub:string; ext?:boolean; }
 
 const NODES: Record<string, NodeDef> = {
-  telegram:   { x:118,  y:82,  w:132, h:60, color:'#3b82f6', name:'Telegram',          sub:'External API',    ext:true },
-  lmstudio:   { x:742,  y:82,  w:144, h:60, color:'#a855f7', name:'LMStudio',           sub:'Embedding model', ext:true },
-  app:        { x:215,  y:238, w:138, h:60, color:'#7c3aed', name:'crm-app',            sub:'FastAPI · uvicorn' },
-  beat:       { x:430,  y:385, w:130, h:60, color:'#7c3aed', name:'crm-beat',           sub:'Celery Beat' },
-  processor:  { x:645,  y:238, w:154, h:60, color:'#f59e0b', name:'crm-worker',         sub:'processing' },
-  connectors: { x:215,  y:385, w:154, h:60, color:'#f59e0b', name:'crm-worker',         sub:'connectors' },
-  redis:      { x:430,  y:238, w:130, h:60, color:'#10b981', name:'crm-redis',          sub:'Broker · Cache' },
-  postgres:   { x:645,  y:385, w:142, h:60, color:'#10b981', name:'crm-postgres',       sub:'PostgreSQL · pgvector' },
+  //                   cx    cy    w     h
+  telegram:   { x:120,  y:90,  w:148, h:76,  color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
+  lmstudio:   { x:778,  y:90,  w:158, h:76,  color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
+  app:        { x:222,  y:268, w:158, h:96,  color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
+  beat:       { x:450,  y:428, w:148, h:96,  color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
+  processor:  { x:672,  y:268, w:162, h:96,  color:'#f59e0b', name:'crm-worker',   sub:'processing' },
+  connectors: { x:222,  y:428, w:162, h:96,  color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
+  redis:      { x:450,  y:268, w:148, h:96,  color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
+  postgres:   { x:672,  y:428, w:158, h:96,  color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
 };
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
@@ -261,73 +263,125 @@ const GraphEdge: React.FC<{ spec: EdgeSpec }> = ({ spec }) => {
   );
 };
 
+// ── Node-id → Docker container name mapping ──────────────────────────────────
+const METRIC_KEY: Record<string, string> = {
+  app:        'crm-app',
+  beat:       'crm-beat',
+  processor:  'crm-worker-processing',
+  connectors: 'crm-worker-connectors',
+  redis:      'crm-redis',
+  postgres:   'crm-postgres',
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+/** Format megabytes compactly: 0.3M → "0M", 512M → "512M", 2048M → "2.0G" */
+function fmb(mb: number): string {
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)}G`;
+  if (mb >= 1)    return `${Math.round(mb)}M`;
+  return '0M';
+}
+
 // ── Node card (foreignObject) ────────────────────────────────────────────────
 const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any; tp?: any }> = ({ id, ep, metrics, tp }) => {
   const n = NODES[id];
   if (!n) return null;
 
-  const getM = (type: 'cpu'|'memory') => {
-    const d = metrics?.[id]?.[type];
-    if (!d?.length) return null;
-    const v = d[d.length-1].value;
-    return type === 'cpu' ? `${v}%` : `${Math.round(v)}M`;
-  };
+  const ds = metrics?.[METRIC_KEY[id] ?? id] ?? {};
+
+  // Docker stats from backend
+  const cpuPct  = ds.cpu?.[0]?.value   ?? 0;
+  const memMb   = ds.memory?.[0]?.value ?? 0;
+  const memPct  = ds.mem_pct   ?? 0;
+  const netRx   = ds.net_rx_mb ?? 0;
+  const netTx   = ds.net_tx_mb ?? 0;
+  const blkR    = ds.blk_r_mb  ?? 0;
+  const blkW    = ds.blk_w_mb  ?? 0;
+  const hasStats = !n.ext && cpuPct + memMb + netRx + netTx + blkR + blkW > 0;
 
   const isLM    = id === 'lmstudio';
   const isRedis = id === 'redis';
   const isApp   = id === 'app';
   const dotColor = isLM ? (ep?.available ? '#10b981' : '#ef4444') : '#10b981';
 
-  // Dynamic subtitle for special nodes
+  // Dynamic subtitle
   let sub = n.sub;
   if (isLM && ep) {
     const spd = ep.available === false ? 0 : ep.speed_vec_per_min;
     sub = `${ep.dimensions}-dim · ${spd > 0 ? spd + ' v/m' : 'idle'}`;
   } else if (isRedis && tp) {
-    const total = (tp.queue_connectors ?? 0) + (tp.queue_processing ?? 0);
-    sub = total > 0 ? `${total} tasks queued` : 'Broker · Cache';
+    const q = (tp.queue_connectors ?? 0) + (tp.queue_processing ?? 0);
+    sub = q > 0 ? `${q} tasks queued` : 'Broker · Cache';
   } else if (isApp && tp) {
-    const ingest = tp.ingestion ?? 0;
-    sub = ingest > 0 ? `${Math.round(ingest)} msg/min` : 'FastAPI · uvicorn';
+    const ing = tp.ingestion ?? 0;
+    sub = ing > 0 ? `${Math.round(ing)} msg/min` : 'FastAPI · uvicorn';
   }
 
-  const providerName = isLM && ep
+  const label = isLM && ep
     ? (ep.provider === 'lmstudio' ? 'LMStudio' : 'Gemini')
     : n.name;
 
+  // CPU colour: green → amber → red
+  const cpuColor = cpuPct > 75 ? '#ef4444' : cpuPct > 40 ? '#f59e0b' : `${n.color}cc`;
+
   return (
-    <foreignObject x={n.x - n.w/2} y={n.y - n.h/2} width={n.w} height={n.h} style={{ overflow: 'visible' }}>
+    <foreignObject x={n.x - n.w / 2} y={n.y - n.h / 2} width={n.w} height={n.h}
+      style={{ overflow: 'visible' }}>
       <div style={{
         width: '100%', height: '100%', boxSizing: 'border-box',
-        background: n.ext ? `${n.color}15` : `${n.color}0e`,
-        border: `1px solid ${n.color}${n.ext ? '65' : '48'}`,
-        borderRadius: 11,
-        boxShadow: `0 0 ${n.ext ? 22 : 16}px ${n.color}${n.ext ? '28' : '1a'}`,
+        background: n.ext ? `${n.color}16` : `${n.color}0d`,
+        border: `1px solid ${n.color}${n.ext ? '68' : '4a'}`,
+        borderRadius: 12,
+        boxShadow: `0 0 ${n.ext ? 24 : 18}px ${n.color}${n.ext ? '2a' : '1c'}`,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        padding: '5px 8px', gap: 3, position: 'relative',
+        padding: '6px 9px', gap: 2, position: 'relative',
         fontFamily: 'system-ui, sans-serif',
       }}>
-        {/* status dot */}
+        {/* Status dot */}
         <div style={{
-          position: 'absolute', top: 6, right: 7,
-          width: 6, height: 6, borderRadius: '50%',
-          background: dotColor, boxShadow: `0 0 7px ${dotColor}`,
+          position: 'absolute', top: 7, right: 8,
+          width: 7, height: 7, borderRadius: '50%',
+          background: dotColor, boxShadow: `0 0 8px ${dotColor}`,
         }} />
-        {/* cpu/mem */}
-        {!n.ext && (getM('cpu') || getM('memory')) && (
-          <div style={{ position: 'absolute', top: 4, left: 6, fontSize: 7,
-            fontFamily: 'monospace', color: 'rgba(148,163,184,0.5)', lineHeight: 1.4 }}>
-            {getM('cpu') && <div>CPU {getM('cpu')}</div>}
-            {getM('memory') && <div>MEM {getM('memory')}</div>}
-          </div>
-        )}
-        <div style={{ fontSize: 12, fontWeight: 700, color: n.color, whiteSpace: 'nowrap' }}>
-          {providerName}
+
+        {/* Name */}
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: n.color, whiteSpace: 'nowrap' }}>
+          {label}
         </div>
+
+        {/* Sub */}
         <div style={{ fontSize: 9, color: 'rgba(148,163,184,0.5)', whiteSpace: 'nowrap' }}>
           {sub}
         </div>
+
+        {/* Docker stats grid — only for internal nodes with real data */}
+        {hasStats && (
+          <>
+            <div style={{
+              width: '100%', height: 1,
+              background: `${n.color}22`,
+              margin: '3px 0 2px',
+            }} />
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr',
+              columnGap: 8, rowGap: 1,
+              width: '100%', fontSize: 7.5,
+              fontFamily: 'ui-monospace, monospace',
+              color: 'rgba(148,163,184,0.5)',
+            }}>
+              <span>CPU <span style={{ color: cpuColor }}>{cpuPct.toFixed(1)}%</span></span>
+              <span>MEM <span style={{ color: `${n.color}bb` }}>{fmb(memMb)}</span>
+                <span style={{ color: 'rgba(148,163,184,0.35)', fontSize: 6.5 }}> {memPct.toFixed(0)}%</span>
+              </span>
+              <span style={{ color: 'rgba(148,163,184,0.38)' }}>
+                ↑{fmb(netTx)} ↓{fmb(netRx)}
+              </span>
+              <span style={{ color: 'rgba(148,163,184,0.38)' }}>
+                R:{fmb(blkR)} W:{fmb(blkW)}
+              </span>
+            </div>
+          </>
+        )}
       </div>
     </foreignObject>
   );
@@ -440,10 +494,11 @@ export const SystemFlow: React.FC<{ metrics: any; embedProvider?: EmbedProvider 
 
         {/* Section labels */}
         {[
-          { label: 'EXTERNAL',  x: 118 },
-          { label: 'APP LAYER', x: 215 },
-          { label: 'BROKER',    x: 430 },
-          { label: 'WORKERS',   x: 645 },
+          { label: 'EXTERNAL',    x: 120 },
+          { label: 'APP LAYER',   x: 222 },
+          { label: 'BROKER',      x: 450 },
+          { label: 'WORKERS',     x: 672 },
+          { label: 'AI PROVIDER', x: 778 },
         ].map(({ label, x }) => (
           <text key={label} x={x} y={22} textAnchor="middle"
             fontSize={9} fontFamily="ui-monospace,monospace" fontWeight="800"
