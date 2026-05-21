@@ -8,8 +8,11 @@ from src.ai.providers.embeddings.base import BaseEmbeddingProvider
 logger = structlog.get_logger()
 
 class OpenAICompatibleEmbeddingProvider(BaseEmbeddingProvider):
-    def __init__(self, base_url: str, api_key: str, model_name: str, dimensions: int):
-        self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+    def __init__(self, base_url: str, api_key: str, model_name: str, dimensions: int,
+                 timeout: float = 30.0):
+        # timeout applies per HTTP request — critical for search latency.
+        # Use a short value (e.g. 8 s) for real-time search, longer for batch workers.
+        self.client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
         self.model_name = model_name
         self.dimensions = dimensions
 
@@ -24,10 +27,10 @@ class OpenAICompatibleEmbeddingProvider(BaseEmbeddingProvider):
     async def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-            
+
         all_vectors = []
         batch_size = 100
-        
+
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             response = await self.client.embeddings.create(

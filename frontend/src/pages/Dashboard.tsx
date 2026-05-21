@@ -60,11 +60,12 @@ const Dashboard: React.FC = () => {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  const { data: stats, error: statsError, mutate: mutateStats } = useSWR('/api/stats', fetcher);
-  const { data: tracking, error: trackingError, mutate: mutateTracking } = useSWR('/api/tracking/channels', fetcher);
-  const { data: foldersData, error: foldersError, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
-  const { data: contactsData, error: contactsError, mutate: mutateContacts } = useSWR('/api/tracking/contacts', fetcher);
-  const { data: authStatus, error: authStatusError } = useSWR('/api/telegram/auth/status', fetcher);
+  const swrOpts = { refreshInterval: 60000, revalidateOnFocus: true };
+  const { data: stats, error: statsError, mutate: mutateStats } = useSWR('/api/stats', fetcher, swrOpts);
+  const { data: tracking, error: trackingError, mutate: mutateTracking } = useSWR('/api/tracking/channels', fetcher, swrOpts);
+  const { data: foldersData, error: foldersError, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher, swrOpts);
+  const { data: contactsData, error: contactsError, mutate: mutateContacts } = useSWR('/api/tracking/contacts', fetcher, swrOpts);
+  const { data: authStatus, error: authStatusError } = useSWR('/api/telegram/auth/status', fetcher, { refreshInterval: 30000 });
   const user = authStatus?.profile;
 
   const isStatsLoading = !stats && !statsError;

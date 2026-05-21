@@ -29,21 +29,28 @@ def get_llm_provider() -> BaseLLMProvider:
             default_max_tokens=settings.llm_max_tokens,
         )
 
-def get_embedding_provider() -> BaseEmbeddingProvider:
-    """Get the configured embedding provider."""
+def get_embedding_provider(timeout: float = 30.0) -> BaseEmbeddingProvider:
+    """Get the configured embedding provider.
+
+    Pass a short timeout (e.g. 8 s) for real-time search so a busy LMStudio
+    instance doesn't block the request indefinitely. The default 30 s suits
+    batch workers that send up to 100 texts per call.
+    """
     settings = get_settings()
-    
+
     if settings.embed_provider == "lmstudio":
         return OpenAICompatibleEmbeddingProvider(
             base_url=settings.lmstudio_base_url,
             api_key="lm-studio",
             model_name=settings.lmstudio_embed_model,
-            dimensions=settings.embed_dimensions
+            dimensions=settings.embed_dimensions,
+            timeout=timeout,
         )
     else:
         return OpenAICompatibleEmbeddingProvider(
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             api_key=settings.google_api_key,
             model_name=settings.google_embed_model,
-            dimensions=settings.embed_dimensions
+            dimensions=settings.embed_dimensions,
+            timeout=timeout,
         )

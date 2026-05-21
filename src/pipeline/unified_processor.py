@@ -373,15 +373,31 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
         .correlate(Message)
         .exists()
     )
-    query = (
+    # Prioritize personal-contact messages so the search index stays fresh.
+    # Personal contacts have is_personal=True; join is cheap via btree index on contact_id.
+    personal_first_query = (
         select(Message)
+        .join(Contact, Contact.id == Message.contact_id)
+        .where(Contact.is_personal == True)  # noqa: E712
         .where(~already_embedded)
         .where(Message.content.isnot(None))
         .where(func.length(Message.content) > 10)
         .limit(batch_size)
     )
-    result = await session.execute(query)
+    result = await session.execute(personal_first_query)
     messages = result.scalars().all()
+
+    if not messages:
+        # Fall through to channel/group messages when personal backlog is clear
+        query = (
+            select(Message)
+            .where(~already_embedded)
+            .where(Message.content.isnot(None))
+            .where(func.length(Message.content) > 10)
+            .limit(batch_size)
+        )
+        result = await session.execute(query)
+        messages = result.scalars().all()
     if not messages:
         logger.info("no_messages_to_embed")
         return stats

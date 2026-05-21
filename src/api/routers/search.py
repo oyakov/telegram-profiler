@@ -11,14 +11,11 @@ from src.core.config import get_settings
 
 settings = get_settings()
 
-# Contacts with more messages than this threshold are likely channels/bots,
-# not individual people. Exclude them from person-targeted contact search.
-CHANNEL_MSG_THRESHOLD = 5_000
+router = APIRouter(prefix="/search", tags=["Search"])
+
 
 def _contact_to_response(contact):
     return ContactService.map_to_response(contact)
-
-router = APIRouter(prefix="/search", tags=["Search"])
 
 
 def _normalize_text(t: str) -> str:
@@ -29,38 +26,24 @@ def _rrf_score(ranks: list[int | None], k: int = 60) -> float:
     return sum(1 / (k + r) for r in ranks if r is not None)
 
 
-def _channel_subquery():
-    """Subquery: contact_ids that are high-volume channels/bots."""
-    return (
-        select(Message.contact_id)
-        .group_by(Message.contact_id)
-        .having(func.count(Message.id) > CHANNEL_MSG_THRESHOLD)
-        .scalar_subquery()
-    )
-
-
 async def _message_keyword_search(
     db: AsyncSession,
     query: str,
     limit: int,
 ) -> list[tuple]:
-    """Per-keyword message search with coverage-first ranking.
-
-    Contacts matching ALL keywords rank above those matching only some.
-    High-volume channel contacts are excluded via subquery filter.
-    """
+    """Per-keyword message search on personal contacts only, coverage-first ranking."""
     keywords = [w for w in _normalize_text(query).split() if len(w) >= 3]
     if not keywords:
         return []
 
-    channel_sq = _channel_subquery()
-    per_kw: list[dict[int, int]] = []
+    per_kw: list[dict] = []
     for kw in keywords:
         q = (
             select(Message.contact_id, func.count(Message.id).label("cnt"))
+            .join(Contact, Contact.id == Message.contact_id)
+            .where(Contact.is_personal == True)  # noqa: E712
             .where(Message.content.isnot(None))
             .where(Message.content.ilike(f"%{kw}%"))
-            .where(Message.contact_id.not_in(channel_sq))
             .group_by(Message.contact_id)
             .order_by(text("cnt DESC"))
             .limit(limit * 6)
@@ -68,11 +51,11 @@ async def _message_keyword_search(
         rows = await db.execute(q)
         per_kw.append({cid: cnt for cid, cnt in rows.all()})
 
-    all_ids: set[int] = set()
+    all_ids: set = set()
     for kw_map in per_kw:
         all_ids |= kw_map.keys()
 
-    scored: list[tuple[int, int, int]] = []
+    scored: list[tuple] = []
     for cid in all_ids:
         kw_coverage = sum(1 for kw_map in per_kw if cid in kw_map)
         total_mentions = sum(kw_map.get(cid, 0) for kw_map in per_kw)
@@ -82,90 +65,90 @@ async def _message_keyword_search(
     return [(cid, kw_cov * 10000 + mentions) for cid, kw_cov, mentions in scored[:limit]]
 
 
-async def _keyword_search(db: AsyncSession, query: str, limit: int) -> list[tuple]:
-    """Keyword search in contact profile fields (name, company, position)."""
-    keywords = _normalize_text(query).split()
-    like_conditions = [
-        or_(
-            Contact.first_name.ilike(f"%{kw}%"),
-            Contact.last_name.ilike(f"%{kw}%"),
-            Contact.company.ilike(f"%{kw}%"),
-            Contact.position.ilike(f"%{kw}%"),
-        )
-        for kw in keywords
-    ]
-    rows = await db.execute(
-        select(Contact, func.count(Message.id).label("msg_count"))
-        .outerjoin(Message, Message.contact_id == Contact.id)
-        .where(and_(*like_conditions) if like_conditions else True)
-        .group_by(Contact.id)
-        .order_by(text("msg_count DESC"))
-        .limit(limit)
-    )
-    return rows.fetchall()
-
-
 @router.post("")
 async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)):
-    """Hybrid search: semantic + per-keyword message search with RRF merge.
+    """Hybrid search: semantic (IVFFlat) + per-keyword on personal contacts only.
 
-    News channels and bots are excluded from results via message-count threshold.
-    Semantic results are kept dominant; keyword results fill gaps.
+    Channels/bots are excluded by filtering Contact.is_personal == True,
+    which is O(1) vs the previous O(n) GROUP BY over 2.8M messages.
+    Falls back to keyword-only mode when the embedding provider is unavailable.
     """
-    from src.ai.analysis import generate_embedding
     import sqlalchemy as sa
+    import logging
+    logger = logging.getLogger(__name__)
 
-    query_embedding = await generate_embedding(req.query)
-    await db.execute(sa.text("SET LOCAL hnsw.ef_search = 100"))
+    query_embedding = None
+    try:
+        from src.ai.providers.factory import get_embedding_provider
+        # 8-second HTTP timeout — if LMStudio is busy with a worker batch we fall back
+        # to keyword-only rather than blocking the search request indefinitely.
+        _provider = get_embedding_provider(timeout=8.0)
+        query_embedding = await _provider.generate_embedding(req.query)
+        await db.execute(sa.text("SET LOCAL ivfflat.probes = 10"))
+    except Exception as emb_err:
+        logger.warning("Embedding generation failed, falling back to keyword-only search: %s", emb_err)
 
-    channel_sq = _channel_subquery()
-
-    # ── 1. Semantic search in message embeddings (channels excluded) ──────────
-    sem_q = (
-        select(
-            MessageEmbedding,
-            Message,
-            MessageEmbedding.embedding.cosine_distance(query_embedding).label("distance"),
-        )
-        .join(Message, Message.id == MessageEmbedding.message_id)
-        .options(sa.orm.joinedload(Message.contact))
-        .where(Message.contact_id.not_in(channel_sq))
-        .order_by("distance")
-        .limit(req.limit * settings.search_row_limit_multiplier)
-    )
-
-    msg_results = await db.execute(sem_q)
-
+    # ── 1. Semantic search over personal-contact message embeddings ───────────
+    # Only ~200 embeddings belong to personal contacts; IVFFlat scan is instant.
     semantic_contacts: dict = {}
-    for me, msg, distance in msg_results:
-        if not msg.contact or distance >= settings.search_semantic_threshold:
-            continue
-        cid = msg.contact.id
-        evidence_item = {
-            "text": (me.chunk_text or msg.content or "").strip()[:300],
-            "relevance": round(1 - distance, 3),
-        }
-        if cid not in semantic_contacts:
-            semantic_contacts[cid] = (msg.contact, distance, [evidence_item])
-        else:
-            contact, best_dist, ev_list = semantic_contacts[cid]
-            if len(ev_list) < 3:
-                ev_list.append(evidence_item)
-            if distance < best_dist:
-                semantic_contacts[cid] = (contact, distance, ev_list)
+    if query_embedding is not None:
+        sem_q = (
+            select(
+                MessageEmbedding.id,
+                MessageEmbedding.message_id,
+                MessageEmbedding.chunk_text,
+                Message.contact_id,
+                Message.content,
+                MessageEmbedding.embedding.cosine_distance(query_embedding).label("distance"),
+            )
+            .join(Message, Message.id == MessageEmbedding.message_id)
+            .join(Contact, Contact.id == Message.contact_id)
+            .where(Contact.is_personal == True)  # noqa: E712
+            .order_by("distance")
+            .limit(req.limit * settings.search_row_limit_multiplier)
+        )
 
-    # ── 2. Per-keyword message search (channels excluded via subquery) ────────
+        msg_rows = (await db.execute(sem_q)).fetchall()
+
+        sem_contact_ids = list({r.contact_id for r in msg_rows if r.distance < settings.search_semantic_threshold})
+        sem_contact_map: dict = {}
+        if sem_contact_ids:
+            c_rows = await db.execute(select(Contact).where(Contact.id.in_(sem_contact_ids)))
+            for (c,) in c_rows:
+                sem_contact_map[c.id] = c
+
+        for r in msg_rows:
+            if r.distance >= settings.search_semantic_threshold:
+                continue
+            contact = sem_contact_map.get(r.contact_id)
+            if not contact:
+                continue
+            cid = contact.id
+            evidence_item = {
+                "text": (r.chunk_text or r.content or "").strip()[:300],
+                "relevance": round(1 - r.distance, 3),
+            }
+            if cid not in semantic_contacts:
+                semantic_contacts[cid] = (contact, r.distance, [evidence_item])
+            else:
+                existing_contact, best_dist, ev_list = semantic_contacts[cid]
+                if len(ev_list) < 3:
+                    ev_list.append(evidence_item)
+                if r.distance < best_dist:
+                    semantic_contacts[cid] = (existing_contact, r.distance, ev_list)
+
+    # ── 2. Per-keyword message search (personal contacts only) ────────────────
     kw_msg_rows = await _message_keyword_search(db, req.query, req.limit * 3)
-    kw_msg_rank: dict[int, int] = {
+    kw_msg_rank: dict = {
         contact_id: rank for rank, (contact_id, _) in enumerate(kw_msg_rows)
     }
 
-    # ── 3. Pure RRF merge (no demotion — let evidence quality speak) ──────────
+    # ── 3. RRF merge ──────────────────────────────────────────────────────────
     semantic_ranked = sorted(semantic_contacts.keys(), key=lambda cid: semantic_contacts[cid][1])
-    semantic_rank: dict[int, int] = {cid: rank for rank, cid in enumerate(semantic_ranked)}
+    semantic_rank: dict = {cid: rank for rank, cid in enumerate(semantic_ranked)}
 
     all_candidate_ids = set(semantic_contacts.keys()) | set(kw_msg_rank.keys())
-    rrf_scores: dict[int, float] = {
+    rrf_scores: dict = {
         cid: _rrf_score([semantic_rank.get(cid), kw_msg_rank.get(cid)])
         for cid in all_candidate_ids
     }
@@ -180,7 +163,7 @@ async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)
         for (contact,) in rows:
             kw_contact_map[contact.id] = contact
 
-    # ── 5. Evidence for keyword-only contacts: relevant messages (not just latest)
+    # ── 5. Evidence snippets for keyword-only contacts ────────────────────────
     kw_evidence: dict = defaultdict(list)
     if kw_only_ids:
         keywords = [w for w in _normalize_text(req.query).split() if len(w) >= 3]
@@ -218,33 +201,50 @@ async def semantic_search(req: SearchRequest, db: AsyncSession = Depends(get_db)
                 "search_type": "keyword",
             })
 
-    # ── 7. Search individual messages ─────────────────────────────────────────
-    msg_q = (
-        select(
-            MessageEmbedding,
-            Message,
-            MessageEmbedding.embedding.cosine_distance(query_embedding).label("distance"),
-        )
-        .join(Message, Message.id == MessageEmbedding.message_id)
-        .options(sa.orm.joinedload(Message.contact))
-        .where(Message.contact_id.not_in(channel_sq))
-        .order_by("distance")
-        .limit(req.limit)
-    )
-
+    # ── 7. Top matching messages (personal contacts, no embedding vector fetched)
     messages = []
-    for me, msg, distance in (await db.execute(msg_q)):
-        messages.append({
-            "message_id": str(me.message_id),
-            "content": msg.content,
-            "group_name": msg.group_name,
-            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
-            "contact_name": f"{msg.contact.first_name or ''} {msg.contact.last_name or ''}".strip() if msg.contact else "Неизвестно",
-            "similarity": round(1 - distance, 4),
-        })
+    if query_embedding is not None:
+        msg_q = (
+            select(
+                MessageEmbedding.message_id,
+                MessageEmbedding.chunk_text,
+                Message.content,
+                Message.group_name,
+                Message.timestamp,
+                Message.contact_id,
+                MessageEmbedding.embedding.cosine_distance(query_embedding).label("distance"),
+            )
+            .join(Message, Message.id == MessageEmbedding.message_id)
+            .join(Contact, Contact.id == Message.contact_id)
+            .where(Contact.is_personal == True)  # noqa: E712
+            .order_by("distance")
+            .limit(req.limit)
+        )
+
+        raw_msg_rows = (await db.execute(msg_q)).fetchall()
+        msg_contact_ids_needed = list({r.contact_id for r in raw_msg_rows if r.contact_id})
+        msg_contact_map: dict = {}
+        if msg_contact_ids_needed:
+            mc_rows = await db.execute(
+                select(Contact.id, Contact.first_name, Contact.last_name)
+                .where(Contact.id.in_(msg_contact_ids_needed))
+            )
+            for cid, fn, ln in mc_rows:
+                msg_contact_map[cid] = f"{fn or ''} {ln or ''}".strip() or "Неизвестно"
+
+        for r in raw_msg_rows:
+            messages.append({
+                "message_id": str(r.message_id),
+                "content": r.content,
+                "group_name": r.group_name,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                "contact_name": msg_contact_map.get(r.contact_id, "Неизвестно"),
+                "similarity": round(1 - r.distance, 4),
+            })
 
     return {
         "query": req.query,
+        "search_mode": "hybrid" if query_embedding is not None else "keyword_only",
         "contacts": contacts,
         "messages": messages,
     }
