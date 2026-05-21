@@ -15,7 +15,8 @@ interface Project {
 }
 
 const Projects: React.FC = () => {
-  const { data: projects, mutate } = useSWR('/api/projects', fetcher);
+  const { data: projects, error: projectsError, mutate } = useSWR('/api/projects', fetcher);
+  const isLoading = !projects && !projectsError;
   const [showModal, setShowModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [formData, setFormData] = useState({ name: '', description: '' });
@@ -54,14 +55,40 @@ const Projects: React.FC = () => {
           <h1 className="text-gradient">Управление Проектами</h1>
           <p className="text-secondary">Изолированные рабочие пространства и базы данных</p>
         </div>
-        <button className="btn-venom primary" onClick={() => { setEditingProject(null); setFormData({ name: '', description: '' }); setShowModal(true); }}>
+        <button 
+          className="btn-venom primary" 
+          onClick={() => { setEditingProject(null); setFormData({ name: '', description: '' }); setShowModal(true); }}
+          disabled={isLoading}
+        >
           <Plus size={18} />
           Новый проект
         </button>
       </div>
 
       <div className="projects-grid">
-        {(projects || []).map((project: Project) => (
+        {isLoading ? (
+          Array.from({ length: 3 }).map((_, idx) => (
+            <div key={`project-skeleton-${idx}`} className="project-card serpent-card no-hover" style={{ position: 'relative', overflow: 'hidden' }}>
+              <div className="card-loading-bar" />
+              <div className="project-card-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="project-icon skeleton-placeholder" style={{ background: 'transparent' }} />
+                <div className="project-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div className="skeleton-placeholder" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
+                  <div className="skeleton-placeholder" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
+                </div>
+              </div>
+              <div className="project-card-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="skeleton-placeholder text-skeleton" style={{ width: '160px', height: '1.5rem' }} />
+                <div className="skeleton-placeholder text-skeleton" style={{ width: '100px', height: '0.9rem' }} />
+                <div className="skeleton-placeholder text-skeleton" style={{ width: '220px', height: '1rem', marginTop: '12px' }} />
+              </div>
+              <div className="project-card-footer" style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="skeleton-placeholder" style={{ width: '70px', height: '18px', borderRadius: '4px' }} />
+                <div className="skeleton-placeholder" style={{ width: '90px', height: '32px', borderRadius: '8px' }} />
+              </div>
+            </div>
+          ))
+        ) : (projects || []).map((project: Project) => (
           <div key={project.id} className="project-card serpent-card">
             <div className="project-card-header">
               <div className="project-icon">

@@ -52,16 +52,19 @@ const Campaigns: React.FC = () => {
   const [databasePage] = useState(1);
 
   // Fetch campaigns
-  const { data: campaignsData, mutate: mutateCampaigns } = useSWR(
+  const { data: campaignsData, error: campaignsError, mutate: mutateCampaigns } = useSWR(
     `/api/campaigns?status=${statusFilter}&page=${1}&page_size=50`,
     fetcher
   );
 
   // Fetch contacts from database
-  const { data: contactsData } = useSWR(
+  const { data: contactsData, error: contactsError } = useSWR(
     `/api/contacts?page=${databasePage}&page_size=100`,
     fetcher
   );
+
+  const campaignsLoading = !campaignsData && !campaignsError;
+  const contactsLoading = !contactsData && !contactsError;
 
   const campaigns = campaignsData?.campaigns || [];
 
@@ -323,6 +326,7 @@ const Campaigns: React.FC = () => {
 
         {/* Middle: Contact Selector */}
         <div className="contact-selector-panel">
+          {contactsLoading && <div className="card-loading-bar" />}
           <h2>Выбор контактов</h2>
 
           <div className="selector-tabs">
@@ -399,10 +403,29 @@ const Campaigns: React.FC = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="form-input"
+                  disabled={contactsLoading}
                 />
               </div>
 
-              {databaseContacts.length > 0 && (
+              {contactsLoading ? (
+                <>
+                  <div className="select-all-box">
+                    <div className="skeleton-placeholder text-skeleton" style={{ width: '120px', height: '14px' }} />
+                  </div>
+                  <div className="contacts-list">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <div key={`db-contact-skeleton-${idx}`} className="contact-item">
+                        <div className="skeleton-placeholder" style={{ width: '16px', height: '16px', borderRadius: '3px', flexShrink: 0 }} />
+                        <div className="contact-info" style={{ gap: '6px', display: 'flex', flexDirection: 'column' }}>
+                          <div className="skeleton-placeholder text-skeleton" style={{ width: '140px', height: '12px' }} />
+                          <div className="skeleton-placeholder text-skeleton" style={{ width: '90px', height: '10px' }} />
+                        </div>
+                        <div className="skeleton-placeholder" style={{ width: '28px', height: '18px', borderRadius: '3px', marginLeft: 'auto', flexShrink: 0 }} />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : databaseContacts.length > 0 ? (
                 <>
                   <div className="select-all-box">
                     <label>
@@ -433,9 +456,7 @@ const Campaigns: React.FC = () => {
                     ))}
                   </div>
                 </>
-              )}
-
-              {databaseContacts.length === 0 && (
+              ) : (
                 <div className="empty-state">
                   <Users size={32} />
                   <p>Контакты не найдены</p>
@@ -508,6 +529,7 @@ const Campaigns: React.FC = () => {
 
         {/* Right: Campaigns List */}
         <div className="campaigns-list-panel">
+          {campaignsLoading && <div className="card-loading-bar" />}
           <h2>Кампании</h2>
 
           <div className="filter-box">
@@ -515,6 +537,7 @@ const Campaigns: React.FC = () => {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="form-input"
+              disabled={campaignsLoading}
             >
               <option value="">Все статусы</option>
               <option value="draft">Черновик</option>
@@ -524,7 +547,38 @@ const Campaigns: React.FC = () => {
             </select>
           </div>
 
-          {campaigns.length > 0 ? (
+          {campaignsLoading ? (
+            <div className="campaigns-grid">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div key={`campaign-skeleton-${idx}`} className="campaign-card serpent-card no-hover" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div className="campaign-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="skeleton-placeholder text-skeleton" style={{ width: '120px', height: '14px' }} />
+                    <div className="skeleton-placeholder" style={{ width: '60px', height: '18px', borderRadius: '3px' }} />
+                  </div>
+                  <div className="campaign-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    <div className="stat" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="skeleton-placeholder text-skeleton" style={{ width: '50px', height: '8px' }} />
+                      <div className="skeleton-placeholder text-skeleton" style={{ width: '30px', height: '12px' }} />
+                    </div>
+                    <div className="stat" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="skeleton-placeholder text-skeleton" style={{ width: '50px', height: '8px' }} />
+                      <div className="skeleton-placeholder text-skeleton" style={{ width: '30px', height: '12px' }} />
+                    </div>
+                  </div>
+                  <div className="campaign-progress" style={{ height: '4px' }}>
+                    <div className="skeleton-placeholder" style={{ width: '100%', height: '100%', borderRadius: '2px' }} />
+                  </div>
+                  <div className="campaign-date">
+                    <div className="skeleton-placeholder text-skeleton" style={{ width: '70px', height: '8px' }} />
+                  </div>
+                  <div className="campaign-actions" style={{ display: 'flex', gap: '6px' }}>
+                    <div className="skeleton-placeholder" style={{ height: '28px', flex: 1, borderRadius: '4px' }} />
+                    <div className="skeleton-placeholder" style={{ height: '28px', width: '28px', borderRadius: '4px' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : campaigns.length > 0 ? (
             <div className="campaigns-grid">
               {campaigns.map((campaign: Campaign) => (
                 <div key={campaign.id} className="campaign-card serpent-card">

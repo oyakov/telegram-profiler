@@ -39,7 +39,9 @@ const Tracking: React.FC = () => {
     handleDeleteChannel,
     handleOpenImport,
     handleImportFromTg,
-    toggleFolder
+    toggleFolder,
+    isLoading,
+    foldersLoading
   } = useTracking();
 
   const filteredChannels = data?.channels?.filter((ch: any) =>
@@ -83,44 +85,65 @@ const Tracking: React.FC = () => {
 
       <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {folders.map((folder: any) => (
-          <FolderCard 
-            key={folder.id}
-            folder={folder}
-            channels={channelsByFolder[folder.id] || []}
-            isCollapsed={collapsedFolders.has(folder.id)}
-            onToggle={toggleFolder}
-            onEdit={handleOpenEditFolder}
-            onImport={handleOpenImport}
-            onDelete={handleDeleteFolder}
-            onDeleteChannel={handleDeleteChannel}
-            importingFolderId={importingFolderId}
-            tgFolders={tgFolders}
-            tgFoldersLoading={tgFoldersLoading}
-            onCloseImport={() => setImportingFolderId(null)}
-            onImportFromTg={handleImportFromTg}
-          />
-        ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
+        {(isLoading || foldersLoading) && <div className="card-loading-bar" />}
+        {isLoading || foldersLoading ? (
+          Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`folder-skeleton-${idx}`} className="folder-card" style={{ position: 'relative', overflow: 'hidden', padding: '16px', background: 'rgba(30, 41, 59, 0.1)', border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div className="skeleton-placeholder" style={{ width: '16px', height: '16px', borderRadius: '4px' }} />
+                <div className="skeleton-placeholder" style={{ width: '16px', height: '16px', borderRadius: '4px' }} />
+                <div className="skeleton-placeholder text-skeleton" style={{ width: '140px', height: '14px' }} />
+                <div className="skeleton-placeholder" style={{ width: '24px', height: '18px', borderRadius: '3px', marginLeft: '6px' }} />
+                <div className="folder-actions" style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+                  <div className="skeleton-placeholder" style={{ width: '28px', height: '24px', borderRadius: '4px' }} />
+                  <div className="skeleton-placeholder" style={{ width: '60px', height: '24px', borderRadius: '4px' }} />
+                  <div className="skeleton-placeholder" style={{ width: '28px', height: '24px', borderRadius: '4px' }} />
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <>
+            {folders.map((folder: any) => (
+              <FolderCard 
+                key={folder.id}
+                folder={folder}
+                channels={channelsByFolder[folder.id] || []}
+                isCollapsed={collapsedFolders.has(folder.id)}
+                onToggle={toggleFolder}
+                onEdit={handleOpenEditFolder}
+                onImport={handleOpenImport}
+                onDelete={handleDeleteFolder}
+                onDeleteChannel={handleDeleteChannel}
+                importingFolderId={importingFolderId}
+                tgFolders={tgFolders}
+                tgFoldersLoading={tgFoldersLoading}
+                onCloseImport={() => setImportingFolderId(null)}
+                onImportFromTg={handleImportFromTg}
+              />
+            ))}
 
-        <UncategorizedFolder 
-          channels={uncategorized}
-          isCollapsed={collapsedFolders.has('__uncategorized__')}
-          onToggle={toggleFolder}
-          onDeleteChannel={handleDeleteChannel}
-        />
+            <UncategorizedFolder 
+              channels={uncategorized}
+              isCollapsed={collapsedFolders.has('__uncategorized__')}
+              onToggle={toggleFolder}
+              onDeleteChannel={handleDeleteChannel}
+            />
 
-        {filteredChannels.length === 0 && folders.length === 0 && (
-          <div style={{
-            padding: '48px',
-            textAlign: 'center',
-            color: '#64748b',
-            background: 'rgba(30, 41, 59, 0.3)',
-            border: '1px solid rgba(148, 163, 184, 0.15)',
-            borderRadius: '8px'
-          }}>
-            Нет каналов или папок
-          </div>
+            {filteredChannels.length === 0 && folders.length === 0 && (
+              <div style={{
+                padding: '48px',
+                textAlign: 'center',
+                color: '#64748b',
+                background: 'rgba(30, 41, 59, 0.3)',
+                border: '1px solid rgba(148, 163, 184, 0.15)',
+                borderRadius: '8px'
+              }}>
+                Нет каналов или папок
+              </div>
+            )}
+          </>
         )}
       </div>
 

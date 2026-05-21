@@ -64,9 +64,11 @@ export const useLeads = () => {
   const [searchName, setSearchName] = useState('');
   const [searchDescription, setSearchDescription] = useState('');
 
-  const { data: savedSearches, mutate: mutateSavedSearches } = useSWR(
+  const { data: savedSearches, error: savedSearchesError, mutate: mutateSavedSearches } = useSWR(
     '/api/leads/searches?active_only=true', fetcher
   );
+
+  const isLoadingSavedSearches = !savedSearches && !savedSearchesError;
 
   const handleSearch = async () => {
     setIsSearching(true);
@@ -160,5 +162,6 @@ export const useLeads = () => {
     updateProfileField,
     addTag,
     removeTag,
+    isLoadingSavedSearches,
   };
 };

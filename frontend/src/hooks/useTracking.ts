@@ -23,11 +23,14 @@ export const useTracking = () => {
   const { showToast } = useToast();
   const { confirm } = useConfirm();
 
-  const { data, mutate } = useSWR('/api/tracking/channels', fetcher);
-  const { data: foldersData, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
+  const { data, error, mutate } = useSWR('/api/tracking/channels', fetcher);
+  const { data: foldersData, error: foldersError, mutate: mutateFolders } = useSWR('/api/tracking/folders', fetcher);
   const { data: syncData, mutate: mutateSyncStatus } = useSWR(
     '/api/connectors/pipeline/sync/status', fetcher, { refreshInterval: 8000 }
   );
+
+  const isLoading = !data && !error;
+  const foldersLoading = !foldersData && !foldersError;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -201,5 +204,7 @@ export const useTracking = () => {
     handleOpenImport,
     handleImportFromTg,
     toggleFolder,
+    isLoading,
+    foldersLoading,
   };
 };
