@@ -183,21 +183,21 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: stri
 interface EmbedProvider { provider: string; available: boolean; model: string; dimensions: number; speed_vec_per_min: number; }
 
 // ── Canvas & node layout ────────────────────────────────────────────────────
-// Wide spacing between columns, card sizes unchanged
-const CW = 1320, CH = 720;
+// Wide spacing — both horizontal and vertical
+const CW = 1320, CH = 860;
 
 interface NodeDef { x:number; y:number; w:number; h:number; color:string; name:string; sub:string; ext?:boolean; }
 
 const NODES: Record<string, NodeDef> = {
   //                   cx    cy    w      h
-  telegram:   { x:140,  y:100, w:210, h:110, color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
-  lmstudio:   { x:1180, y:100, w:220, h:110, color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
-  app:        { x:300,  y:340, w:255, h:190, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
-  beat:       { x:700,  y:560, w:250, h:190, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
-  processor:  { x:1060, y:340, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
-  connectors: { x:300,  y:560, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
-  redis:      { x:700,  y:340, w:255, h:190, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
-  postgres:   { x:1060, y:560, w:260, h:190, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
+  telegram:   { x:140,  y:105, w:210, h:110, color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
+  lmstudio:   { x:1180, y:105, w:220, h:110, color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
+  app:        { x:300,  y:390, w:255, h:190, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
+  beat:       { x:700,  y:660, w:250, h:190, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
+  processor:  { x:1060, y:390, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
+  connectors: { x:300,  y:660, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
+  redis:      { x:700,  y:390, w:255, h:190, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
+  postgres:   { x:1060, y:660, w:260, h:190, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
 };
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
