@@ -354,6 +354,7 @@
 
 .saved-searches-section,
 .search-results-section {
+  position: relative;
   padding: var(--spacing-lg);
   background: var(--card-background);
   border-radius: 12px;

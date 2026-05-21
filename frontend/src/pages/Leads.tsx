@@ -26,6 +26,7 @@ const Leads: React.FC = () => {
     updateProfileField,
     addTag,
     removeTag,
+    isLoadingSavedSearches,
   } = useLeads();
 
   return (
@@ -53,12 +54,13 @@ const Leads: React.FC = () => {
         <div className="results-panel">
           <SavedSearchList 
             savedSearches={savedSearches}
+            isLoading={isLoadingSavedSearches}
             onRun={handleRunSavedSearch}
             onDelete={handleDeleteSavedSearch}
             isSearching={isSearching}
           />
 
-          <LeadGrid searchResults={searchResults} />
+          <LeadGrid searchResults={searchResults} isSearching={isSearching} />
         </div>
       </div>
 
