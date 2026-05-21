@@ -1,31 +1,4 @@
-.search-page {
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 40px 20px;
-}
-
-.search-hero {
-  text-align: center;
-  margin-bottom: 20px;
-  animation: fadeInDown 0.8s ease-out;
-}
-
-.search-hero h1 {
-  font-size: 3.5rem;
-  line-height: 1.2;
-  margin-bottom: 12px;
-  letter-spacing: -1px;
-  font-weight: 900;
-}
-
-.search-hero p {
-  font-size: 1.1rem;
-  opacity: 0.7;
-  font-weight: 300;
-}
+/* Layout alignment applied globally via index.css */
 
 .search-tabs {
   display: flex;
@@ -353,14 +326,6 @@
 }
 
 @media (max-width: 768px) {
-  .search-page {
-    gap: 32px;
-    padding: 24px 16px;
-  }
-
-  .search-hero h1 {
-    font-size: 2.5rem;
-  }
 
   .search-container {
     height: 72px;

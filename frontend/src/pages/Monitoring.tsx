@@ -113,9 +113,11 @@ const Monitoring: React.FC = () => {
 
   return (
     <div className="monitoring-page animate-fade-in">
-      <div className="page-header" style={{ marginBottom: '32px' }}>
-        <h1 className="text-gradient" style={{ fontSize: '2.5rem', marginBottom: '8px' }}>Архитектура данных</h1>
-        <p className="text-secondary" style={{ fontSize: '1.1rem' }}>Визуализация потоков, иерархии и состояния AI-конвейера</p>
+      <div className="page-header">
+        <div>
+          <h1 className="text-gradient">Архитектура данных</h1>
+          <p className="text-secondary">Визуализация потоков, иерархии и состояния AI-конвейера</p>
+        </div>
       </div>
 
       <div style={{ marginBottom: '32px' }}>

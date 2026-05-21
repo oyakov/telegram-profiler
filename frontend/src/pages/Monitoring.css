@@ -1,8 +1,4 @@
-.monitoring-page {
-  padding: var(--spacing-lg);
-  max-width: 1400px;
-  margin: 0 auto;
-}
+/* Layout alignment applied globally via index.css */
 
 /* System Flow Styles */
 .system-flow-container {

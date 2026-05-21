@@ -21,15 +21,10 @@ const TrackingHeader: React.FC<TrackingHeaderProps> = ({
   onCreateFolder
 }) => {
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: '20px'
-    }}>
+    <div className="page-header">
       <div>
-        <h1 style={{ color: '#f8fafc', margin: 0, fontSize: '24px', fontWeight: '700' }}>Каналы</h1>
-        <p style={{ color: '#64748b', margin: '6px 0 0', fontSize: '14px' }}>Отслеживаемые Telegram каналы и группы</p>
+        <h1 className="text-gradient">Каналы</h1>
+        <p className="text-secondary">Отслеживаемые Telegram каналы и группы</p>
       </div>
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
         {showNewFolderInput ? (

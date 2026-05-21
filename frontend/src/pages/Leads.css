@@ -1,8 +1,4 @@
-.leads-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xl);
-}
+/* Layout alignment applied globally via index.css */
 
 .leads-grid {
   display: grid;

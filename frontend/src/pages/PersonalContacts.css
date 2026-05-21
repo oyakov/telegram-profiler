@@ -1,31 +1,4 @@
-.personal-contacts-page {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-.page-header {
-  margin-bottom: 32px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
-}
-
-.page-header > div:first-child {
-  flex: 1;
-}
-
-.page-header h1 {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 600;
-}
-
-.page-header .text-secondary {
-  margin: 0;
-  opacity: 0.7;
-}
+/* Unified layout applied via index.css */
 
 .header-buttons {
   display: flex;

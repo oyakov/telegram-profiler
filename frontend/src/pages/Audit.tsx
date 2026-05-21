@@ -17,8 +17,10 @@ const AuditPage: React.FC = () => {
   return (
     <div className="audit-page">
       <div className="page-header">
-        <h1 className="text-gradient">Аудит</h1>
-        <p className="text-secondary">Мониторинг задач Celery, метрики системы и аудит событий</p>
+        <div>
+          <h1 className="text-gradient">Аудит</h1>
+          <p className="text-secondary">Мониторинг задач Celery, метрики системы и аудит событий</p>
+        </div>
       </div>
 
       <div className="audit-tabs-container">

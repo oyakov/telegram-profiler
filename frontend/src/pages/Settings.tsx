@@ -183,15 +183,17 @@ const Settings: React.FC = () => {
   return (
     <div className="settings-page">
       <div className="page-header">
-        <h1 className="text-gradient">Настройки</h1>
-        {isLoading ? (
-          <div className="skeleton-placeholder text-skeleton" style={{ width: '380px', marginTop: '6px' }} />
-        ) : (
-          <p className="text-secondary">
-            Конфигурация systems — значения из БД переопределяют .env
-            {dbCount > 0 && <span className="db-overrides-badge">{dbCount} переопределено</span>}
-          </p>
-        )}
+        <div>
+          <h1 className="text-gradient">Настройки</h1>
+          {isLoading ? (
+            <div className="skeleton-placeholder text-skeleton" style={{ width: '380px', marginTop: '6px' }} />
+          ) : (
+            <p className="text-secondary">
+              Конфигурация systems — значения из БД переопределяют .env
+              {dbCount > 0 && <span className="db-overrides-badge">{dbCount} переопределено</span>}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="category-tabs">

@@ -1,20 +1,4 @@
-.campaigns-page {
-  padding: 24px;
-}
-
-.page-header-actions {
-  margin-bottom: 24px;
-}
-
-.page-header-actions h1 {
-  font-size: 28px;
-  margin-bottom: 8px;
-}
-
-.page-header-actions p {
-  font-size: 14px;
-  color: #888;
-}
+/* Layout & page header standardization applied globally via index.css */
 
 .campaigns-container {
   display: grid;

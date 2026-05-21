@@ -63,9 +63,11 @@ const Search: React.FC = () => {
 
   return (
     <div className="search-page">
-      <div className="search-hero">
-        <h1 className="text-gradient">Интеллектуальный поиск</h1>
-        <p className="text-secondary">Найдите нужные связи и сообщения с помощью AI</p>
+      <div className="page-header">
+        <div>
+          <h1 className="text-gradient">Интеллектуальный поиск</h1>
+          <p className="text-secondary">Найдите нужные связи и сообщения с помощью AI</p>
+        </div>
       </div>
 
       <div className="search-tabs">

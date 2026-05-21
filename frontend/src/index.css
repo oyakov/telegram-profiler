@@ -280,3 +280,54 @@ code, pre {
   z-index: 10;
 }
 
+/* Standard Unified Layout Spacing and Alignment System */
+.dashboard-page,
+.contacts-page,
+.personal-contacts-page,
+.settings-page,
+.monitoring-page,
+.audit-page,
+.search-page,
+.leads-page,
+.campaigns-page,
+.projects-page,
+.tracking-page {
+  padding: 2.5rem 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Standardized Page Headers & Typography */
+.page-header,
+.page-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-lg);
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.page-header h1,
+.page-header-actions h1 {
+  font-size: 2.25rem !important;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 8px 0 !important;
+}
+
+.page-header .text-secondary,
+.page-header-actions .text-secondary,
+.page-header-actions p {
+  font-size: 1rem !important;
+  color: var(--text-secondary) !important;
+  margin: 0 !important;
+  opacity: 0.8;
+  font-weight: 400;
+}
+
