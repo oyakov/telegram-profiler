@@ -183,21 +183,21 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: stri
 interface EmbedProvider { provider: string; available: boolean; model: string; dimensions: number; speed_vec_per_min: number; }
 
 // ── Canvas & node layout ────────────────────────────────────────────────────
-// Large nodes — comfortably readable at any zoom
-const CW = 1100, CH = 660;
+// Wide spacing between columns, card sizes unchanged
+const CW = 1320, CH = 720;
 
 interface NodeDef { x:number; y:number; w:number; h:number; color:string; name:string; sub:string; ext?:boolean; }
 
 const NODES: Record<string, NodeDef> = {
   //                   cx    cy    w      h
-  telegram:   { x:130,  y:95,  w:205, h:110, color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
-  lmstudio:   { x:970,  y:95,  w:215, h:110, color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
-  app:        { x:260,  y:320, w:255, h:190, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
-  beat:       { x:555,  y:535, w:250, h:190, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
-  processor:  { x:850,  y:320, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
-  connectors: { x:260,  y:535, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
-  redis:      { x:555,  y:320, w:255, h:190, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
-  postgres:   { x:850,  y:535, w:260, h:190, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
+  telegram:   { x:140,  y:100, w:210, h:110, color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
+  lmstudio:   { x:1180, y:100, w:220, h:110, color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
+  app:        { x:300,  y:340, w:255, h:190, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
+  beat:       { x:700,  y:560, w:250, h:190, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
+  processor:  { x:1060, y:340, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
+  connectors: { x:300,  y:560, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
+  redis:      { x:700,  y:340, w:255, h:190, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
+  postgres:   { x:1060, y:560, w:260, h:190, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
 };
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
@@ -246,16 +246,17 @@ const GraphEdge: React.FC<{ spec: EdgeSpec }> = ({ spec }) => {
         strokeOpacity={active ? 0.45 : 0.18}
         strokeDasharray={active ? undefined : '5 5'} />
       {Array.from({ length: count }).map((_, i) => (
-        <circle key={i} r={3.2} fill={spec.color}
-          style={{ filter: `drop-shadow(0 0 4px ${spec.color})` }}>
+        <circle key={i} r={4.5} fill={spec.color}
+          style={{ filter: `drop-shadow(0 0 5px ${spec.color})` }}>
           <animateMotion path={d} dur={`${dur}s`} repeatCount="indefinite"
             begin={`${-((i / count) * dur).toFixed(2)}s`} />
         </circle>
       ))}
       {spec.label && (
-        <text x={lx} y={ly - 6} textAnchor="middle"
-          fontSize={8.5} fontFamily="ui-monospace,monospace" fontWeight="700"
-          fill={spec.color} fillOpacity={0.75}>
+        <text x={lx} y={ly - 10} textAnchor="middle"
+          fontSize={22} fontFamily="ui-monospace,monospace" fontWeight="700"
+          fill={spec.color} fillOpacity={0.85}
+          style={{ textShadow: `0 0 8px ${spec.color}` }}>
           {spec.label}
         </text>
       )}
@@ -345,12 +346,12 @@ const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any; tp?: a
         }} />
 
         {/* Name */}
-        <div style={{ fontSize: 18, fontWeight: 700, color: n.color, whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: n.color, whiteSpace: 'nowrap' }}>
           {label}
         </div>
 
         {/* Sub */}
-        <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.65)', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 15, color: 'rgba(148,163,184,0.65)', whiteSpace: 'nowrap' }}>
           {sub}
         </div>
 
@@ -360,18 +361,18 @@ const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any; tp?: a
             <div style={{
               width: '100%', height: 1,
               background: `${n.color}30`,
-              margin: '6px 0 5px',
+              margin: '7px 0 5px',
             }} />
             <div style={{
               display: 'grid', gridTemplateColumns: '1fr 1fr',
               columnGap: 14, rowGap: 5,
-              width: '100%', fontSize: 13,
+              width: '100%', fontSize: 15,
               fontFamily: 'ui-monospace, monospace',
               color: 'rgba(148,163,184,0.55)',
             }}>
               <span>CPU <span style={{ color: cpuColor, fontWeight: 600 }}>{cpuPct.toFixed(1)}%</span></span>
               <span>MEM <span style={{ color: `${n.color}dd`, fontWeight: 600 }}>{fmb(memMb)}</span>
-                <span style={{ color: 'rgba(148,163,184,0.4)', fontSize: 10 }}> {memPct.toFixed(0)}%</span>
+                <span style={{ color: 'rgba(148,163,184,0.4)', fontSize: 12 }}> {memPct.toFixed(0)}%</span>
               </span>
               <span>↑{fmb(netTx)} ↓{fmb(netRx)}</span>
               <span>R:{fmb(blkR)} W:{fmb(blkW)}</span>
@@ -490,11 +491,11 @@ export const SystemFlow: React.FC<{ metrics: any; embedProvider?: EmbedProvider 
 
         {/* Section labels */}
         {[
-          { label: 'EXTERNAL',    x: 130 },
-          { label: 'APP LAYER',   x: 260 },
-          { label: 'BROKER',      x: 555 },
-          { label: 'WORKERS',     x: 850 },
-          { label: 'AI PROVIDER', x: 970 },
+          { label: 'EXTERNAL',    x: 140  },
+          { label: 'APP LAYER',   x: 300  },
+          { label: 'BROKER',      x: 700  },
+          { label: 'WORKERS',     x: 1060 },
+          { label: 'AI PROVIDER', x: 1180 },
         ].map(({ label, x }) => (
           <text key={label} x={x} y={22} textAnchor="middle"
             fontSize={9} fontFamily="ui-monospace,monospace" fontWeight="800"
