@@ -348,15 +348,39 @@ async def _maintenance_reindex_dirty_impl(session: AsyncSession, batch_size: int
 
 
 async def maintenance_index_messages(batch_size: int = 100, session: Optional[AsyncSession] = None, db_name: str | None = None) -> dict:
-    """Find messages without embeddings and generate them."""
+    """Find messages without embeddings and generate them.
+
+    When called without a caller-supplied session the function runs a
+    time-bounded loop (≤55 s) so a single beat-schedule tick drains as
+    much of the queue as possible rather than processing just one batch
+    and leaving 45+ seconds idle.
+    """
+    import time
+
     logger.info("maintenance_index_messages_called", batch_size=batch_size, db_name=db_name, has_session=session is not None)
-    if session is None:
-        logger.info("creating_new_session", db_name=db_name)
+
+    # Backward-compatible path: caller owns the session — run exactly once.
+    if session is not None:
+        return await _maintenance_index_messages_impl(session, batch_size)
+
+    # Self-managed path: loop until queue is empty or the 55-second budget expires
+    # (leaves 5 s buffer before the next beat tick fires at the 60-second mark).
+    MAX_RUNTIME_S = 55
+    deadline = time.monotonic() + MAX_RUNTIME_S
+    total: dict = {"processed": 0, "errors": 0, "tokens": 0}
+    iterations = 0
+
+    while time.monotonic() < deadline:
         async with get_session(db_name=db_name) as new_session:
             result = await _maintenance_index_messages_impl(new_session, batch_size)
-            logger.info("maintenance_index_messages_result", result=result, db_name=db_name)
-            return result
-    return await _maintenance_index_messages_impl(session, batch_size)
+        iterations += 1
+        for k in ("processed", "errors", "tokens"):
+            total[k] = total.get(k, 0) + result.get(k, 0)
+        if result["processed"] == 0:
+            break  # Queue empty — stop early
+
+    logger.info("maintenance_index_messages_done", iterations=iterations, **total)
+    return total
 
 
 async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: int) -> dict:
@@ -415,17 +439,34 @@ async def _maintenance_index_messages_impl(session: AsyncSession, batch_size: in
         logger.warning("redis_tracking_unavailable", error=str(e))
         r = None
 
-    # Prepare texts for batch embedding
-    texts = [msg.content.strip() for msg in messages if msg.content and msg.content.strip()]
-    if not texts:
+    # Prepare texts for batch embedding, deduplicating identical content within
+    # the batch (forwarded / reposted messages share the same text).  We track
+    # which messages map to which unique text so we can fan the vector back out.
+    seen_text: dict[str, int] = {}   # text → index in unique_texts
+    unique_texts: list[str] = []
+    msg_text_idx: list[tuple] = []   # (msg, idx_in_unique_texts)
+
+    for msg in messages:
+        t = (msg.content or "").strip()
+        if not t:
+            continue
+        if t not in seen_text:
+            seen_text[t] = len(unique_texts)
+            unique_texts.append(t)
+        msg_text_idx.append((msg, seen_text[t]))
+
+    if not unique_texts:
         if r:
             await r.aclose()
         return stats
 
     try:
-        vectors = await generate_embeddings_batch(texts)
+        unique_vectors = await generate_embeddings_batch(unique_texts)
+        # Fan vectors back to all messages, including duplicates
+        vectors_by_idx = unique_vectors
 
-        for msg, vector in zip(messages, vectors):
+        for msg, idx in msg_text_idx:
+            vector = vectors_by_idx[idx]
             emb = MessageEmbedding(message_id=msg.id, embedding=vector, chunk_text=msg.content[:1000])
             session.add(emb)
             stats["processed"] += 1

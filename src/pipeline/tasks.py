@@ -76,7 +76,7 @@ def process_unified_messages(self, limit: int = 100, db_name: str | None = None)
     return self.run_async(_do())
 
 @celery_app.task(name="src.pipeline.tasks.process_message_embeddings", bind=True, queue="processing", base=AsyncDBTask)
-def process_message_embeddings(self, batch_size: int = 100, db_name: str | None = None):
+def process_message_embeddings(self, batch_size: int = 300, db_name: str | None = None):
     """Generate vector embeddings for new messages."""
     from src.pipeline.unified_processor import maintenance_index_messages
     async def _do():
