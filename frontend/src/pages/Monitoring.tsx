@@ -101,6 +101,7 @@ function EmbeddingsManager() {
 const Monitoring: React.FC = () => {
   const { data: treeData, mutate: mutateTrees } = useSWR('/api/stats/tree', fetcher, { refreshInterval: 20000 });
   const { data: metricsData } = useSWR('/api/stats/prometheus', fetcher, { refreshInterval: 30000 });
+  const { data: embedProvider } = useSWR('/api/stats/embedding-provider', fetcher, { refreshInterval: 60000 });
 
   const handleStartSync = async (folderId: string) => {
     try {
@@ -125,7 +126,7 @@ const Monitoring: React.FC = () => {
           <Zap size={20} className="text-venom" />
           Data Pipeline
         </h2>
-        <SystemFlow metrics={metricsData} />
+        <SystemFlow metrics={metricsData} embedProvider={embedProvider} />
       </div>
 
 

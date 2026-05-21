@@ -258,14 +258,90 @@ async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get
 @router.get("/prometheus")
 async def get_prometheus_metrics(db: AsyncSession = Depends(get_db)):
     """Mock Prometheus for UI stability."""
+    settings = get_settings()
     now = datetime.now(timezone.utc); five_min = now - timedelta(minutes=5)
     ingest_raw = (await db.execute(select(func.count(Message.id)).where(Message.created_at >= five_min))).scalar() or 0
     ingest = round(ingest_raw / 5, 1)
-    
+
+    # Real embedding throughput from Redis (last completed minute)
+    embeddings_per_min = 0
+    try:
+        r = aioredis.from_url(settings.redis_url, socket_timeout=2)
+        mk = now.strftime("%Y-%m-%d %H:%M")
+        v = await r.get(f"embeddings:requests:{mk}")
+        if not v:  # current minute might be incomplete, try previous
+            mk = (now - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
+            v = await r.get(f"embeddings:requests:{mk}")
+        if v:
+            embeddings_per_min = int(v)
+        await r.aclose()
+    except Exception:
+        pass
+
     containers = ["crm-app", "crm-worker-processing", "crm-worker-connectors", "crm-beat", "crm-postgres", "crm-redis", "crm-whisper", "crm-prometheus"]
     metrics = {c: {"cpu": [{"value": 1.0}], "memory": [{"value": 120.0}], "status": "online"} for c in containers}
-    metrics["throughput"] = {"ingestion": ingest, "extraction": 0, "embeddings": 0, "timestamp": now.isoformat()}
+    metrics["throughput"] = {"ingestion": ingest, "extraction": 0, "embeddings": embeddings_per_min, "timestamp": now.isoformat()}
     return metrics
+
+
+# ── Embedding provider status cache (avoid repeated LMStudio probes) ─────────
+_embed_status_cache: dict = {"data": None, "ts": 0.0}
+_EMBED_STATUS_TTL = 60.0  # seconds
+
+@router.get("/embedding-provider")
+async def get_embedding_provider_status():
+    """Return embedding provider identity, availability, and recent throughput."""
+    import time as _time
+    global _embed_status_cache
+
+    now_mono = _time.monotonic()
+    if _embed_status_cache["data"] and (now_mono - _embed_status_cache["ts"]) < _EMBED_STATUS_TTL:
+        return _embed_status_cache["data"]
+
+    settings = get_settings()
+    provider = settings.embed_provider          # "lmstudio" | "google"
+    model = (settings.lmstudio_embed_model if provider == "lmstudio"
+             else settings.google_embed_model)
+
+    # ── Availability probe ───────────────────────────────────────────────────
+    available = False
+    if provider == "lmstudio":
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                resp = await client.get(f"{settings.lmstudio_base_url}/models")
+                available = resp.status_code == 200
+        except Exception:
+            available = False
+    else:
+        available = bool(getattr(settings, "google_api_key", None))
+
+    # ── Throughput from Redis (average of last 5 recorded minutes) ───────────
+    speed_vec_per_min = 0
+    try:
+        now_dt = datetime.now(timezone.utc)
+        r = aioredis.from_url(settings.redis_url, socket_timeout=2)
+        vals = []
+        for i in range(5):
+            mk = (now_dt - timedelta(minutes=i)).strftime("%Y-%m-%d %H:%M")
+            v = await r.get(f"embeddings:requests:{mk}")
+            if v:
+                vals.append(int(v))
+        await r.aclose()
+        speed_vec_per_min = round(sum(vals) / len(vals)) if vals else 0
+    except Exception:
+        pass
+
+    result = {
+        "provider": provider,
+        "available": available,
+        "model": model,
+        "dimensions": getattr(settings, "embed_dimensions", 1024),
+        "speed_vec_per_min": speed_vec_per_min,
+    }
+    _embed_status_cache["data"] = result
+    _embed_status_cache["ts"] = now_mono
+    return result
 
 @router.post("/embeddings/reindex")
 async def trigger_embeddings_reindex(request: Request):

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Database, Folder, MessageSquare, ChevronRight, ChevronDown,
-  Cpu, HardDrive, Zap, Cloud, Activity, Play
+  Cpu, HardDrive, Zap, Cloud, Activity, Play, BrainCircuit, Layers
 } from 'lucide-react';
 
 interface TreeNode {
@@ -178,151 +178,334 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: stri
   );
 };
 
-export const SystemFlow: React.FC<{ metrics: any }> = ({ metrics }) => {
-  // Persistence logic to prevent flickering during SWR refreshes
-  const lastValidMetrics = React.useRef<any>(null);
-  
-  const currentMetrics = React.useMemo(() => {
-    if (metrics && metrics.throughput) {
-      lastValidMetrics.current = metrics;
-      return metrics;
-    }
-    return lastValidMetrics.current || {};
-  }, [metrics]);
+// ─── SystemFlow v2 ────────────────────────────────────────────────────────────
 
-  const throughput = currentMetrics?.throughput || { ingestion: 0, extraction: 0, embeddings: 0 };
-  
-  const getMetric = (name: string, type: 'cpu' | 'memory') => {
-    const data = currentMetrics?.[name]?.[type];
-    if (!data || data.length === 0) return '—';
-    const val = data[data.length - 1].value;
-    return type === 'cpu' ? `${val}%` : `${Math.round(val)}MB`;
-  };
+const SF_STYLES = `
+  @keyframes particleFlow {
+    0%   { transform: translateX(-48px); opacity: 0; }
+    8%   { opacity: 1; }
+    92%  { opacity: 1; }
+    100% { transform: translateX(calc(var(--track-w, 160px) + 48px)); opacity: 0; }
+  }
+  @keyframes sfPulse {
+    0%, 100% { box-shadow: 0 0 6px currentColor; opacity: 1; }
+    50%       { box-shadow: 0 0 14px currentColor; opacity: 0.7; }
+  }
+  @keyframes sfNodeGlow {
+    0%, 100% { box-shadow: var(--node-glow-base); }
+    50%       { box-shadow: var(--node-glow-hover); }
+  }
+  @keyframes sfOrbit {
+    from { transform: rotate(0deg) translateX(12px) rotate(0deg); }
+    to   { transform: rotate(360deg) translateX(12px) rotate(-360deg); }
+  }
+  .sf-wrap { padding: 36px 28px 24px; background: rgba(10,18,35,0.5); backdrop-filter: blur(12px); }
+  .sf-grid { display: flex; align-items: center; gap: 0; margin-bottom: 32px; }
+  .sf-section { display: flex; flex-direction: column; align-items: center; gap: 12px; flex-shrink: 0; }
+  .sf-section-label {
+    font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 1.5px; color: rgba(148,163,184,0.5); white-space: nowrap;
+  }
+  .sf-stack { display: flex; flex-direction: column; gap: 10px; }
+  .sf-node {
+    display: flex; flex-direction: column; align-items: center; gap: 7px;
+    padding: 14px 16px; border-radius: 14px; min-width: 120px;
+    position: relative; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid; cursor: default;
+  }
+  .sf-node:hover { transform: translateY(-2px); }
+  .sf-node-icon { display: flex; align-items: center; justify-content: center; }
+  .sf-node-label { font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
+  .sf-node-metrics {
+    position: absolute; top: 5px; left: 7px;
+    font-size: 7.5px; font-family: monospace; line-height: 1.4;
+    color: rgba(148,163,184,0.55);
+  }
+  .sf-node-dot {
+    position: absolute; top: 8px; right: 8px;
+    width: 6px; height: 6px; border-radius: 50%;
+  }
 
-  const Connector = ({ value, unit, label, reverse, highlight }: any) => {
-    // Calculate animation speed: more throughput = faster particles
-    const speed = value > 0 ? Math.max(0.4, 2 - (value / 500)) : 0;
-    const opacity = value > 0 ? 1 : 0.4; // Increased base opacity to avoid ghosting
+  /* Particle stream track */
+  .sf-stream { flex: 1; min-width: 60px; display: flex; flex-direction: column; align-items: center; gap: 0; position: relative; }
+  .sf-stream-badge {
+    font-size: 10.5px; font-weight: 800; padding: 3px 10px; border-radius: 6px;
+    border: 1px solid; white-space: nowrap; margin-bottom: 10px;
+    letter-spacing: 0.3px; transition: all 0.4s ease;
+  }
+  .sf-stream-track {
+    width: 100%; height: 4px; border-radius: 2px;
+    position: relative; overflow: hidden;
+  }
+  .sf-stream-particle {
+    position: absolute; top: 0; left: 0;
+    width: 48px; height: 4px; border-radius: 2px;
+    animation: particleFlow linear infinite;
+  }
+  .sf-stream-label {
+    font-size: 8px; text-transform: uppercase; letter-spacing: 1px;
+    color: rgba(148,163,184,0.4); margin-top: 10px; white-space: nowrap;
+  }
 
-    return (
-      <div className={`flow-connector vertical-align ${highlight ? 'highlight' : ''}`} style={{ opacity }}>
-        <div className="connector-label-top" style={{ color: highlight ? '#3b82f6' : undefined }}>
-          {value.toLocaleString()} {unit}
-        </div>
-        <div 
-          className={`flow-particles ${reverse ? 'reverse' : ''}`} 
-          style={{ 
-            animationDuration: `${speed}s`, 
-            display: value > 0 ? 'block' : 'none',
-            background: highlight ? 'rgba(59, 130, 246, 0.2)' : undefined
-          }}
-        ></div>
-        <div className="connector-label-bottom">{label}</div>
-      </div>
-    );
-  };
+  /* AI Provider card */
+  .sf-ai-branch { display: flex; flex-direction: column; align-items: center; margin-top: 14px; gap: 0; }
+  .sf-ai-vline { width: 2px; height: 22px; border-radius: 1px; opacity: 0.5; }
+  .sf-ai-card {
+    border: 1px solid; border-radius: 14px; padding: 14px 20px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    position: relative; min-width: 180px; transition: box-shadow 0.3s ease;
+  }
+  .sf-ai-label { font-size: 0.9rem; font-weight: 800; }
+  .sf-ai-model { font-size: 9.5px; opacity: 0.55; text-align: center; max-width: 160px; word-break: break-all; }
+  .sf-ai-stats { display: flex; gap: 12px; margin-top: 4px; font-size: 11px; font-family: monospace; }
+  .sf-ai-avail {
+    position: absolute; top: 8px; right: 10px;
+    display: flex; align-items: center; gap: 4px;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sf-ai-dot { width: 6px; height: 6px; border-radius: 50%; }
 
-  const Node = ({ id, label, icon: Icon, color }: any) => (
-    <div className={`flow-node ${color}`}>
-      <div className="node-metrics">
-        <span>CPU: {getMetric(id, 'cpu')}</span>
-        <span>MEM: {getMetric(id, 'memory')}</span>
-      </div>
-      <Icon size={20} />
-      <span className="node-label">{label}</span>
-      <div className={`node-status online`}></div>
-    </div>
-  );
+  .sf-footer {
+    display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;
+    border-top: 1px solid rgba(255,255,255,0.06); padding-top: 18px;
+  }
+  .sf-footer-item { display: flex; align-items: center; gap: 7px; font-size: 0.85rem; }
+  .sf-footer-item strong { font-weight: 700; }
+`;
+
+interface EmbedProvider { provider: string; available: boolean; model: string; dimensions: number; speed_vec_per_min: number; }
+
+const SFParticleStream: React.FC<{
+  value: number; unit: string; label: string; color: string;
+}> = ({ value, unit, label, color }) => {
+  const active = value > 0;
+  const duration = active ? Math.max(0.7, 2.6 - value / 300) : 2;
+  const count  = active ? Math.min(7, Math.max(2, Math.floor(value / 80) + 2)) : 0;
 
   return (
-    <div className="system-flow-container serpent-card">
-      <div className="flow-grid">
-        {/* Source */}
-        <div className="flow-section">
-          <div className="section-label">Data Source</div>
-          <div className="flow-node blue pulse">
-            <Cloud size={24} />
-            <span>Telegram API</span>
-            <div className="node-status online"></div>
-          </div>
-        </div>
-
-        <Connector 
-          value={throughput.ingestion} 
-          unit="msg/min" 
-          label="Поток данных" 
-          highlight={true}
-        />
-
-        {/* Backend / Conductor */}
-        <div className="flow-section">
-          <div className="section-label">Conductor</div>
-          <div className="flow-stack">
-            <Node id="crm-app" label="App API" icon={Activity} color="purple" />
-            <Node id="crm-beat" label="Scheduler" icon={Zap} color="purple" />
-          </div>
-        </div>
-
-        <Connector 
-          value={throughput.extraction} 
-          unit="tasks/m" 
-          label="AI Process" 
-        />
-
-        {/* Workers */}
-        <div className="flow-section">
-          <div className="section-label">Workers</div>
-          <div className="flow-stack">
-            <Node id="crm-worker-connectors" label="Connectors" icon={Cpu} color="orange" />
-            <Node id="crm-worker-processing" label="Processor" icon={Cpu} color="orange" />
-          </div>
-        </div>
-
-        <Connector 
-          value={throughput.embeddings} 
-          unit="vec/m" 
-          label="Vectors" 
-        />
-
-        {/* Infrastructure */}
-        <div className="flow-section">
-          <div className="section-label">Infrastructure</div>
-          <div className="flow-stack">
-            <div className="flow-row">
-              <Node id="crm-postgres" label="Postgres" icon={HardDrive} color="emerald" />
-              <Node id="crm-redis" label="Redis" icon={Database} color="emerald" />
-            </div>
-            <div className="flow-row">
-              <Node id="crm-whisper" label="Whisper" icon={Zap} color="blue" />
-              <Node id="crm-prometheus" label="Prometheus" icon={Activity} color="blue" />
-            </div>
-          </div>
-        </div>
+    <div className="sf-stream">
+      <div
+        className="sf-stream-badge"
+        style={{
+          color: active ? color : 'rgba(148,163,184,0.4)',
+          borderColor: active ? `${color}55` : 'rgba(255,255,255,0.08)',
+          background: active ? `${color}12` : 'transparent',
+          boxShadow: active ? `0 0 14px ${color}22` : 'none',
+        }}
+      >
+        {active ? value.toLocaleString() : '—'}&nbsp;
+        <span style={{ fontWeight: 400, opacity: 0.65 }}>{unit}</span>
       </div>
-      
-      <style>{`
-        .flow-connector.highlight .connector-label-top {
-          background: rgba(59, 130, 246, 0.2);
-          border-color: rgba(59, 130, 246, 0.4);
-          font-size: 11px;
-          padding: 3px 8px;
-          box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
-        }
-        .flow-connector.highlight .flow-particles::after {
-          background: linear-gradient(90deg, transparent, #3b82f6, transparent);
-          box-shadow: 0 0 10px #3b82f6;
-        }
-      `}</style>
 
-      <div className="flow-description">
-        <div className="flow-info">
-          <Zap size={14} className="text-venom" />
-          <span>Active Streams: <strong>{throughput.ingestion > 0 ? 'High Activity' : 'Standby'}</strong></span>
+      <div
+        className="sf-stream-track"
+        style={{ background: active ? `${color}18` : 'rgba(255,255,255,0.05)' }}
+      >
+        {Array.from({ length: count }).map((_, i) => (
+          <div
+            key={i}
+            className="sf-stream-particle"
+            style={{
+              background: `linear-gradient(90deg, transparent, ${color}, transparent)`,
+              boxShadow: `0 0 6px ${color}bb`,
+              animationDuration: `${duration}s`,
+              animationDelay: `${-(i / count) * duration}s`,
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="sf-stream-label">{label}</div>
+    </div>
+  );
+};
+
+const SFNode: React.FC<{
+  id?: string; label: string; icon: React.ElementType;
+  color: string; metrics?: { cpu: string; mem: string };
+  pulse?: boolean; children?: React.ReactNode;
+}> = ({ label, icon: Icon, color, metrics, pulse, children }) => (
+  <div
+    className="sf-node"
+    style={{
+      borderColor: `${color}55`,
+      background: `${color}0d`,
+      boxShadow: `0 0 22px ${color}18`,
+      color,
+    }}
+  >
+    {metrics && (
+      <div className="sf-node-metrics">
+        <div>CPU: {metrics.cpu}</div>
+        <div>MEM: {metrics.mem}</div>
+      </div>
+    )}
+    <div
+      className="sf-node-dot"
+      style={{
+        background: '#10b981',
+        boxShadow: '0 0 6px #10b981',
+        animation: pulse ? 'sfPulse 2s ease-in-out infinite' : 'sfPulse 3s ease-in-out infinite',
+      }}
+    />
+    <div className="sf-node-icon"><Icon size={22} /></div>
+    <span className="sf-node-label">{label}</span>
+    {children}
+  </div>
+);
+
+const SFAIProviderCard: React.FC<{ ep: EmbedProvider }> = ({ ep }) => {
+  const isLM = ep.provider === 'lmstudio';
+  const color = isLM ? '#a855f7' : '#3b82f6';
+  const name  = isLM ? 'LMStudio' : 'Gemini';
+  const Icon  = isLM ? BrainCircuit : Cloud;
+  const shortModel = ep.model.length > 24 ? ep.model.slice(0, 22) + '…' : ep.model;
+  const speedColor = ep.speed_vec_per_min > 0 ? '#10b981' : 'rgba(148,163,184,0.5)';
+
+  return (
+    <div
+      className="sf-ai-card"
+      style={{
+        borderColor: `${color}50`,
+        background: `${color}0c`,
+        boxShadow: ep.available ? `0 0 30px ${color}22` : 'none',
+        color,
+      }}
+    >
+      <div className="sf-ai-avail" style={{ color: ep.available ? '#10b981' : '#ef4444' }}>
+        <div
+          className="sf-ai-dot"
+          style={{
+            background: ep.available ? '#10b981' : '#ef4444',
+            boxShadow: `0 0 6px ${ep.available ? '#10b981' : '#ef4444'}`,
+            animation: ep.available ? 'sfPulse 2s infinite' : 'none',
+          }}
+        />
+        {ep.available ? 'online' : 'offline'}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Icon size={20} />
+        <span className="sf-ai-label">{name}</span>
+      </div>
+      <div className="sf-ai-model">{shortModel}</div>
+
+      <div className="sf-ai-stats">
+        <span style={{ color: `${color}cc` }}>{ep.dimensions}-dim</span>
+        <span style={{ color: speedColor }}>
+          {ep.speed_vec_per_min > 0 ? `${ep.speed_vec_per_min.toLocaleString()} vec/min` : 'idle'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+export const SystemFlow: React.FC<{ metrics: any; embedProvider?: EmbedProvider }> = ({ metrics, embedProvider }) => {
+  const lastValid = React.useRef<any>(null);
+  const m = React.useMemo(() => {
+    if (metrics?.throughput) { lastValid.current = metrics; return metrics; }
+    return lastValid.current || {};
+  }, [metrics]);
+
+  const tp = m?.throughput || { ingestion: 0, extraction: 0, embeddings: 0 };
+
+  const getMetric = (id: string, type: 'cpu' | 'memory') => {
+    const d = m?.[id]?.[type];
+    if (!d?.length) return '—';
+    const v = d[d.length - 1].value;
+    return type === 'cpu' ? `${v}%` : `${Math.round(v)}MB`;
+  };
+  const nodeMetrics = (id: string) => ({ cpu: getMetric(id, 'cpu'), mem: getMetric(id, 'memory') });
+
+  const embedColor = embedProvider?.provider === 'lmstudio' ? '#a855f7' : '#3b82f6';
+  const vecSpeed   = embedProvider?.speed_vec_per_min ?? tp.embeddings ?? 0;
+
+  return (
+    <div className="sf-wrap serpent-card">
+      <style>{SF_STYLES}</style>
+
+      <div className="sf-grid">
+
+        {/* 1. Data Source */}
+        <div className="sf-section">
+          <div className="sf-section-label">Data Source</div>
+          <SFNode label="Telegram API" icon={Cloud} color="#3b82f6" pulse metrics={nodeMetrics('crm-telegram')} />
         </div>
-        <div className="flow-info">
-          <Activity size={14} className="text-blue" />
-          <span>Aggregate Load: <strong>{throughput.extraction > 10 ? 'Heavy AI' : 'Normal'}</strong></span>
+
+        <SFParticleStream value={tp.ingestion} unit="msg/min" label="Ingestion" color="#3b82f6" />
+
+        {/* 2. Conductor */}
+        <div className="sf-section">
+          <div className="sf-section-label">Conductor</div>
+          <div className="sf-stack">
+            <SFNode label="App API"    icon={Activity} color="#a855f7" metrics={nodeMetrics('crm-app')} />
+            <SFNode label="Scheduler"  icon={Zap}      color="#a855f7" metrics={nodeMetrics('crm-beat')} />
+          </div>
         </div>
+
+        <SFParticleStream value={tp.extraction} unit="tasks/m" label="AI Process" color="#a855f7" />
+
+        {/* 3. Workers + AI branch */}
+        <div className="sf-section">
+          <div className="sf-section-label">Workers</div>
+          <div className="sf-stack">
+            <SFNode label="Connectors" icon={Cpu} color="#f59e0b" metrics={nodeMetrics('crm-worker-connectors')} />
+            <SFNode label="Processor"  icon={Cpu} color="#f59e0b" metrics={nodeMetrics('crm-worker-processing')} />
+          </div>
+          {embedProvider && (
+            <div className="sf-ai-branch">
+              <div className="sf-ai-vline" style={{ background: embedColor }} />
+              <SFAIProviderCard ep={embedProvider} />
+            </div>
+          )}
+        </div>
+
+        <SFParticleStream value={vecSpeed} unit="vec/min" label="Vectors" color={embedColor} />
+
+        {/* 4. Storage */}
+        <div className="sf-section">
+          <div className="sf-section-label">Storage</div>
+          <div className="sf-stack">
+            <div style={{ display: 'flex', gap: 10 }}>
+              <SFNode label="Postgres" icon={HardDrive} color="#10b981" metrics={nodeMetrics('crm-postgres')} />
+              <SFNode label="Redis"    icon={Database}  color="#10b981" metrics={nodeMetrics('crm-redis')} />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <SFNode label="Whisper"     icon={Zap}      color="#38bdf8" metrics={nodeMetrics('crm-whisper')} />
+              <SFNode label="Prometheus"  icon={Layers}   color="#38bdf8" metrics={nodeMetrics('crm-prometheus')} />
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Footer */}
+      <div className="sf-footer">
+        <div className="sf-footer-item">
+          <Zap size={14} color="#10b981" />
+          <span style={{ color: 'rgba(148,163,184,0.7)' }}>
+            Active Streams: <strong style={{ color: '#10b981' }}>{tp.ingestion > 0 ? 'High Activity' : 'Standby'}</strong>
+          </span>
+        </div>
+        <div className="sf-footer-item">
+          <Activity size={14} color="#3b82f6" />
+          <span style={{ color: 'rgba(148,163,184,0.7)' }}>
+            Load: <strong style={{ color: '#3b82f6' }}>{tp.extraction > 10 ? 'Heavy AI' : 'Normal'}</strong>
+          </span>
+        </div>
+        {embedProvider && (
+          <div className="sf-footer-item">
+            <BrainCircuit size={14} color={embedColor} />
+            <span style={{ color: 'rgba(148,163,184,0.7)' }}>
+              Embeddings:&nbsp;
+              <strong style={{ color: embedProvider.available ? '#10b981' : '#ef4444' }}>
+                {embedProvider.provider === 'lmstudio' ? 'LMStudio' : 'Gemini'}&nbsp;
+                {embedProvider.available ? '●' : '○'}
+              </strong>
+              {vecSpeed > 0 && <span style={{ color: embedColor }}>&nbsp;· {vecSpeed.toLocaleString()} vec/min</span>}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
