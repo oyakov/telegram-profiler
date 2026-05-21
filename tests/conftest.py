@@ -9,9 +9,20 @@ from src.db.database import get_engine, list_tenant_databases
 from src.db.models import Base
 from src.core.config import get_settings
 
+import socket
 settings = get_settings()
 TEST_DB_NAME = "crm_test"
-DB_HOST = "localhost" if settings.postgres_host == "postgres" else settings.postgres_host
+
+def resolve_db_host():
+    if settings.postgres_host == "postgres":
+        try:
+            socket.gethostbyname("postgres")
+            return "postgres"
+        except socket.gaierror:
+            return "localhost"
+    return settings.postgres_host
+
+DB_HOST = resolve_db_host()
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def setup_test_db():

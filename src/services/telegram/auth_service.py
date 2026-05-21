@@ -4,9 +4,12 @@ import asyncio
 import structlog
 from typing import Optional
 from telethon.errors import (
-    AuthRestartError, 
-    AuthKeyUnregisteredError, 
-    SessionPasswordNeededError
+    AuthRestartError,
+    AuthKeyUnregisteredError,
+    SessionPasswordNeededError,
+    FloodWaitError,
+    PhoneNumberBannedError,
+    PhoneNumberInvalidError,
 )
 from src.services.telegram.base import TelegramAuthInterface
 from src.services.telegram.client_factory import TelegramClientFactory
@@ -43,14 +46,31 @@ class TelegramAuthService(TelegramAuthInterface):
                 result = await client.send_code_request(phone)
                 await self.factory.save_session()
                 return result.phone_code_hash
+            except FloodWaitError as e:
+                wait = e.seconds
+                logger.warning("telegram_flood_wait", phone=phone, wait_seconds=wait)
+                raise Exception(f"Слишком много попыток. Подождите {wait} секунд перед следующей попыткой.") from e
+            except PhoneNumberBannedError as e:
+                raise Exception("Этот номер телефона заблокирован в Telegram.") from e
+            except PhoneNumberInvalidError as e:
+                raise Exception("Неверный формат номера телефона.") from e
             except (AuthRestartError, AuthKeyUnregisteredError) as e:
-                logger.warning("telegram_stale_session_detected", phone=phone, attempt=attempt)
+                logger.warning("telegram_stale_session_detected", phone=phone, attempt=attempt, error_type=type(e).__name__)
                 await self.factory.delete_session()
                 self.factory.clear_cache()
                 if attempt == 1:
-                    raise Exception("Telegram session is invalid. Please try again.") from e
+                    raise Exception("Сессия Telegram недействительна. Попробуйте ещё раз.") from e
+            except Exception as e:
+                logger.error("telegram_send_code_unexpected", phone=phone, attempt=attempt, error_type=type(e).__name__, error=str(e))
+                if attempt == 1:
+                    raise Exception(f"Не удалось отправить код: {type(e).__name__}") from e
+                await self.factory.delete_session()
+                self.factory.clear_cache()
             finally:
-                await client.disconnect()
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
 
     async def sign_in(self, phone: str, code: str, phone_code_hash: str) -> dict:
         """Sign in with phone, code, and hash."""

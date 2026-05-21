@@ -27,6 +27,24 @@
   font-weight: 700;
   color: #0f172a;
   flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.profile-avatar-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .profile-info {
@@ -37,7 +55,26 @@
   font-size: 1.5rem;
   font-weight: 700;
   color: #f8fafc;
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.25rem 0;
+}
+
+.profile-telegram-username {
+  font-size: 0.9rem;
+  color: #10b981;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
+.profile-bio {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 0.75rem;
+  max-width: 480px;
+  line-height: 1.4;
+}
+
+.profile-stats {
+  margin-top: 0.5rem;
 }
 
 .profile-stats {
@@ -142,6 +179,26 @@
   color: #94a3b8;
   text-transform: uppercase;
   font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.data-table th.sortable:hover {
+  color: #cbd5e1;
+}
+
+.sort-icon {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.sort-icon.active {
+  opacity: 1;
+  color: #10b981;
 }
 
 .data-table tbody tr {
@@ -156,6 +213,14 @@
 .data-table td {
   padding: 0.75rem;
   color: #cbd5e1;
+}
+
+.recent-delta {
+  color: #10b981;
+  font-size: 0.8em;
+  font-weight: 600;
+  margin-left: 0.3em;
+  opacity: 0.85;
 }
 
 .empty-state {
@@ -288,33 +353,45 @@
   to { transform: rotate(360deg); }
 }
 
-.sync-btn {
+.sync-btn-labeled {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
   border-radius: 8px;
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(16, 185, 129, 0.12);
   border: 1px solid rgba(16, 185, 129, 0.3);
   color: #10b981;
   cursor: pointer;
   transition: all 0.2s ease;
-  padding: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.sync-btn:hover:not(:disabled) {
-  background: rgba(16, 185, 129, 0.25);
+.sync-btn-labeled:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.22);
   border-color: rgba(16, 185, 129, 0.5);
 }
 
-.sync-btn:disabled {
-  opacity: 0.6;
+.sync-btn-labeled:disabled {
+  opacity: 0.7;
   cursor: not-allowed;
 }
 
-.sync-btn .spinning {
+.sync-btn-labeled.sync-success {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.sync-btn-labeled.sync-error {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}
+
+.sync-btn-labeled .spinning {
   animation: spin 1s linear infinite;
 }
 
@@ -358,3 +435,80 @@
     transform: translateX(0);
   }
 }
+
+/* Premium Skeleton Loaders */
+.skeleton-placeholder {
+  display: inline-block;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 200% 100%;
+  animation: shimmer-skeleton 1.5s infinite ease-in-out;
+  border-radius: 4px;
+}
+
+@keyframes shimmer-skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.name-skeleton {
+  width: 150px;
+  height: 1.5rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.username-skeleton {
+  width: 100px;
+  height: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.bio-skeleton {
+  width: 250px;
+  height: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.count-skeleton {
+  width: 60px;
+  height: 1.5rem;
+  margin-top: 0.25rem;
+}
+
+.text-skeleton {
+  height: 0.85rem;
+  border-radius: 3px;
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
+}
+
+/* Linear Progress Bar */
+.card-loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, #10b981 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer-skeleton 1.5s infinite linear;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.table-container {
+  position: relative; /* necessary for absolute positioning of card-loading-bar */
+  overflow: hidden;
+}
+
+.profile-section {
+  position: relative; /* necessary for absolute positioning of card-loading-bar */
+  overflow: hidden;
+}
+

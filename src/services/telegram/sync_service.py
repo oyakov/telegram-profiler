@@ -129,24 +129,29 @@ class TelegramSyncService(TelegramSyncInterface):
             messages_synced = 0
             batch_size = 1000
 
-            # Get last_id from TrackedChannel or similar if available
+            # Always fetch the tracked channel — needed for folder_id assignment on messages
+            res = await session.execute(select(TrackedChannel).where(TrackedChannel.telegram_id == str(entity.id)))
+            tracked = res.scalar_one_or_none()
+            channel_folder_id = tracked.folder_id if tracked else None
+
+            # Get last_id from sync state if not ignored
             last_id = 0
             if not ignore_last_id:
-                # Check if this is a tracked channel
-                res = await session.execute(select(TrackedChannel).where(TrackedChannel.telegram_id == str(entity.id)))
-                tracked = res.scalar_one_or_none()
-
                 repo = SyncStateRepository(session)
                 state = await repo.get_or_create_connector_state("telegram")
                 last_id = (state.metadata_json or {}).get(f"chat_{entity.id}_last_id", 0)
 
-            # Load all known source_message_ids for this entity into a Python set for
-            # O(1) dedup during the iter_messages loop.
-            existing_rows = await session.execute(
-                select(Message.source_message_id)
-                .where(Message.group_id == str(entity.id))
-            )
-            existing_ids = {r[0] for r in existing_rows if r[0]}
+            # When last_id > 0 (incremental sync), iter_messages(min_id=last_id) only
+            # returns messages with id > last_id — they can't already exist, so skip
+            # the full-table scan. Only load existing IDs on a full sync (last_id == 0).
+            if last_id > 0:
+                existing_ids: set[str] = set()
+            else:
+                existing_rows = await session.execute(
+                    select(Message.source_message_id)
+                    .where(Message.group_id == str(entity.id))
+                )
+                existing_ids = {r[0] for r in existing_rows if r[0]}
 
             # Wrap iterator in a retriable function
             @telegram_retry
@@ -161,6 +166,7 @@ class TelegramSyncService(TelegramSyncInterface):
 
                     message = Message(
                         contact_id=contact.id,
+                        folder_id=channel_folder_id,
                         source="telegram",
                         source_message_id=source_id,
                         direction="outgoing" if msg.out else "incoming",

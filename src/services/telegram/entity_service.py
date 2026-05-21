@@ -2,8 +2,7 @@
 
 import structlog
 import asyncio
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from sqlalchemy import select
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from telethon.errors import RPCError
@@ -90,7 +89,10 @@ class TelegramEntityService(TelegramEntityInterface):
         return contact
 
     async def update_user_profile(self) -> None:
-        """Fetch current user info and update UserProfile in DB."""
+        """Fetch current user info and update UserProfile in DB.
+
+        Photos are NOT stored locally — fetched on demand via /api/telegram/media/avatar/{id}.
+        """
         client = await self.factory.get_client()
 
         @telegram_retry
@@ -124,37 +126,13 @@ class TelegramEntityService(TelegramEntityInterface):
                     profile.username = me.username
                     profile.phone = me.phone
 
-                    # Fetch bio
                     try:
                         full = await _fetch_full_user(me)
                         profile.bio = full.full_user.about
                     except Exception as e:
                         logger.warning("bio_fetch_failed", error=str(e))
 
-                    # Download photo
-                    photo_path = await self._download_photo(client, me)
-                    if photo_path:
-                        profile.profile_photo_path = photo_path
-
                     await session.commit()
                     logger.info("user_profile_updated", telegram_id=me.id)
         except Exception as e:
             logger.error("user_profile_update_failed", error=str(e))
-
-    async def _download_photo(self, client, entity) -> Optional[str]:
-        """Download profile photo and return local path."""
-        @telegram_retry
-        async def _do_download():
-            output_dir = Path("/app/uploads/avatars")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"{entity.id}.jpg"
-            file_path = output_dir / filename
-            path = await client.download_profile_photo(entity, file=str(file_path))
-            if path: return f"/app/uploads/avatars/{filename}"
-            return None
-
-        try:
-            return await _do_download()
-        except Exception as e:
-            logger.warning("telegram_photo_download_error", entity_id=entity.id, error=str(e))
-            return None

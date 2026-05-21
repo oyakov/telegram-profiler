@@ -128,6 +128,17 @@ class MessageEmbedding(Base):
     __tablename__ = "message_embeddings"
     __table_args__ = (
         Index("ix_msg_embedding_message_id", "message_id"),
+        # IVFFlat ANN index for cosine distance search.
+        # HNSW would offer better recall but requires ~300MB+ RAM during build
+        # which exceeds the crm-postgres container limit (384MB).
+        # lists=100 is appropriate for ~100K-500K rows; re-tune if row count grows.
+        Index(
+            "idx_msg_embedding_ivfflat",
+            "embedding",
+            postgresql_using="ivfflat",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_with={"lists": "100"},
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

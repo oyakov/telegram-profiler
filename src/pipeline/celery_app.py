@@ -56,9 +56,7 @@ celery_app.conf.update(
         },
         "multi-db-sync-orchestrator": {
             "task": "src.pipeline.tasks.orchestrate_multi_db_sync",
-            "schedule": crontab(
-                minute="*/30"  # Default to 30 mins, could be moved to settings if needed
-            ),
+            "schedule": crontab(minute="2,7,12,17,22,27,32,37,42,47,52,57"),
         },
         "deep-track-orchestrator": {
             "task": "src.pipeline.tasks.deep_track_orchestrator",

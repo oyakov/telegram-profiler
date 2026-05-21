@@ -1,12 +1,13 @@
 from __future__ import annotations
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.database import get_db
-from src.db.models import TrackedChannel, TrackedFolder, Message
+from src.db.models import TrackedChannel, TrackedFolder, Message, Contact
 from src.api.schemas import DiscoveryJoinRequest
 
 router = APIRouter(prefix="/tracking", tags=["Tracking"])
@@ -30,12 +31,20 @@ async def list_folders(db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(TrackedFolder).order_by(TrackedFolder.created_at))
     folders = res.scalars().all()
 
-    # Count messages per folder
     msg_counts_res = await db.execute(
         select(Message.folder_id, func.count(Message.id))
+        .where(Message.folder_id.isnot(None))
         .group_by(Message.folder_id)
     )
     msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    recent_res = await db.execute(
+        select(Message.folder_id, func.count(Message.id))
+        .where(Message.folder_id.isnot(None), Message.created_at >= cutoff)
+        .group_by(Message.folder_id)
+    )
+    recent_counts = {str(row[0]): row[1] for row in recent_res.all()}
 
     return {"folders": [
         {
@@ -44,7 +53,8 @@ async def list_folders(db: AsyncSession = Depends(get_db)):
             "description": f.description,
             "tags": f.tags or [],
             "is_active": f.is_active,
-            "message_count": msg_counts.get(str(f.id), 0)
+            "message_count": msg_counts.get(str(f.id), 0),
+            "recent_count": recent_counts.get(str(f.id), 0),
         }
         for f in folders
     ]}
@@ -123,17 +133,18 @@ async def list_tracked_channels(db: AsyncSession = Depends(get_db)):
 
     result = await db.execute(query)
 
-    # Get message counts by folder
+    # Get message counts by channel/group
     msg_counts_res = await db.execute(
-        select(Message.folder_id, func.count(Message.id))
-        .group_by(Message.folder_id)
+        select(Message.group_id, func.count(Message.id))
+        .where(Message.group_id.isnot(None))
+        .group_by(Message.group_id)
     )
     msg_counts = {str(row[0]): row[1] for row in msg_counts_res.all()}
 
     channels = []
     for chan, folder_name in result.all():
-        # Count messages in this channel's folder
-        folder_messages = msg_counts.get(str(chan.folder_id), 0) if chan.folder_id else 0
+        # Count messages in this channel
+        channel_messages = msg_counts.get(chan.telegram_id, 0)
 
         channels.append({
             "id": str(chan.id),
@@ -144,7 +155,7 @@ async def list_tracked_channels(db: AsyncSession = Depends(get_db)):
             "is_active": chan.is_active,
             "folder_id": str(chan.folder_id) if chan.folder_id else None,
             "folder_name": folder_name,
-            "messages_count": folder_messages,
+            "messages_count": channel_messages,
             "total_synced": chan.total_messages_synced or 0,
             "oldest_msg_date": chan.oldest_message_date.isoformat() if chan.oldest_message_date else None,
             "last_sync": chan.last_sync_at.isoformat() if chan.last_sync_at else None,
@@ -154,20 +165,31 @@ async def list_tracked_channels(db: AsyncSession = Depends(get_db)):
 
 @router.get("/contacts")
 async def list_tracked_contacts(db: AsyncSession = Depends(get_db)):
-    from src.db.models import Contact
     res = await db.execute(
         select(Contact)
         .where(Contact.is_personal == True)
         .order_by(Contact.updated_at.desc())
     )
     contacts = res.scalars().all()
+
+    # Count actual messages per personal contact
+    contact_ids = [c.id for c in contacts]
+    msg_counts: dict[str, int] = {}
+    if contact_ids:
+        counts_res = await db.execute(
+            select(Message.contact_id, func.count(Message.id))
+            .where(Message.contact_id.in_(contact_ids))
+            .group_by(Message.contact_id)
+        )
+        msg_counts = {str(row[0]): row[1] for row in counts_res.all()}
+
     return {"contacts": [
         {
             "id": str(c.id),
             "telegram_id": c.telegram_id,
             "name": f"{c.first_name} {c.last_name or ''}".strip(),
             "username": c.telegram_username,
-            "total_synced": c.total_messages_synced or 0,
+            "message_count": msg_counts.get(str(c.id), 0),
             "oldest_msg_date": c.oldest_message_date.isoformat() if c.oldest_message_date else None,
             "last_sync": c.last_enriched_at.isoformat() if c.last_enriched_at else None,
         }

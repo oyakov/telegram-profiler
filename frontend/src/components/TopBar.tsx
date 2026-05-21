@@ -19,9 +19,11 @@ const TopBar: React.FC = () => {
   const { data: telegramStatus, mutate: mutateStatus, error: statusError } = useSWR(
     '/api/telegram/auth/status', fetcher, { refreshInterval: 30000 }
   );
-  const { data: telegramUser } = useSWR(
-    telegramStatus?.authorized ? '/api/telegram/user' : null, fetcher
-  );
+  const telegramUser = telegramStatus?.profile;
+  const selectedDb = localStorage.getItem('selected_db') || 'crm';
+  const avatarUrl = telegramUser?.telegram_id
+    ? `/api/telegram/media/avatar/${telegramUser.telegram_id}?db=${selectedDb}`
+    : null;
 
   const isSystemOnline = !statusError;
 
@@ -75,6 +77,7 @@ const TopBar: React.FC = () => {
 
   const avatarInitial = telegramUser?.first_name?.[0]?.toUpperCase() ?? '?';
 
+
   return (
     <header className="top-bar">
       <div className="top-bar-left">
@@ -108,8 +111,9 @@ const TopBar: React.FC = () => {
             aria-label="Меню профиля"
           >
             <div className="avatar-wrapper">
-              {telegramUser?.photo_url ? (
-                <img src={telegramUser.photo_url} alt="Профиль" className="avatar-img" />
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Профиль" className="avatar-img"
+                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
               ) : (
                 <div className="avatar-placeholder">{avatarInitial}</div>
               )}

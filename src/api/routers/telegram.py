@@ -1,5 +1,7 @@
 import structlog
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+import time
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List
 from sqlalchemy import select
@@ -26,6 +28,10 @@ class FolderImportRequest(BaseModel):
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
+
+# In-memory avatar cache: key -> (jpeg_bytes, fetched_at)
+_avatar_cache: dict[str, tuple[bytes, float]] = {}
+_AVATAR_TTL = 6 * 3600  # 6 hours
 
 def get_telegram_services(request: Request):
     db_name = request.headers.get("X-Database")
@@ -65,6 +71,47 @@ async def telegram_auth_status(request: Request):
     except Exception as e:
         logger.error("telegram_auth_status_error", error_type=type(e).__name__)
         return {"authorized": False, "error": "Could not check authorization status"}
+
+@router.get("/media/avatar/{telegram_id}")
+async def get_telegram_avatar(
+    telegram_id: str,
+    db: str = Query(default=None),
+):
+    """Return a profile photo for any Telegram entity, fetched on-demand and cached in memory.
+
+    Uses a query param ?db= instead of a header because <img> tags can't send custom headers.
+    """
+    from src.core.config import get_settings
+    db_name = db or get_settings().postgres_db
+    cache_key = f"{db_name}:{telegram_id}"
+
+    cached = _avatar_cache.get(cache_key)
+    if cached:
+        data, fetched_at = cached
+        if time.time() - fetched_at < _AVATAR_TTL:
+            return Response(
+                content=data, media_type="image/jpeg",
+                headers={"Cache-Control": f"public, max-age={_AVATAR_TTL}"},
+            )
+
+    factory = TelegramClientFactory(db_name=db_name)
+    client = await factory.get_client()
+    try:
+        async with client:
+            photo_bytes = await client.download_profile_photo(int(telegram_id), file=bytes)
+    except Exception as e:
+        logger.warning("avatar_fetch_failed", telegram_id=telegram_id, error=str(e))
+        return Response(status_code=404)
+
+    if not photo_bytes:
+        return Response(status_code=404)
+
+    _avatar_cache[cache_key] = (photo_bytes, time.time())
+    return Response(
+        content=photo_bytes, media_type="image/jpeg",
+        headers={"Cache-Control": f"public, max-age={_AVATAR_TTL}"},
+    )
+
 
 @router.post("/auth/send_code")
 async def telegram_send_code(req: TelegramSendCode, request: Request):
