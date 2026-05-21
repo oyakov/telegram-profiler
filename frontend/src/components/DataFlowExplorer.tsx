@@ -183,21 +183,21 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: stri
 interface EmbedProvider { provider: string; available: boolean; model: string; dimensions: number; speed_vec_per_min: number; }
 
 // ── Canvas & node layout ────────────────────────────────────────────────────
-// Wide spacing — both horizontal and vertical
-const CW = 1320, CH = 860;
+// Very spacious layout — wide horizontal and vertical gaps
+const CW = 1600, CH = 1000;
 
 interface NodeDef { x:number; y:number; w:number; h:number; color:string; name:string; sub:string; ext?:boolean; }
 
 const NODES: Record<string, NodeDef> = {
   //                   cx    cy    w      h
-  telegram:   { x:140,  y:105, w:210, h:110, color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
-  lmstudio:   { x:1180, y:105, w:220, h:110, color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
-  app:        { x:300,  y:390, w:255, h:190, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
-  beat:       { x:700,  y:660, w:250, h:190, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
-  processor:  { x:1060, y:390, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
-  connectors: { x:300,  y:660, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
-  redis:      { x:700,  y:390, w:255, h:190, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
-  postgres:   { x:1060, y:660, w:260, h:190, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
+  telegram:   { x:150,  y:110, w:210, h:110, color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
+  lmstudio:   { x:1450, y:110, w:220, h:110, color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
+  app:        { x:340,  y:490, w:255, h:190, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
+  beat:       { x:800,  y:820, w:250, h:190, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
+  processor:  { x:1260, y:490, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
+  connectors: { x:340,  y:820, w:265, h:190, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
+  redis:      { x:800,  y:490, w:255, h:190, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
+  postgres:   { x:1260, y:820, w:260, h:190, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
 };
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
@@ -491,11 +491,11 @@ export const SystemFlow: React.FC<{ metrics: any; embedProvider?: EmbedProvider 
 
         {/* Section labels */}
         {[
-          { label: 'EXTERNAL',    x: 140  },
-          { label: 'APP LAYER',   x: 300  },
-          { label: 'BROKER',      x: 700  },
-          { label: 'WORKERS',     x: 1060 },
-          { label: 'AI PROVIDER', x: 1180 },
+          { label: 'EXTERNAL',    x: 150  },
+          { label: 'APP LAYER',   x: 340  },
+          { label: 'BROKER',      x: 800  },
+          { label: 'WORKERS',     x: 1260 },
+          { label: 'AI PROVIDER', x: 1450 },
         ].map(({ label, x }) => (
           <text key={label} x={x} y={22} textAnchor="middle"
             fontSize={9} fontFamily="ui-monospace,monospace" fontWeight="800"
