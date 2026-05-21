@@ -262,7 +262,7 @@ const GraphEdge: React.FC<{ spec: EdgeSpec }> = ({ spec }) => {
 };
 
 // ── Node card (foreignObject) ────────────────────────────────────────────────
-const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any }> = ({ id, ep, metrics }) => {
+const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any; tp?: any }> = ({ id, ep, metrics, tp }) => {
   const n = NODES[id];
   if (!n) return null;
 
@@ -273,12 +273,23 @@ const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any }> = ({
     return type === 'cpu' ? `${v}%` : `${Math.round(v)}M`;
   };
 
-  const isLM = id === 'lmstudio';
+  const isLM    = id === 'lmstudio';
+  const isRedis = id === 'redis';
+  const isApp   = id === 'app';
   const dotColor = isLM ? (ep?.available ? '#10b981' : '#ef4444') : '#10b981';
 
-  const sub = isLM && ep
-    ? `${ep.dimensions}-dim · ${ep.speed_vec_per_min > 0 ? ep.speed_vec_per_min + ' v/m' : 'idle'}`
-    : n.sub;
+  // Dynamic subtitle for special nodes
+  let sub = n.sub;
+  if (isLM && ep) {
+    const spd = ep.available === false ? 0 : ep.speed_vec_per_min;
+    sub = `${ep.dimensions}-dim · ${spd > 0 ? spd + ' v/m' : 'idle'}`;
+  } else if (isRedis && tp) {
+    const total = (tp.queue_connectors ?? 0) + (tp.queue_processing ?? 0);
+    sub = total > 0 ? `${total} tasks queued` : 'Broker · Cache';
+  } else if (isApp && tp) {
+    const ingest = tp.ingestion ?? 0;
+    sub = ingest > 0 ? `${Math.round(ingest)} msg/min` : 'FastAPI · uvicorn';
+  }
 
   const providerName = isLM && ep
     ? (ep.provider === 'lmstudio' ? 'LMStudio' : 'Gemini')
@@ -330,33 +341,87 @@ export const SystemFlow: React.FC<{ metrics: any; embedProvider?: EmbedProvider 
     return lastValid.current || {};
   }, [metrics]);
 
-  const tp = m?.throughput || { ingestion: 0, extraction: 0, embeddings: 0 };
-  const vecSpeed   = embedProvider?.speed_vec_per_min ?? tp.embeddings ?? 0;
+  const tp = m?.throughput || { ingestion: 0, extraction: 0, embeddings: 0, queue_connectors: 0, queue_processing: 0 };
+
+  // Zero out vec speed when provider is offline — Redis cache lags up to 5 min
+  const vecSpeed   = embedProvider?.available === false ? 0 : (embedProvider?.speed_vec_per_min ?? tp.embeddings ?? 0);
   const embedColor = embedProvider?.provider === 'lmstudio' ? '#a855f7' : '#3b82f6';
+
+  const ingest   = tp.ingestion        ?? 0;   // msg/min — real DB query
+  const extract  = tp.extraction       ?? 0;   // AI tasks/min — real ExtractionLog count
+  const qConn    = tp.queue_connectors ?? 0;   // Celery LLEN connectors queue
+  const qProc    = tp.queue_processing ?? 0;   // Celery LLEN processing queue
 
   // Update lmstudio node color dynamically
   if (embedProvider) {
     NODES.lmstudio = { ...NODES.lmstudio, color: embedColor };
   }
 
+  // ── All edge speeds driven by live metrics ───────────────────────────────
+  // speed unit: ~100 = slow (1 particle, dur≈2.5s), ~500 = medium, ~900 = fast (5 particles, dur≈0.9s)
   const EDGES: EdgeSpec[] = [
-    // Telegram ↔ app/connectors
-    { from:'telegram',   to:'app',        color:'#3b82f6', label: tp.ingestion > 0 ? `${Math.round(tp.ingestion)} msg/m` : 'msgs',  speed: tp.ingestion * 8 + 60 },
-    { from:'connectors', to:'telegram',   color:'#60a5fa', label:'fetch',        speed: 80,  active: true },
-    // App → infra
-    { from:'app',        to:'redis',      color:'#f59e0b', label:'queue',        speed: 200, active: true },
-    { from:'app',        to:'postgres',   color:'#10b981', label:'SQL',          speed: 150, active: true },
-    // Beat → Redis
-    { from:'beat',       to:'redis',      color:'#c084fc', label:'dispatch',     speed: 80,  active: true },
-    // Redis → workers
-    { from:'redis',      to:'processor',  color:'#f59e0b', label:'tasks',        speed: vecSpeed > 0 ? 280 : 120, active: true },
-    { from:'redis',      to:'connectors', color:'#f59e0b', label:'tasks',        speed: 120, active: true },
-    // Worker → external
-    { from:'processor',  to:'lmstudio',   color: embedColor, label: vecSpeed > 0 ? `${vecSpeed} v/m` : 'embed', speed: vecSpeed, active: vecSpeed > 0 },
-    // Workers → postgres
-    { from:'processor',  to:'postgres',   color:'#10b981', label:'write',        speed: 180, active: true },
-    { from:'connectors', to:'postgres',   color:'#10b981', label:'write',        speed: 120, active: true },
+    // Fetch loop: connectors pull from Telegram at ingestion rate
+    { from:'connectors', to:'telegram',
+      color:'#60a5fa',
+      label: ingest > 0 ? `${Math.round(ingest)} msg/m` : 'fetch',
+      speed: ingest * 18 + 55 },
+
+    // Messages arrive at app API (same rate as fetch)
+    { from:'telegram',   to:'app',
+      color:'#3b82f6',
+      label: ingest > 0 ? `${Math.round(ingest)}/m` : 'msgs',
+      speed: ingest * 18 + 55 },
+
+    // App queues tasks into Redis — driven by extraction + ingestion load
+    { from:'app',        to:'redis',
+      color:'#f59e0b',
+      label: extract > 0 ? `${Math.round(extract)} t/m` : 'queue',
+      speed: (extract + ingest) * 10 + 80 },
+
+    // App writes messages to Postgres — matches ingestion
+    { from:'app',        to:'postgres',
+      color:'#10b981',
+      label:'SQL',
+      speed: ingest * 14 + 60 },
+
+    // Beat dispatches periodic embed jobs — more active when queue has backlog
+    { from:'beat',       to:'redis',
+      color:'#c084fc',
+      label:'dispatch',
+      speed: qProc > 5 ? 160 : 70 },
+
+    // Redis → processing worker — driven by queue depth
+    { from:'redis',      to:'processor',
+      color:'#f59e0b',
+      label: qProc > 0 ? `${qProc} q` : 'tasks',
+      speed: qProc * 30 + vecSpeed * 0.25 + 80 },
+
+    // Redis → connector worker — driven by queue depth + ingestion
+    { from:'redis',      to:'connectors',
+      color:'#f59e0b',
+      label: qConn > 0 ? `${qConn} q` : 'tasks',
+      speed: qConn * 30 + ingest * 10 + 80 },
+
+    // Processor calls LMStudio for embeddings — fully live, stops when offline
+    { from:'processor',  to:'lmstudio',
+      color: embedColor,
+      label: vecSpeed > 0 ? `${vecSpeed} v/m` : 'embed',
+      speed: vecSpeed,
+      active: vecSpeed > 0 && embedProvider?.available !== false },
+
+    // Workers write to Postgres — vectors at embed rate, messages at ingest rate
+    { from:'processor',  to:'postgres',
+      color:'#10b981',
+      label:'write',
+      speed: vecSpeed * 0.6 + 70 },
+
+    { from:'connectors', to:'postgres',
+      color:'#10b981',
+      label:'write',
+      speed: ingest * 14 + 60 },
   ];
+
+  const totalQueue = qConn + qProc;
 
   return (
     <div style={{ padding: '24px 20px 18px', background: 'rgba(10,18,35,0.5)', backdropFilter: 'blur(12px)', borderRadius: 'inherit' }}>
@@ -390,41 +455,57 @@ export const SystemFlow: React.FC<{ metrics: any; embedProvider?: EmbedProvider 
         {/* Edges (drawn first, behind nodes) */}
         {EDGES.map((spec, i) => <GraphEdge key={i} spec={spec} />)}
 
-        {/* Nodes (drawn on top) */}
+        {/* Nodes (drawn on top), pass live throughput for dynamic subtitles */}
         {Object.keys(NODES).map(id => (
-          <GraphNode key={id} id={id} ep={embedProvider} metrics={m} />
+          <GraphNode key={id} id={id} ep={embedProvider} metrics={m} tp={tp} />
         ))}
       </svg>
 
-      {/* Footer */}
-      <div style={{ display:'flex', gap:24, justifyContent:'center', flexWrap:'wrap',
+      {/* Footer — all live numbers */}
+      <div style={{ display:'flex', gap:20, justifyContent:'center', flexWrap:'wrap',
         borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:14, marginTop:10 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:'0.82rem' }}>
-          <Zap size={13} color="#10b981" />
-          <span style={{ color:'rgba(148,163,184,0.65)' }}>
-            Ingestion:&nbsp;<strong style={{ color:'#10b981' }}>
-              {tp.ingestion > 0 ? `${Math.round(tp.ingestion)} msg/min` : 'Standby'}
+
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.8rem' }}>
+          <Zap size={12} color="#3b82f6" />
+          <span style={{ color:'rgba(148,163,184,0.6)' }}>
+            Ingest:&nbsp;<strong style={{ color: ingest > 0 ? '#3b82f6' : 'rgba(148,163,184,0.4)' }}>
+              {ingest > 0 ? `${Math.round(ingest)} msg/min` : 'idle'}
             </strong>
           </span>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:'0.82rem' }}>
-          <Database size={13} color="#10b981" />
-          <span style={{ color:'rgba(148,163,184,0.65)' }}>
-            6 containers running
-          </span>
-        </div>
+
+        {extract > 0 && (
+          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.8rem' }}>
+            <Cpu size={12} color="#a855f7" />
+            <span style={{ color:'rgba(148,163,184,0.6)' }}>
+              AI:&nbsp;<strong style={{ color:'#a855f7' }}>{Math.round(extract)} tasks/min</strong>
+            </span>
+          </div>
+        )}
+
+        {totalQueue > 0 && (
+          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.8rem' }}>
+            <Database size={12} color="#f59e0b" />
+            <span style={{ color:'rgba(148,163,184,0.6)' }}>
+              Queue:&nbsp;<strong style={{ color:'#f59e0b' }}>{totalQueue} tasks</strong>
+              {qConn > 0 && <span style={{ color:'rgba(148,163,184,0.4)', fontSize:'0.75rem' }}> ({qConn}+{qProc})</span>}
+            </span>
+          </div>
+        )}
+
         {embedProvider && (
-          <div style={{ display:'flex', alignItems:'center', gap:7, fontSize:'0.82rem' }}>
-            <BrainCircuit size={13} color={embedColor} />
-            <span style={{ color:'rgba(148,163,184,0.65)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.8rem' }}>
+            <BrainCircuit size={12} color={embedColor} />
+            <span style={{ color:'rgba(148,163,184,0.6)' }}>
               {embedProvider.provider === 'lmstudio' ? 'LMStudio' : 'Gemini'}&nbsp;
               <strong style={{ color: embedProvider.available ? '#10b981' : '#ef4444' }}>
                 {embedProvider.available ? '● online' : '○ offline'}
               </strong>
-              {vecSpeed > 0 && <span style={{ color: embedColor }}>&nbsp;· {vecSpeed.toLocaleString()} vec/min</span>}
+              {vecSpeed > 0 && <span style={{ color: embedColor }}>&nbsp;· {vecSpeed.toLocaleString()} v/min</span>}
             </span>
           </div>
         )}
+
       </div>
     </div>
   );

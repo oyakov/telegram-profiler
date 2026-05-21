@@ -257,30 +257,75 @@ async def get_hierarchical_tree(request: Request, db: AsyncSession = Depends(get
 
 @router.get("/prometheus")
 async def get_prometheus_metrics(db: AsyncSession = Depends(get_db)):
-    """Mock Prometheus for UI stability."""
+    """Live pipeline metrics: ingestion rate, extraction rate, queue depths, embeddings/min."""
     settings = get_settings()
-    now = datetime.now(timezone.utc); five_min = now - timedelta(minutes=5)
-    ingest_raw = (await db.execute(select(func.count(Message.id)).where(Message.created_at >= five_min))).scalar() or 0
+    now = datetime.now(timezone.utc)
+    five_min = now - timedelta(minutes=5)
+
+    # ── Message ingestion rate (real DB) ────────────────────────────────────
+    ingest_raw = (await db.execute(
+        select(func.count(Message.id)).where(Message.created_at >= five_min)
+    )).scalar() or 0
     ingest = round(ingest_raw / 5, 1)
 
-    # Real embedding throughput from Redis (last completed minute)
+    # ── AI extraction rate (ExtractionLog entries in last 5 min) ────────────
+    extraction = 0.0
+    try:
+        extraction_raw = (await db.execute(
+            select(func.count(ExtractionLog.id)).where(ExtractionLog.created_at >= five_min)
+        )).scalar() or 0
+        extraction = round(extraction_raw / 5, 1)
+    except Exception:
+        pass
+
+    # ── Redis: embedding rate + queue depths ─────────────────────────────────
     embeddings_per_min = 0
+    queue_connectors = 0
+    queue_processing = 0
     try:
         r = aioredis.from_url(settings.redis_url, socket_timeout=2)
+
+        # Embedding rate: try current minute, fallback to previous
         mk = now.strftime("%Y-%m-%d %H:%M")
         v = await r.get(f"embeddings:requests:{mk}")
-        if not v:  # current minute might be incomplete, try previous
+        if not v:
             mk = (now - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M")
             v = await r.get(f"embeddings:requests:{mk}")
         if v:
             embeddings_per_min = int(v)
+
+        # Celery queue depths
+        queue_connectors = int(await r.llen("celery/queue/connectors") or 0)
+        queue_processing = int(await r.llen("celery/queue/processing") or 0)
+
         await r.aclose()
     except Exception:
         pass
 
-    containers = ["crm-app", "crm-worker-processing", "crm-worker-connectors", "crm-beat", "crm-postgres", "crm-redis", "crm-whisper", "crm-prometheus"]
-    metrics = {c: {"cpu": [{"value": 1.0}], "memory": [{"value": 120.0}], "status": "online"} for c in containers}
-    metrics["throughput"] = {"ingestion": ingest, "extraction": 0, "embeddings": embeddings_per_min, "timestamp": now.isoformat()}
+    # ── psutil: real CPU + memory for this (app) process ────────────────────
+    app_cpu, app_mem = 1.0, 128.0
+    try:
+        import os
+        proc = psutil.Process(os.getpid())
+        app_cpu = round(proc.cpu_percent(interval=0.05), 1)
+        app_mem = round(proc.memory_info().rss / 1024 / 1024, 1)
+    except Exception:
+        pass
+
+    containers = ["crm-app", "crm-worker-processing", "crm-worker-connectors",
+                  "crm-beat", "crm-postgres", "crm-redis"]
+    metrics = {c: {"cpu": [{"value": 1.0}], "memory": [{"value": 120.0}], "status": "online"}
+               for c in containers}
+    metrics["crm-app"]["cpu"]    = [{"value": app_cpu}]
+    metrics["crm-app"]["memory"] = [{"value": app_mem}]
+    metrics["throughput"] = {
+        "ingestion":        ingest,
+        "extraction":       extraction,
+        "embeddings":       embeddings_per_min,
+        "queue_connectors": queue_connectors,
+        "queue_processing": queue_processing,
+        "timestamp":        now.isoformat(),
+    }
     return metrics
 
 
