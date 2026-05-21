@@ -152,6 +152,8 @@
   flex-direction: column;
   gap: 12px;
   padding: 24px;
+  position: relative;
+  overflow: hidden;
 }
 
 .contact-item {

@@ -28,12 +28,13 @@ const PersonalContacts: React.FC = () => {
     fetcher
   );
 
-  if (error) return <div className="error">Failed to load contacts</div>;
-  if (!data) return <div className="loading">Loading contacts...</div>;
+  const isLoading = !data && !error;
 
-  const contacts = data.contacts || [];
-  const total = data.total || 0;
-  const totalPages = data.pages || 0;
+  if (error) return <div className="error">Failed to load contacts</div>;
+
+  const contacts = data?.contacts || [];
+  const total = data?.total || 0;
+  const totalPages = data?.pages || 0;
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -138,12 +139,16 @@ const PersonalContacts: React.FC = () => {
       <div className="page-header">
         <div>
           <h1 className="text-gradient">Мои Контакты</h1>
-          <p className="text-secondary">Всего: {total} контактов</p>
+          {isLoading ? (
+            <div className="skeleton-placeholder text-skeleton" style={{ width: '120px', marginTop: '6px' }} />
+          ) : (
+            <p className="text-secondary">Всего: {total} контактов</p>
+          )}
         </div>
         <div className="header-buttons">
           <button
             onClick={handleSyncContacts}
-            disabled={isSyncingContacts}
+            disabled={isSyncingContacts || isLoading}
             className="btn-sync"
           >
             {isSyncingContacts ? (
@@ -161,7 +166,7 @@ const PersonalContacts: React.FC = () => {
           {selectedIds.size > 0 && (
             <button
               onClick={handleAddToTracked}
-              disabled={isLoadingHistory}
+              disabled={isLoadingHistory || isLoading}
               className="btn-fetch-history"
             >
               {isLoadingHistory ? (
@@ -193,10 +198,11 @@ const PersonalContacts: React.FC = () => {
           className="search-input"
           value={searchQuery}
           onChange={handleSearch}
+          disabled={isLoading}
         />
       </div>
 
-      {contacts.length > 0 && (
+      {contacts.length > 0 && !isLoading && (
         <div className="selection-bar">
           <label className="select-all-checkbox">
             <input
@@ -213,7 +219,24 @@ const PersonalContacts: React.FC = () => {
       )}
 
       <div className="contacts-list serpent-card">
-        {contacts.length === 0 ? (
+        {isLoading && <div className="card-loading-bar" />}
+        {isLoading ? (
+          Array.from({ length: 6 }).map((_, idx) => (
+            <div key={`personal-contact-skeleton-${idx}`} className="contact-item" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="skeleton-placeholder" style={{ width: '18px', height: '18px', borderRadius: '4px', flexShrink: 0 }} />
+              <div className="mini-avatar skeleton-placeholder" style={{ background: 'transparent', flexShrink: 0 }} />
+              <div className="contact-summary" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div className="skeleton-placeholder text-skeleton" style={{ width: '140px' }} />
+                <div className="skeleton-placeholder text-skeleton" style={{ width: '80px', height: '0.7rem' }} />
+              </div>
+              <div className="contact-badges" style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                <div className="skeleton-placeholder" style={{ width: '70px', height: '18px', borderRadius: '4px' }} />
+                <div className="skeleton-placeholder" style={{ width: '90px', height: '18px', borderRadius: '4px' }} />
+              </div>
+              <div className="skeleton-placeholder" style={{ width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0 }} />
+            </div>
+          ))
+        ) : contacts.length === 0 ? (
           <div className="empty-state">
             <p>Нет контактов</p>
           </div>
@@ -376,17 +399,21 @@ const PersonalContacts: React.FC = () => {
       {totalPages > 1 && (
         <div className="pagination-controls">
           <button
-            disabled={page <= 1}
+            disabled={page <= 1 || isLoading}
             onClick={() => setPage((p) => p - 1)}
             className="btn-page"
           >
             Предыдущая
           </button>
           <span className="page-info">
-            Страница {page} из {totalPages}
+            {isLoading ? (
+              <div className="skeleton-placeholder text-skeleton" style={{ width: '80px' }} />
+            ) : (
+              `Страница ${page} из ${totalPages}`
+            )}
           </span>
           <button
-            disabled={page >= totalPages}
+            disabled={page >= totalPages || isLoading}
             onClick={() => setPage((p) => p + 1)}
             className="btn-page"
           >

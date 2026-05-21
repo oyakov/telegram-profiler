@@ -163,6 +163,8 @@ const Settings: React.FC = () => {
   const { data, error } = useSWR<SettingsResponse>(EFFECTIVE_URL, fetcher);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
+  const isLoading = !data && !error;
+
   const grouped = useMemo(() => {
     if (!data) return {} as Record<string, EffectiveSetting[]>;
     return data.settings.reduce<Record<string, EffectiveSetting[]>>((acc, s) => {
@@ -175,28 +177,32 @@ const Settings: React.FC = () => {
   const displayed = activeCategory ? [activeCategory] : categories;
 
   if (error) return <div className="error">Не удалось загрузить настройки</div>;
-  if (!data)  return <div className="loading">Загрузка настроек...</div>;
 
-  const dbCount = data.settings.filter(s => s.source === 'db').length;
+  const dbCount = data?.settings ? data.settings.filter(s => s.source === 'db').length : 0;
 
   return (
     <div className="settings-page">
       <div className="page-header">
         <h1 className="text-gradient">Настройки</h1>
-        <p className="text-secondary">
-          Конфигурация системы — значения из БД переопределяют .env
-          {dbCount > 0 && <span className="db-overrides-badge">{dbCount} переопределено</span>}
-        </p>
+        {isLoading ? (
+          <div className="skeleton-placeholder text-skeleton" style={{ width: '380px', marginTop: '6px' }} />
+        ) : (
+          <p className="text-secondary">
+            Конфигурация systems — значения из БД переопределяют .env
+            {dbCount > 0 && <span className="db-overrides-badge">{dbCount} переопределено</span>}
+          </p>
+        )}
       </div>
 
       <div className="category-tabs">
         <button
           className={`cat-tab ${activeCategory === null ? 'active' : ''}`}
           onClick={() => setActiveCategory(null)}
+          disabled={isLoading}
         >
           Все
         </button>
-        {categories.map(cat => {
+        {!isLoading && categories.map(cat => {
           const meta = CATEGORY_META[cat];
           return (
             <button
@@ -212,9 +218,36 @@ const Settings: React.FC = () => {
       </div>
 
       <div className="settings-grid">
-        {displayed.map(cat => (
-          <CategoryCard key={cat} category={cat} settings={grouped[cat] ?? []} />
-        ))}
+        {isLoading ? (
+          CATEGORY_ORDER.slice(0, 3).map((cat, index) => {
+            const meta = CATEGORY_META[cat];
+            return (
+              <div key={`settings-card-skeleton-${index}`} className="settings-card serpent-card no-hover" style={{ position: 'relative', overflow: 'hidden' }}>
+                <div className="card-loading-bar" />
+                <div className={`card-header color-${meta.color}`} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', alignItems: 'center', gap: '10px', padding: '16px' }}>
+                  {meta.icon}
+                  <h3 style={{ margin: 0, flex: 1 }}>{meta.label}</h3>
+                  <div className="skeleton-placeholder" style={{ width: '80px', height: '18px', borderRadius: '4px' }} />
+                </div>
+                <div className="settings-list" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {Array.from({ length: 3 }).map((_, rIdx) => (
+                    <div key={rIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: rIdx < 2 ? '16px' : '0', borderBottom: rIdx < 2 ? '1px solid rgba(255, 255, 255, 0.05)' : 'none' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div className="skeleton-placeholder text-skeleton" style={{ width: '140px' }} />
+                        <div className="skeleton-placeholder text-skeleton" style={{ width: '220px', height: '0.75rem' }} />
+                      </div>
+                      <div className="skeleton-placeholder" style={{ width: '70px', height: '32px', borderRadius: '6px' }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          displayed.map(cat => (
+            <CategoryCard key={cat} category={cat} settings={grouped[cat] ?? []} />
+          ))
+        )}
       </div>
     </div>
   );

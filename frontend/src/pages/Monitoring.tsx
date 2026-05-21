@@ -17,9 +17,11 @@ interface EmbeddingsStats {
 
 // Embeddings Manager Component
 function EmbeddingsManager() {
-  const { data: stats, mutate: mutateStats } = useSWR<EmbeddingsStats>('/api/stats/embeddings', fetcher);
+  const { data: stats, error: statsError, mutate: mutateStats } = useSWR<EmbeddingsStats>('/api/stats/embeddings', fetcher);
   const [reindexing, setReindexing] = useState(false);
   const [reindexStatus, setReindexStatus] = useState<'idle' | 'queued' | 'success' | 'error'>('idle');
+
+  const isLoading = !stats && !statsError;
 
   const handleReindex = async () => {
     setReindexing(true);
@@ -38,10 +40,11 @@ function EmbeddingsManager() {
     }
   };
 
-  if (!stats) return <div className="loading">Загрузка...</div>;
+  if (statsError) return <div className="error">Failed to load embeddings stats</div>;
 
   return (
-    <div className="embeddings-manager serpent-card">
+    <div className="embeddings-manager serpent-card no-hover" style={{ position: 'relative', overflow: 'hidden', padding: '24px' }}>
+      {isLoading && <div className="card-loading-bar" />}
       <div className="embeddings-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -53,7 +56,7 @@ function EmbeddingsManager() {
         <button
           className={`btn-reindex ${reindexStatus}`}
           onClick={handleReindex}
-          disabled={reindexing}
+          disabled={reindexing || isLoading}
         >
           <RefreshCw size={18} className={reindexing ? 'spin' : ''} />
           {reindexing ? 'Переиндексируется...' : 'Переиндексировать'}
@@ -61,22 +64,34 @@ function EmbeddingsManager() {
       </div>
 
       <div className="embeddings-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-        <div className="stat">
+        <div className="stat" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span className="label">Всего векторов:</span>
-          <span className="value" style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>{stats.total_embeddings.toLocaleString()}</span>
+          {isLoading ? (
+            <div className="skeleton-placeholder" style={{ width: '100px', height: '1.5rem', marginTop: '4px' }} />
+          ) : (
+            <span className="value" style={{ fontSize: '1.5rem', fontWeight: '700', color: '#10b981' }}>{(stats?.total_embeddings || 0).toLocaleString()}</span>
+          )}
         </div>
-        <div className="stat">
+        <div className="stat" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span className="label">Ожидает обработки:</span>
-          <span className="value" style={{ fontSize: '1.5rem', fontWeight: '700', color: stats.messages_needing_embeddings > 0 ? '#f59e0b' : '#10b981' }}>
-            {stats.messages_needing_embeddings.toLocaleString()}
-          </span>
+          {isLoading ? (
+            <div className="skeleton-placeholder" style={{ width: '80px', height: '1.5rem', marginTop: '4px' }} />
+          ) : (
+            <span className="value" style={{ fontSize: '1.5rem', fontWeight: '700', color: (stats?.messages_needing_embeddings || 0) > 0 ? '#f59e0b' : '#10b981' }}>
+              {(stats?.messages_needing_embeddings || 0).toLocaleString()}
+            </span>
+          )}
         </div>
-        <div className="stat" style={{ gridColumn: 'span 2' }}>
+        <div className="stat" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span className="label">Общий прогресс индексации:</span>
-          <div className="progress-bar" style={{ marginTop: '10px' }}>
-            <div className="progress-fill" style={{ width: `${stats.progress_percent}%` }}></div>
-            <span className="progress-text">{stats.progress_percent.toFixed(1)}%</span>
-          </div>
+          {isLoading ? (
+            <div className="skeleton-placeholder" style={{ width: '100%', height: '24px', borderRadius: '12px', marginTop: '10px' }} />
+          ) : (
+            <div className="progress-bar" style={{ marginTop: '10px' }}>
+              <div className="progress-fill" style={{ width: `${stats?.progress_percent || 0}%` }}></div>
+              <span className="progress-text">{(stats?.progress_percent || 0).toFixed(1)}%</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -118,11 +133,14 @@ const Monitoring: React.FC = () => {
           Data Explorer
         </h2>
         {treeData ? (
-          <DataFlowTree tree={treeData.tree} onSync={handleStartSync} />
+          <div className="serpent-card no-hover" style={{ padding: '24px' }}>
+            <DataFlowTree tree={treeData.tree} onSync={handleStartSync} />
+          </div>
         ) : (
-          <div className="loading serpent-card" style={{ padding: '40px', textAlign: 'center' }}>
-            <Activity size={32} className="spin text-blue" style={{ marginBottom: '16px' }} />
-            <p>Анализ иерархии баз данных...</p>
+          <div className="serpent-card no-hover" style={{ position: 'relative', overflow: 'hidden', padding: '40px', minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+            <div className="card-loading-bar" />
+            <Activity size={32} className="spin text-blue" style={{ animation: 'spin 2s linear infinite' }} />
+            <p className="text-secondary" style={{ margin: 0 }}>Анализ иерархии баз данных...</p>
           </div>
         )}
       </div>
@@ -130,7 +148,6 @@ const Monitoring: React.FC = () => {
       <EmbeddingsManager />
 
       <style>{`
-        .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .spin { animation: spin 2s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>

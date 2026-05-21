@@ -10,22 +10,27 @@ const Contacts: React.FC = () => {
   const [page, setPage] = React.useState(1);
   const { data, error } = useSWR(`/api/contacts?page=${page}&page_size=50`, fetcher);
 
-  if (error) return <div className="error">Failed to load contacts</div>;
-  if (!data) return <div className="loading">Loading contact database...</div>;
+  const isLoading = !data && !error;
 
-  const contacts = data.contacts || [];
-  const total = data.total || 0;
-  const totalPages = data.pages || 0;
+  if (error) return <div className="error">Failed to load contacts</div>;
+
+  const contacts = data?.contacts || [];
+  const total = data?.total || 0;
+  const totalPages = data?.pages || 0;
 
   return (
     <div className="contacts-page">
       <div className="page-header-actions">
         <div>
           <h1 className="text-gradient">Index-Контактов</h1>
-          <p className="text-secondary">Всего выявлено: {total} профилей</p>
+          {isLoading ? (
+            <div className="skeleton-placeholder text-skeleton" style={{ width: '180px', marginTop: '6px' }} />
+          ) : (
+            <p className="text-secondary">Всего выявлено: {total} профилей</p>
+          )}
         </div>
         <div className="actions">
-          <button className="btn-venom secondary">
+          <button className="btn-venom secondary" disabled={isLoading}>
             <Filter size={18} />
             Фильтр
           </button>
@@ -33,6 +38,7 @@ const Contacts: React.FC = () => {
       </div>
 
       <div className="table-container serpent-card">
+        {isLoading && <div className="card-loading-bar" />}
         <table className="modern-table">
           <thead>
             <tr>
@@ -43,7 +49,27 @@ const Contacts: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {contacts.map((c: any) => (
+            {isLoading ? (
+              Array.from({ length: 10 }).map((_, idx) => (
+                <tr key={`contact-row-skeleton-${idx}`}>
+                  <td>
+                    <div className="user-cell">
+                      <div className="mini-avatar skeleton-placeholder" style={{ background: 'transparent' }} />
+                      <div className="skeleton-placeholder text-skeleton" style={{ width: '120px' }} />
+                    </div>
+                  </td>
+                  <td>
+                    <div className="skeleton-placeholder text-skeleton" style={{ width: '80px' }} />
+                  </td>
+                  <td>
+                    <div className="skeleton-placeholder text-skeleton" style={{ width: '50px' }} />
+                  </td>
+                  <td>
+                    <div className="skeleton-placeholder text-skeleton" style={{ width: '20px' }} />
+                  </td>
+                </tr>
+              ))
+            ) : contacts.map((c: any) => (
               <tr key={c.id}>
                 <td>
                   <div className="user-cell">
@@ -68,17 +94,21 @@ const Contacts: React.FC = () => {
         {/* Pagination Controls */}
         <div className="pagination-controls">
           <button 
-            disabled={page <= 1} 
+            disabled={page <= 1 || isLoading} 
             onClick={() => setPage(p => p - 1)}
             className="btn-page"
           >
             Предыдущая
           </button>
           <span className="page-info">
-            Страница {page} из {totalPages}
+            {isLoading ? (
+              <div className="skeleton-placeholder text-skeleton" style={{ width: '100px' }} />
+            ) : (
+              `Страница ${page} из ${totalPages}`
+            )}
           </span>
           <button 
-            disabled={page >= totalPages} 
+            disabled={page >= totalPages || isLoading} 
             onClick={() => setPage(p => p + 1)}
             className="btn-page"
           >

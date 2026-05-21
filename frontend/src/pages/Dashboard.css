@@ -436,71 +436,7 @@
   }
 }
 
-/* Premium Skeleton Loaders */
-.skeleton-placeholder {
-  display: inline-block;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
-  background-size: 200% 100%;
-  animation: shimmer-skeleton 1.5s infinite ease-in-out;
-  border-radius: 4px;
-}
 
-@keyframes shimmer-skeleton {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-.name-skeleton {
-  width: 150px;
-  height: 1.5rem;
-  margin-top: 0.25rem;
-  margin-bottom: 0.5rem;
-}
-
-.username-skeleton {
-  width: 100px;
-  height: 0.9rem;
-  margin-bottom: 0.5rem;
-}
-
-.bio-skeleton {
-  width: 250px;
-  height: 0.85rem;
-  margin-bottom: 0.5rem;
-}
-
-.count-skeleton {
-  width: 60px;
-  height: 1.5rem;
-  margin-top: 0.25rem;
-}
-
-.text-skeleton {
-  height: 0.85rem;
-  border-radius: 3px;
-  margin-top: 0.2rem;
-  margin-bottom: 0.2rem;
-}
-
-/* Linear Progress Bar */
-.card-loading-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(90deg, transparent 0%, #10b981 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer-skeleton 1.5s infinite linear;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  overflow: hidden;
-  z-index: 10;
-}
 
 .table-container {
   position: relative; /* necessary for absolute positioning of card-loading-bar */
