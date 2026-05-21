@@ -183,21 +183,21 @@ export const DataFlowTree: React.FC<{ tree: TreeNode[]; onSync?: (folderId: stri
 interface EmbedProvider { provider: string; available: boolean; model: string; dimensions: number; speed_vec_per_min: number; }
 
 // ── Canvas & node layout ────────────────────────────────────────────────────
-// Nodes: internal h=116, external h=86 — large enough for readable stats text
-const CW = 920, CH = 550;
+// Nodes: internal h=148, external h=100 — fully readable at normal monitor distance
+const CW = 980, CH = 600;
 
 interface NodeDef { x:number; y:number; w:number; h:number; color:string; name:string; sub:string; ext?:boolean; }
 
 const NODES: Record<string, NodeDef> = {
   //                   cx    cy    w      h
-  telegram:   { x:122,  y:92,  w:152, h:86,  color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
-  lmstudio:   { x:796,  y:92,  w:166, h:86,  color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
-  app:        { x:228,  y:278, w:172, h:116, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
-  beat:       { x:460,  y:440, w:160, h:116, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
-  processor:  { x:686,  y:278, w:176, h:116, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
-  connectors: { x:228,  y:440, w:176, h:116, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
-  redis:      { x:460,  y:278, w:160, h:116, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
-  postgres:   { x:686,  y:440, w:172, h:116, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
+  telegram:   { x:128,  y:95,  w:175, h:100, color:'#3b82f6', name:'Telegram',     sub:'External API',         ext:true },
+  lmstudio:   { x:870,  y:95,  w:185, h:100, color:'#a855f7', name:'LMStudio',     sub:'Embedding model',      ext:true },
+  app:        { x:235,  y:288, w:200, h:148, color:'#7c3aed', name:'crm-app',      sub:'FastAPI · uvicorn' },
+  beat:       { x:490,  y:488, w:195, h:148, color:'#7c3aed', name:'crm-beat',     sub:'Celery Beat' },
+  processor:  { x:740,  y:288, w:210, h:148, color:'#f59e0b', name:'crm-worker',   sub:'processing' },
+  connectors: { x:235,  y:488, w:210, h:148, color:'#f59e0b', name:'crm-worker',   sub:'connectors' },
+  redis:      { x:490,  y:288, w:200, h:148, color:'#10b981', name:'crm-redis',    sub:'Broker · Cache' },
+  postgres:   { x:740,  y:488, w:200, h:148, color:'#10b981', name:'crm-postgres', sub:'PostgreSQL · pgvector' },
 };
 
 // ── Geometry helpers ─────────────────────────────────────────────────────────
@@ -345,12 +345,12 @@ const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any; tp?: a
         }} />
 
         {/* Name */}
-        <div style={{ fontSize: 14, fontWeight: 700, color: n.color, whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: n.color, whiteSpace: 'nowrap' }}>
           {label}
         </div>
 
         {/* Sub */}
-        <div style={{ fontSize: 10.5, color: 'rgba(148,163,184,0.55)', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 12, color: 'rgba(148,163,184,0.6)', whiteSpace: 'nowrap' }}>
           {sub}
         </div>
 
@@ -359,26 +359,22 @@ const GraphNode: React.FC<{ id: string; ep?: EmbedProvider; metrics: any; tp?: a
           <>
             <div style={{
               width: '100%', height: 1,
-              background: `${n.color}25`,
-              margin: '4px 0 3px',
+              background: `${n.color}28`,
+              margin: '5px 0 4px',
             }} />
             <div style={{
               display: 'grid', gridTemplateColumns: '1fr 1fr',
-              columnGap: 10, rowGap: 3,
-              width: '100%', fontSize: 9.5,
+              columnGap: 12, rowGap: 4,
+              width: '100%', fontSize: 11,
               fontFamily: 'ui-monospace, monospace',
-              color: 'rgba(148,163,184,0.5)',
+              color: 'rgba(148,163,184,0.55)',
             }}>
               <span>CPU <span style={{ color: cpuColor }}>{cpuPct.toFixed(1)}%</span></span>
-              <span>MEM <span style={{ color: `${n.color}cc` }}>{fmb(memMb)}</span>
-                <span style={{ color: 'rgba(148,163,184,0.4)', fontSize: 8 }}> {memPct.toFixed(0)}%</span>
+              <span>MEM <span style={{ color: `${n.color}dd` }}>{fmb(memMb)}</span>
+                <span style={{ color: 'rgba(148,163,184,0.4)', fontSize: 9 }}> {memPct.toFixed(0)}%</span>
               </span>
-              <span style={{ color: 'rgba(148,163,184,0.42)' }}>
-                ↑{fmb(netTx)} ↓{fmb(netRx)}
-              </span>
-              <span style={{ color: 'rgba(148,163,184,0.42)' }}>
-                R:{fmb(blkR)} W:{fmb(blkW)}
-              </span>
+              <span>↑{fmb(netTx)} ↓{fmb(netRx)}</span>
+              <span>R:{fmb(blkR)} W:{fmb(blkW)}</span>
             </div>
           </>
         )}
@@ -494,11 +490,11 @@ export const SystemFlow: React.FC<{ metrics: any; embedProvider?: EmbedProvider 
 
         {/* Section labels */}
         {[
-          { label: 'EXTERNAL',    x: 122 },
-          { label: 'APP LAYER',   x: 228 },
-          { label: 'BROKER',      x: 460 },
-          { label: 'WORKERS',     x: 686 },
-          { label: 'AI PROVIDER', x: 796 },
+          { label: 'EXTERNAL',    x: 128 },
+          { label: 'APP LAYER',   x: 235 },
+          { label: 'BROKER',      x: 490 },
+          { label: 'WORKERS',     x: 740 },
+          { label: 'AI PROVIDER', x: 870 },
         ].map(({ label, x }) => (
           <text key={label} x={x} y={22} textAnchor="middle"
             fontSize={9} fontFamily="ui-monospace,monospace" fontWeight="800"
